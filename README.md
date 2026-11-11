@@ -1,10 +1,14 @@
 # Anansi: Phase 1 floor MVP
 
-Plans: [DESIGN.md](DESIGN.md), [BUSINESS_PLAN.md](BUSINESS_PLAN.md). This folder is the first code.
+Anansi is a Steam-first, "LLM@home" service: one OpenAI-compatible gateway that gives game studios generative NPC
+dialogue and actions without per-token costs, served by a paid cloud floor now and volunteer GPUs later.
+
+Design and roadmap: [DESIGN.md](DESIGN.md). **Status: Phase 1 prototype.** The gateway runs end to end against a real
+model (Qwen3-1.7B via Ollama on CPU). There are no GPU nodes, volunteer nodes or live Steam checks yet; see Known limits.
 
 | Path | What |
 |---|---|
-| `gateway/app.py` | OpenAI-compatible `/v1/chat/completions`: title-key and Steam-ticket auth, daily token budget per account, field whitelist, system prefix, constrained NPC actions, output filter, failover |
+| `gateway/app.py` | OpenAI-compatible `/v1/chat/completions`: title-key and Steam-ticket auth, daily token budget per account, field whitelist, system prefix, constrained NPC actions, output filter, leak guard, sentence-by-sentence streaming, failover |
 | `gateway/scheduler.py` | Bounded-load rendezvous affinity, power-of-two choices, peak-EWMA, ejection, panic mode |
 | `tools/mock_node.py` | Fake GPU node for development |
 | `sdk/anansi_client.py` | Python reference SDK with local fallback (the Unreal plugin would follow this contract) |
