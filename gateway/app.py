@@ -124,35 +124,50 @@ def make_app(config=None, transport=None):
             return t.get("fallback_line", "..."), True
         return text[: t.get("max_reply_chars", 1000)], False
 
+    async def run_judge(j, t, msgs, text, key):
+        """One safety check on a reply; returns SAFE or anything else (UNSAFE, garbage, no answer all fail closed).
+        type "judge" (default): a general model asked for a JSON SAFE/UNSAFE verdict, shown the secret prompt.
+        type "guard": a purpose-built classifier such as Llama Guard, shown the player line and the reply as a
+        two-turn chat, answering "safe" or "unsafe" plus a category."""
+        model = j.get("model") or cfg["default_model"]
+        node = sched.pick(model, key)
+        if not node:
+            return ""
+        if j.get("type") == "guard":
+            req = {"model": model, "max_tokens": 12, "temperature": 0,
+                   "messages": [{"role": "user", "content": msgs[-1]["content"]}, {"role": "assistant", "content": text}]}
+        else:
+            ask = [{"role": "system", "content": j.get("prompt", JUDGE_PROMPT)},
+                   {"role": "user", "content": f"Secret instructions: {t.get('system_prefix', '')}\nPlayer said: {msgs[-1]['content']}\nNPC replied: {text}"}]
+            req = {"model": model, "messages": ask, "max_tokens": 24, "temperature": 0,  # constrained to the two verdicts: small models ramble otherwise
+                   "response_format": {"type": "json_schema", "json_schema": {"name": "verdict", "schema": {
+                       "type": "object", "required": ["verdict"], "additionalProperties": False,
+                       "properties": {"verdict": {"type": "string", "enum": ["SAFE", "UNSAFE"]}}}}}}
+        sched.begin(node)
+        t0, ok, verdict = time.monotonic(), False, ""
+        try:
+            r = await client.post(node.url + "/v1/chat/completions", json=payload_for(req, node))
+            if r.status_code == 200:
+                out = reply_text(r.json())
+                verdict = (str(json.loads(out).get("verdict", "")) if j.get("type") != "guard" else out).strip().upper()
+            ok = bool(verdict)
+        except (httpx.HTTPError, ValueError, AttributeError):
+            pass
+        sched.end(node, ok, (time.monotonic() - t0) * 1000)
+        return verdict
+
     async def vet(t, msgs, text, key):
-        """sanitize() plus the optional judge: a second model call that must answer SAFE for the reply to go out.
-        shortcut: not applied to streamed replies (a call per sentence is too slow); the judge failing closes the
-        gate, so a dead judge shows the fallback line instead of unchecked text."""
+        """sanitize() plus the optional judges (`judge` is one check or a list, all must pass). Each is a second model
+        call, so they add latency. shortcut: not applied to streamed replies (a call per sentence is too slow); a dead
+        judge closes the gate, so the fallback line shows instead of unchecked text."""
         text, flagged = sanitize(t, text)
         if flagged or t.get("judge") is None:
             return text, flagged
-        node = sched.pick(t["judge"].get("model") or cfg["default_model"], key)
-        verdict = ""
-        if node:
-            ask = [{"role": "system", "content": t["judge"].get("prompt", JUDGE_PROMPT)},
-                   {"role": "user", "content": f"Secret instructions: {t.get('system_prefix', '')}\nPlayer said: {msgs[-1]['content']}\nNPC replied: {text}"}]
-            sched.begin(node)
-            t0, ok = time.monotonic(), False
-            try:
-                r = await client.post(node.url + "/v1/chat/completions", json=payload_for(
-                    {"model": t["judge"].get("model") or cfg["default_model"], "messages": ask,
-                     "max_tokens": 24, "temperature": 0,  # constrained to the two verdicts: small models ramble otherwise
-                     "response_format": {"type": "json_schema", "json_schema": {"name": "verdict", "schema": {
-                         "type": "object", "required": ["verdict"], "additionalProperties": False,
-                         "properties": {"verdict": {"type": "string", "enum": ["SAFE", "UNSAFE"]}}}}}}, node))
-                verdict = str(json.loads(reply_text(r.json())).get("verdict", "")).upper() if r.status_code == 200 else ""
-                ok = bool(verdict)
-            except (httpx.HTTPError, ValueError, AttributeError):
-                pass
-            sched.end(node, ok, (time.monotonic() - t0) * 1000)
-        if not verdict.startswith("SAFE"):  # UNSAFE, garbage and no answer all fail closed
-            stats["judged_out" if verdict else "judge_errors"] += 1
-            return t.get("fallback_line", "..."), True
+        for j in (t["judge"] if isinstance(t["judge"], list) else [t["judge"]]):
+            verdict = await run_judge(j, t, msgs, text, key)
+            if not verdict.startswith("SAFE"):
+                stats["judged_out" if verdict else "judge_errors"] += 1
+                return t.get("fallback_line", "..."), True
         return text, False
 
     def may_retry():  # retry budget: retries stay near 10% of recent traffic so a sick pool cannot multiply load

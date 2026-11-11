@@ -6,6 +6,7 @@ Works the same on Windows, Linux and macOS (Apple Silicon: Ollama and llama.cpp 
 shortcut: the token is a shared secret per pool, not a per-user Steam-bound certificate (DESIGN.md section 9)."""
 import argparse
 import asyncio
+import json
 import pathlib
 import secrets
 
@@ -21,7 +22,7 @@ def agent_id(path=pathlib.Path.home() / ".anansi-agent-id"):
     return path.read_text().strip()
 
 
-async def worker(gw, local, token, agent, log=print):
+async def worker(gw, local, token, agent, log=print, model=None):
     H, nid, backoff = {"X-Node-Token": token, "X-Node-Agent": agent}, None, 1
     while True:
         try:
@@ -45,7 +46,10 @@ async def worker(gw, local, token, agent, log=print):
             res = {"status": 400, "body": "", "content_type": "text/plain"}
             if job["path"] == ALLOWED:
                 try:
-                    lr = await local.post(ALLOWED, content=job["body"], headers={"content-type": "application/json"},
+                    body = job["body"]
+                    if model:  # the gateway names the pool's model; run whichever model this machine actually has
+                        body = json.dumps({**json.loads(body), "model": model})
+                    lr = await local.post(ALLOWED, content=body, headers={"content-type": "application/json"},
                                           timeout=120)
                     res = {"status": lr.status_code, "body": lr.text,
                            "content_type": lr.headers.get("content-type", "application/json")}
@@ -58,9 +62,9 @@ async def worker(gw, local, token, agent, log=print):
             backoff = min(backoff * 2, 30)
 
 
-async def serve(gw, local, token, slots=1, log=print, agent=None):
+async def serve(gw, local, token, slots=1, log=print, agent=None, model=None):
     agent = agent or agent_id()
-    await asyncio.gather(*[worker(gw, local, token, agent, log) for _ in range(slots)])
+    await asyncio.gather(*[worker(gw, local, token, agent, log, model) for _ in range(slots)])
 
 
 if __name__ == "__main__":
@@ -69,11 +73,12 @@ if __name__ == "__main__":
     ap.add_argument("--token", required=True)
     ap.add_argument("--local", default="http://127.0.0.1:11434")
     ap.add_argument("--slots", type=int, default=1)
+    ap.add_argument("--model", help="local model name to run every job on (default: the name the gateway sends)")
     a = ap.parse_args()
 
     async def main():
         async with httpx.AsyncClient(base_url=a.gateway) as gw, httpx.AsyncClient(base_url=a.local) as local:
-            await serve(gw, local, a.token, a.slots)
+            await serve(gw, local, a.token, a.slots, model=a.model)
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

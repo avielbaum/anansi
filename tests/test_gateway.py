@@ -491,6 +491,66 @@ async def t_budget_and_bans_survive_restart():
     assert (await gw2.post("/node/register", headers={"X-Node-Token": "tok", "X-Node-Agent": "steady"})).status_code == 200
 
 
+async def t_guard_classifier_and_stacked_checks():
+    cfg = copy.deepcopy(CFG)
+    for n in cfg["nodes"]:
+        n["models"] = ["npc-small", "guard"]
+    cfg["titles"]["demo"]["judge"] = [{"type": "guard", "model": "guard"}, {}]  # classifier first, then the general judge
+    a, b, _, c = setup(cfg)
+    fb = CFG["titles"]["demo"]["fallback_line"]
+    a.state.reply = b.state.reply = "Hello, traveller."
+    ask = lambda: c.post("/v1/chat/completions", json=BODY, headers=H)
+    r = (await ask()).json()
+    assert r["choices"][0]["message"]["content"] == "Hello, traveller." and not r["anansi"]["filtered"]
+    seen = a.state.guard_last or b.state.guard_last  # the classifier sees the player line then the reply, no schema
+    assert [m["role"] for m in seen["messages"]] == ["user", "assistant"] and seen["messages"][1]["content"] == "Hello, traveller."
+    assert "response_format" not in seen
+    for verdict in ("unsafe\nS1", "unsafe", "hmm, not sure", ""):  # unsafe, garbage and silence all fail closed
+        a.state.guard = b.state.guard = verdict
+        r = (await ask()).json()
+        assert r["choices"][0]["message"]["content"] == fb and r["anansi"]["filtered"], verdict
+    a.state.guard = b.state.guard = "safe"
+    a.state.judge = b.state.judge = "UNSAFE"  # the second check can still veto
+    assert (await ask()).json()["anansi"]["filtered"]
+
+
+def t_join_plan():
+    import argparse
+    from node import join
+    assert join.pick_model(4) is None and join.pick_model(5.9) is None  # too small to help
+    assert join.pick_model(8)[0] == "qwen3:1.7b" and join.pick_model(15.9)[0] == "qwen3:1.7b"  # 8 GB machines: Lite only
+    assert join.pick_model(16)[0] == "qwen3:4b" and join.pick_model(64)[0] == "qwen3:4b"
+    r = join.ram_gb()
+    assert r is None or 0.5 < r < 4096  # readable on this platform
+    a = argparse.Namespace(model=None, gateway="https://gw", slots=1)
+    steps, model = join.plan(a, 8, {"qwen3:1.7b"})
+    assert model == "qwen3:1.7b" and all(ok for ok, _ in steps) and any("already installed" in t for _, t in steps)
+    steps, model = join.plan(a, 8, set())  # model missing: says it will download
+    assert any("will download" in t.lower() for _, t in steps)
+    steps, model = join.plan(a, 8, None)  # Ollama not running: a failing step with install advice
+    assert not all(ok for ok, _ in steps) and any("ollama.com" in t.lower() for _, t in steps)
+    steps, model = join.plan(a, 3, set())  # too little RAM: refuses, no model
+    assert model is None and not steps[0][0]
+    ev = lambda code, body: httpx.MockTransport(lambda req: httpx.Response(code, json=body))
+    assert join.installed_models(transport=ev(200, {"models": [{"name": "qwen3:4b"}]})) == {"qwen3:4b"}
+    assert join.installed_models(transport=ev(500, {})) is None
+
+
+async def t_agent_runs_its_own_model():
+    from node.agent import serve
+    cfg = copy.deepcopy(CFG)
+    cfg.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"], "upstream_model": "pool-model"}}, pull_poll_s=0.2,
+               canaries=[{"user": "say hi", "expect": "hello"}], canary_rate=0)
+    gw = httpx.AsyncClient(transport=httpx.ASGITransport(app=make_app(cfg)), base_url="http://gw")
+    mock = make_node("m")
+    local = httpx.AsyncClient(transport=httpx.ASGITransport(app=mock), base_url="http://l")
+    agent = asyncio.create_task(serve(gw, local, "tok", log=lambda m: None, agent="a1", model="qwen3:4b"))
+    await asyncio.sleep(0.6)
+    assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 200
+    assert mock.state.last["model"] == "qwen3:4b"  # the pool asked for "pool-model"; this machine ran what it has
+    agent.cancel()
+
+
 def t_leaks():
     p = "Stay in character and reply in one or two short sentences."
     assert leaks(p, "Ok: stay in character and reply in one or two short sentences, sure.")

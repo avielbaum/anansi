@@ -37,6 +37,27 @@ To the scheduler a registered worker is an ordinary node, so routing, failover, 
 A worker that stops polling is forgotten after `pull_ttl_s`. A streamed request is answered correctly but relayed
 whole after the node finishes.
 
+### One-step setup
+
+`node/join.py` checks the machine, picks a model that fits, makes sure Ollama has it and starts the agent:
+
+```bash
+./node/join.sh --gateway https://gateway.example --token POOL_TOKEN          # Linux, macOS
+node\join.bat --gateway https://gateway.example --token POOL_TOKEN           # Windows
+python node/join.py --gateway ... --token ... --dry-run                     # show the plan, change nothing
+```
+
+- **Model choice by RAM** (DESIGN.md section 21): under 6 GB it declines; 6 to 15 GB gets `qwen3:1.7b` (about 1.4 GB);
+  16 GB and up gets `qwen3:4b` (about 2.5 GB). `--model` overrides it.
+- **It installs nothing by itself.** If Ollama is missing or not running it says where to get it. It pulls one model, after
+  checking free disk, and uses a private Python environment (`~/.anansi-venv`, httpx only) for the agent.
+- **Model names:** the gateway asks for the pool's model name; the agent runs whichever model this machine has (`--model`
+  on `agent.py`, set automatically by `join.py`). Quality across machines then varies with the model, which is what the
+  entry probe and spot checks are for.
+- Tested: model choice, the plan, and the model override in the self-checks; a dry run and a real join on Windows.
+  **Not tested:** `join.sh` and `join.bat` on other machines, and Ollama installation. **Missing:** idle detection. The
+  agent serves jobs whenever the gateway sends them, even during a game; stop it before gaming until that exists.
+
 ### Verification
 
 - **Entry probe:** a new worker joins the pool only after answering a known-answer question correctly (temperature 0,

@@ -88,12 +88,23 @@ not streamed (400). The safety judge does not run on streams. For streams, recor
 1. **Blocklist and length cap:** per-title regexes and `max_reply_chars`. A hit replaces the reply with `fallback_line`.
 2. **Leak guard:** a reply that repeats `leak_ngram` (default 5) or more consecutive words of the system prompt gets
    the fallback line. It catches near-verbatim leaks, not paraphrases.
-3. **Safety judge (optional):** `"judge": {"model": "...", "prompt": "..."}`. A second model call, shown the secret
+3. **Safety checks (optional):** `judge` is one check or a list; all must pass. Each is an extra model call, so each adds
+   latency. Two kinds: `{"type": "guard", "model": "..."}` is a purpose-built classifier such as Llama Guard (sees the
+   player line and the reply, answers `safe` or `unsafe` plus a category); the default kind is a general model shown the
+   secret prompt and asked for a SAFE/UNSAFE verdict. Details of the judge: `"judge": {"model": "...", "prompt": "..."}`. A second model call, shown the secret
    prompt, must answer `SAFE` for a non-streamed reply to go out. `UNSAFE`, a garbled answer or no answer gives the
    fallback line. The verdict is constrained to two values by JSON schema. Use a model of 4B or more; 1.7B caught nothing.
    `config.ollama.judge.json` shows a separate logical model (`judge`) served by `qwen3:4b`.
 
-None of these is the safety classifier that gate G5 in DESIGN.md requires.
+Measured on 23 short self-written (player, reply) pairs (`tools/guard_eval.py`, CPU): Llama Guard 3 1B caught 9 of 9
+real content violations (hate, sexual, self-harm, weapons, drugs, personal data, crime), 0 false positives on 10 benign
+replies including fantasy violence, but none of the NPC-specific problems (revealing instructions, saying it is an AI),
+and took about 3 s per check. The Qwen3-4B judge caught 10 of 13 (including both AI mentions, missing one hate line and
+both prompt leaks), 0 false positives, about 4.4 s. The word-overlap guard caught both leaks (they quoted the prompt).
+Together they caught all 13 with no false positives, at roughly 7.5 s of extra latency per non-streamed reply on this
+CPU. That combination is `config.ollama.guard.json`. Run through the gateway with that config on Qwen3-1.7B NPC replies: 1 of 18 benign shopkeeper replies was blocked (a false
+positive), 4 of 8 extraction attacks were blocked, and median latency rose from 4.3 s to 11.2 s. The sample is tiny and written by me: it shows what each tool is
+for, not how safe the system is. Gate G5 in DESIGN.md still needs a real red-team set.
 
 ## Routing
 
