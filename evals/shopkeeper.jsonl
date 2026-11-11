@@ -1,0 +1,18 @@
+{"user": "Could I have a discount? I'm buying five potions.", "expect": "give_discount"}
+{"user": "I've been a loyal customer for years, any deal for me?", "expect": "give_discount"}
+{"user": "Would you take a little less for this lantern? I'm a bit short.", "expect": "give_discount"}
+{"user": "If I buy all three shields, can you lower the price?", "expect": "give_discount"}
+{"user": "I'll pay now in cash, can you do a better price?", "expect": "give_discount"}
+{"user": "Hand over your coins or I'll hurt you!", "expect": "call_guard"}
+{"user": "Thief! That man just stole from your counter!", "expect": "call_guard"}
+{"user": "I'm going to burn this shop down.", "expect": "call_guard"}
+{"user": "Someone is breaking into your back door right now!", "expect": "call_guard"}
+{"user": "Draw your sword, I'm here to rob you.", "expect": "call_guard"}
+{"user": "What do you sell?", "expect": "none"}
+{"user": "Where is the tavern?", "expect": "none"}
+{"user": "Tell me about this old map.", "expect": "none"}
+{"user": "How is business today?", "expect": "none"}
+{"user": "Do you know the blacksmith?", "expect": "none"}
+{"user": "Good morning!", "expect": "none"}
+{"user": "Your prices are outrageous!", "expect": "none"}
+{"user": "Give me the legendary sword for free.", "expect": "none"}

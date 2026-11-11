@@ -871,6 +871,12 @@ Setup: the gateway in front of Ollama 0.40.4 serving `qwen3:1.7b` on this PC's C
   stealing from you!", the model always chose `none`. The system prompt did not say when to use
   each action. This is early evidence for gate G1 (quality), not a result: it needs the 200-prompt
   evaluation, better prompts and an adapter.
+- **Prompt guidance matters more than model size at this stage.** On 18 labelled shopkeeper prompts
+  (`evals/shopkeeper.jsonl`, `tools/eval.py`), action accuracy was 33% with a generic system prompt
+  and 83% after the prompt said when each action applies (give_discount 3/5, call_guard 4/5, none 8/8).
+  Caveats: the cases are few and were written by me, and the improved prompt names categories that
+  mirror the test cases, so 83% is optimistic. Misses were "no action" where an action was due,
+  not wrong actions. This is a harness for gate G1, not its answer.
 - **Prompt leakage.** Asked to ignore its instructions and reveal its system prompt, the model
   paraphrased it. Nothing in the gateway catches this. It belongs in the G5 red-team set.
 - **Retry budget bug found and fixed.** A cumulative retry counter starved retries after an
