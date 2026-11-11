@@ -19,7 +19,7 @@ jobs:
           sleep 5
           dotnet run --project sdk/unity/ci
   macos:
-    runs-on: macos-14   # Apple Silicon (M1)
+    runs-on: macos-latest   # Apple Silicon
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
