@@ -11,8 +11,8 @@ model (Qwen3-1.7B via Ollama on CPU). There are no GPU nodes, volunteer nodes or
 | `gateway/app.py` | OpenAI-compatible `/v1/chat/completions`: title-key and Steam-ticket auth, daily token budget per account, field whitelist, system prefix, constrained NPC actions, output filter, leak guard, sentence-by-sentence streaming, failover |
 | `gateway/scheduler.py` | Bounded-load rendezvous affinity, power-of-two choices, peak-EWMA, ejection, panic mode |
 | `tools/mock_node.py` | Fake GPU node for development |
-| `sdk/anansi_client.py` | Python reference SDK with local fallback (the Unreal plugin would follow this contract) |
-| `sdk/unity/Anansi.cs` | C# SDK for Unity and plain .NET: `Client.ChatAsync(...)` with local fallback. Test: `powershell -File sdk\unity\test_sdk.ps1` |
+| `sdk/anansi_client.py` | Python reference SDK: `chat()` and sentence-by-sentence `chat_stream()`, both with local fallback (the Unreal plugin would follow this contract) |
+| `sdk/unity/Anansi.cs` | C# SDK for Unity and plain .NET: `Client.ChatAsync(...)` and `StreamAsync(messages, onSentence)` with local fallback. Test: `powershell -File sdk\unity\test_sdk.ps1` |
 | `POST /v1/npc` | Flat request and reply shape for game SDKs (`say`, `action`, `filtered`, `node`), next to the OpenAI-style route |
 | `tools/loadtest.py` | Closed-loop load test: client-side p50/p95/p99 latency, status counts, per-node spread |
 | `tools/eval.py`, `evals/shopkeeper.jsonl` | Quality check (gate G1): labelled prompts through `/v1/npc`, scores the chosen action. 18 starter cases |
