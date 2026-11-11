@@ -278,6 +278,20 @@ async def t_player_token_header_and_auth_mode():
         pass
 
 
+async def t_cors_only_for_listed_origins():
+    ask = {"Origin": "https://game.example", "Access-Control-Request-Method": "POST",
+           "Access-Control-Request-Headers": "x-player-token,x-anansi-key,content-type"}
+    _, _, _, c = setup(copy.deepcopy(CFG))
+    assert "access-control-allow-origin" not in (await c.options("/v1/npc", headers=ask)).headers  # off by default
+    _, _, _, c = setup({**copy.deepcopy(CFG), "cors_origins": ["https://game.example"]})
+    r = await c.options("/v1/npc", headers=ask)
+    assert r.status_code == 200 and r.headers["access-control-allow-origin"] == "https://game.example"
+    r = await c.options("/v1/npc", headers={**ask, "Origin": "https://evil.example"})
+    assert "access-control-allow-origin" not in r.headers
+    r = await c.post("/v1/npc", json=BODY, headers={**H, "Origin": "https://game.example"})
+    assert r.headers["access-control-allow-origin"] == "https://game.example"
+
+
 async def t_pull_nodes():
     from node.agent import serve
     cfg = copy.deepcopy(CFG)

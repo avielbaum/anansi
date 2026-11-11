@@ -13,6 +13,7 @@ import time
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import quests
@@ -71,6 +72,9 @@ def make_app(config=None, transport=None):
     stats = {"requests": 0, "retries": 0, "status": Counter(), "filtered": 0, "stream_errors": 0, "judged_out": 0, "judge_errors": 0, "lat_ms": deque(maxlen=1000)}
     budget = {"req": 0.0, "retry": 0.0}
     app = FastAPI()
+    if cfg.get("cors_origins"):  # browser games on another origin; empty by default, so no page may call the gateway
+        app.add_middleware(CORSMiddleware, allow_origins=cfg["cors_origins"], allow_methods=["POST", "GET"],
+                           allow_headers=["Content-Type", "X-Anansi-Title", "X-Anansi-Key", "X-Player-Token", "X-Steam-Ticket"])
     app.state.sched = sched
     app.state.hub = hub
     app.state.store = store

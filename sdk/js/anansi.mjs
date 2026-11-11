@@ -1,8 +1,8 @@
 // Anansi game SDK for JavaScript and TypeScript (types in anansi.d.ts). Browsers, Node 18+, Deno, Bun, Electron.
 // Same contract as sdk/anansi_client.py and sdk/unity/Anansi.cs: ask the gateway, and on a timeout, a 429, an auth
 // error or any failure answer from the fallback so the game never stalls. Every result has source "gateway" or "fallback".
-// shortcut: the gateway sends no CORS headers, so a page on another origin cannot call it directly. Put a same-origin
-// proxy in front, and never ship a title key to browsers you do not control.
+// Browsers: list the page's origin in the gateway's cors_origins (or use a same-origin proxy), and never ship a title
+// key to browsers you do not control.
 
 export class Anansi {
   /**

@@ -68,9 +68,9 @@ await npc.chatStream(messages, (sentence) => label.append(sentence), { npcId: "s
 const q = await npc.quest(world, { steps: 3, theme: "mining" });                         // q.source, q.quest
 ```
 
-`playerToken` can be a string or a function (sync or async) if your platform's token expires. **Browsers:** the gateway
-sends no CORS headers yet, so a page on another origin cannot call it directly; use a same-origin proxy, and do not
-ship a title key to browsers you do not control. Tested against a live gateway (`node sdk/js/test.mjs`, also in CI).
+`playerToken` can be a string or a function (sync or async) if your platform's token expires. **Browsers:** a page on another origin can
+call the gateway only if its origin is listed in the gateway's `cors_origins`; otherwise use a same-origin proxy. Either
+way, do not ship a title key to browsers you do not control. Tested against a live gateway (`node sdk/js/test.mjs`, also in CI).
 
 ## Unreal Engine 5 (`sdk/unreal/Anansi`)
 

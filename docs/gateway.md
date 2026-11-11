@@ -31,6 +31,7 @@ JSON file named by `ANANSI_CONFIG`.
 | `nodes[]` | Static nodes: `url`, `models` (logical names), `region`, `upstream_model` (the server's own name), `extra` (merged into every request, e.g. to switch thinking off) |
 | `titles.<id>` | One entry per game, see below |
 | `db_path` | SQLite file for daily budgets, agent bans and the volunteer work ledger. Unset means in memory (nothing survives a restart) |
+| `cors_origins` | Origins allowed to call the gateway from a browser, e.g. `["https://game.example"]`. Empty by default: no page on another origin can call it. Never `"*"` with a title key in the page |
 | `retention_days` | Days of per-account usage rows kept (they hold player ids); default 35 |
 | `pull_tokens` | Enables volunteer agents; see [nodes.md](nodes.md) |
 | `pull_poll_s`, `pull_ttl_s`, `canaries`, `canary_rate` | Pull-node tuning and verification; see [nodes.md](nodes.md) |
