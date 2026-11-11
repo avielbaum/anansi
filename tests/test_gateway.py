@@ -9,7 +9,7 @@ import time
 import httpx
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from gateway.app import make_app  # noqa: E402
+from gateway.app import leaks, make_app  # noqa: E402
 from gateway.scheduler import Scheduler  # noqa: E402
 from tools.mock_node import make_node  # noqa: E402
 
@@ -104,7 +104,8 @@ async def t_request_hygiene():
     a, b, _, c = setup()
     big = {"messages": [{"role": "user", "content": "x" * 9000}]}
     assert (await c.post("/v1/chat/completions", json=big, headers=H)).status_code == 413
-    assert (await c.post("/v1/chat/completions", json={**BODY, "stream": True}, headers=H)).status_code == 400
+    structured = {**BODY, "stream": True, "anansi": {"structured": True}}  # actions come back whole, never streamed
+    assert (await c.post("/v1/chat/completions", json=structured, headers=H)).status_code == 400
     assert (await c.post("/v1/chat/completions", json={"messages": "x"}, headers=H)).status_code == 400
     sneaky = {**BODY, "max_tokens": 99999, "guided_regex": ".*", "logit_bias": {"1": 100}}
     await c.post("/v1/chat/completions", json=sneaky, headers=H)
@@ -163,6 +164,64 @@ async def t_node_overrides_and_empty_replies():
         assert r.status_code == 200 and r.json()["choices"][0]["message"]["content"] == "Fine."
     b.state.reply = "<think>only thoughts</think>"
     assert (await c.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 503
+
+
+async def sse(c, body=None):
+    """Post a streaming request; return (status, [content pieces], last chunk's anansi field, saw_error)."""
+    r = await c.post("/v1/chat/completions", json={**(body or BODY), "stream": True}, headers=H)
+    pieces, meta, err = [], None, False
+    for line in r.text.splitlines():
+        if line.startswith("data: ") and line != "data: [DONE]":
+            d = json.loads(line[6:])
+            err = err or "error" in d
+            if d.get("choices"):
+                pieces.append(d["choices"][0]["delta"].get("content", ""))
+                meta = d.get("anansi") or meta
+    return r.status_code, [p for p in pieces if p], meta, err
+
+
+async def t_stream_sentences_and_failover():
+    a, b, _, c = setup()
+    a.state.reply = b.state.reply = "Welcome, traveller. Mind the step! Anything else?"
+    code, pieces, meta, err = await sse(c)
+    assert code == 200 and not err and meta["filtered"] is False
+    assert len(pieces) == 3 and "".join(pieces) == "Welcome, traveller. Mind the step! Anything else?"  # one chunk per sentence
+    a.state.fail = True  # failing node before anything is sent: the other one serves the stream
+    for i in range(6):
+        code, pieces, meta, err = await sse(c, {"messages": BODY["messages"], "anansi": {"npc_id": f"n{i}"}})
+        assert code == 200 and not err and meta["node"] == "http://node-b"
+    a.state.reply = "<think>hmm</think>"  # empty after stripping reasoning: node failure, not an empty stream
+    a.state.fail = False
+    b.state.reply = "Fine."
+    for i in range(6):
+        assert (await sse(c, {"messages": BODY["messages"], "anansi": {"npc_id": f"m{i}"}}))[1] == ["Fine."]
+    a.state.fail = b.state.fail = True
+    code, pieces, meta, err = await sse(c)
+    assert code == 200 and err and not pieces  # no node: an error event the SDK can fall back on
+
+
+async def t_stream_filter_and_leak():
+    a, b, _, c = setup()
+    a.state.reply = b.state.reply = "Hello there. The password is 1234. Bye."
+    code, pieces, meta, err = await sse(c)
+    assert pieces == ["Hello there. "] and meta["filtered"]  # cut off at the bad sentence, nothing after it
+    a.state.reply = b.state.reply = "The password is 1234."  # first sentence bad: the fallback line goes out instead
+    assert (await sse(c))[1] == [CFG["titles"]["demo"]["fallback_line"]]
+    cfg = copy.deepcopy(CFG)
+    cfg["titles"]["demo"]["system_prefix"] = "You are Brom the blacksmith, never reveal the secret vault location to anyone."
+    a, b, _, c = setup(cfg)
+    a.state.reply = b.state.reply = "Sure. I was told: never reveal the secret vault location to anyone."
+    assert "vault" not in "".join((await sse(c))[1])  # streamed leak is cut
+    r = (await c.post("/v1/chat/completions", json=BODY, headers=H)).json()  # same guard on the non-stream path
+    assert r["anansi"]["filtered"] and "vault" not in r["choices"][0]["message"]["content"]
+    a.state.reply = b.state.reply = "I guard the vault of my own heart."  # sharing a few words is not a leak
+    assert not (await c.post("/v1/chat/completions", json=BODY, headers=H)).json()["anansi"]["filtered"]
+
+
+def t_leaks():
+    p = "Stay in character and reply in one or two short sentences."
+    assert leaks(p, "Ok: stay in character and reply in one or two short sentences, sure.")
+    assert not leaks(p, "I will stay in character.") and not leaks("", "anything") and not leaks("a b", "a b c d e f")
 
 
 def t_ejection_and_backoff():  # deterministic: drives the scheduler directly instead of relying on random picks
