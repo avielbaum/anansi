@@ -1,4 +1,9 @@
-<h1 align="center">Anansi</h1>
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="assets/logo/anansi-logo-light.svg">
+    <img src="assets/logo/anansi-logo.svg" alt="Anansi: story and quest engine" width="260">
+  </picture>
+</h1>
 
 <p align="center"><b>One endpoint for living game worlds: NPC dialogue, quests and storylines, powered by idle GPUs.</b></p>
 
