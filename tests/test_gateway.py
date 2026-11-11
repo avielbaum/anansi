@@ -218,6 +218,20 @@ async def t_stream_filter_and_leak():
     assert not (await c.post("/v1/chat/completions", json=BODY, headers=H)).json()["anansi"]["filtered"]
 
 
+def t_sdk_stream():
+    from sdk.anansi_client import Anansi
+    ev = lambda t: "data: " + json.dumps({"choices": [{"delta": {"content": t}}]}) + "\n\n"
+
+    def make(body, code=200):
+        return Anansi("http://gw", "demo", "k", "dev:1", fallback=lambda m: "LOCAL", transport=httpx.MockTransport(
+            lambda req: httpx.Response(code, content=body, headers={"content-type": "text/event-stream"})))
+    msgs = [{"role": "user", "content": "hi"}]
+    assert list(make(ev("One. ") + ev("Two.") + "data: [DONE]\n\n").chat_stream(msgs)) == ["One. ", "Two."]
+    assert list(make('data: {"error": "no node available"}\n\n').chat_stream(msgs)) == ["LOCAL"]
+    assert list(make("", 503).chat_stream(msgs)) == ["LOCAL"]
+    assert list(make(ev("One. ") + 'data: {"error": "x"}\n\n').chat_stream(msgs)) == ["One. "]  # no fallback after text
+
+
 def t_leaks():
     p = "Stay in character and reply in one or two short sentences."
     assert leaks(p, "Ok: stay in character and reply in one or two short sentences, sure.")
