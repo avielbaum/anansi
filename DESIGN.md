@@ -1,4 +1,10 @@
-# Anansi: Steam-first LLM@home
+# Anansi: LLM@home for games, on any platform
+
+**Platforms.** Anansi is platform agnostic. Steam is the reference first platform, so many sections below describe
+Steam's identity, distribution (depots), rewards (Inventory) and policy. Read each of those as "the platform's
+identity, distribution and rewards services"; Epic, GOG, itch.io, consoles, mobile or a studio's own launcher
+need their own equivalent, and the gateway takes a pluggable player-identity check (`auth.mode`). Where a platform
+has no equivalent (for example no inventory), credits can be redeemed inside the game instead.
 
 Status: complete design draft v1.0, 2026-11-10. Nothing here has been built or measured.
 Assumptions are marked **[verify]**. Repository licences, Windows support and model licences
@@ -9,7 +15,7 @@ were checked on 2026-11-10 (sections 17-19). This is not legal advice.
 The document grew in layers. Later sections override earlier ones. This summary and the
 status table below are the current position.
 
-**What Anansi is.** A Steam-first "LLM@home" service. Players' idle Windows PCs run a small
+**What Anansi is.** A platform-agnostic "LLM@home" service (Steam first). Players' idle PCs run a small
 language model for a game's generative content, backed by a paid cloud pool, behind one
 OpenAI-compatible endpoint that game engines call through an SDK.
 
@@ -62,17 +68,17 @@ over outbound connections and the project server owns scheduling, verification a
 Anansi follows that model. There is no DHT and no inbound ports, so NAT is a non-issue.
 
 ```
-Steam game + Anansi SDK ──(Steam auth ticket, TLS)──► Gateway ──► Scheduler ──► Work queues
+Game + Anansi SDK ──(platform token, TLS)───────► Gateway ──► Scheduler ──► Work queues
                                                                                   ▲  ▲
-                        Anansi Node (Steam app, outbound WebSocket, pull) ────────┘  │
+                        Anansi Node (desktop app, outbound WebSocket, pull) ────────┘  │
                         Dedicated floor (cloud GPUs, same worker image) ─────────────┘
 ```
 
-- **Gateway**: OpenAI-compatible API. It authenticates each request with the Steam session
-  ticket plus the publisher key, enforces quotas, applies the prompt template and runs the
+- **Gateway**: OpenAI-compatible API. It authenticates each request with the platform's player
+  token plus the studio's key (on Steam, the session ticket and publisher key), enforces quotas, applies the prompt template and runs the
   output safety filter.
 - **Scheduler**: matches jobs to nodes by model, RTT, queue depth and reputation.
-- **Node**: a free Steam app (or an opt-in "Contribute idle GPU" toggle inside a partner game).
+- **Node**: a free desktop app, on Steam or elsewhere (or an opt-in "Contribute idle GPU" toggle inside a partner game).
   It pulls jobs, runs them with llama.cpp (MIT; CUDA/Vulkan/Metal, works on Windows) and
   returns results. vLLM stays on the Linux dedicated floor only.
 - **Dedicated floor**: a small cloud GPU pool in each region that runs the same worker image.
@@ -135,7 +141,7 @@ served to every player, which cuts interactive load. The interactive path is the
 
 ## 7. Risks, in order of severity
 
-1. **Steam policy [verify first].** Valve has restricted apps that use players' hardware for
+1. **Platform policy [verify first, per platform; Steam shown].** Valve has restricted apps that use players' hardware for
    third-party compute (crypto mining was banned). Get written confirmation from Valve
    partner support that an opt-in, disclosed, idle-only inference node is allowed. If it is
    not, the fallback is distributing the node outside Steam and using Steam only for
@@ -917,7 +923,7 @@ Setup: the gateway in front of Ollama 0.40.4 serving `qwen3:1.7b` on this PC's C
 
 | Gate | Question | Proposed threshold |
 |---|---|---|
-| G0 | Does Valve allow an opt-in, disclosed, idle-only inference node? | Written yes. If no, distribute the node outside Steam and use Steam only for auth and inventory. |
+| G0 | Per platform (Steam first): does the platform allow an opt-in, disclosed, idle-only inference node? | Written yes. If no, distribute the node outside Steam and use Steam only for auth and inventory. |
 | G1 | Is a small model with an adapter good enough? | Blind-rated acceptable replies close to the floor's large model on the 200-prompt set, and escalations under 15%. |
 | G2 | Is interactive latency acceptable? | p95 first token under 800 ms and at least 8 tok/s on the beta's median PC. |
 | G3 | Is there enough idle supply? | Measured idle hours per node per day, and how much overlaps with player-online hours. Decides how much work volunteers can carry. |

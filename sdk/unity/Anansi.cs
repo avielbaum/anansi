@@ -56,12 +56,12 @@ namespace Anansi
         public Func<World, Task<Quest>> QuestFallback;
         public Func<World, Task<Storyline>> StorylineFallback;
         readonly string url, chatUrl, baseUrlTrimmed, title, key;
-        readonly Func<string> steamTicket;
+        readonly Func<string> playerToken;
         readonly Func<List<Message>, Task<string>> fallback;
 
-        // steamTicket: return the hex auth ticket for the web API (Steamworks.NET: SteamUser.GetAuthTicketForWebApi).
+        // playerToken: return the player's proof of identity from your platform (on Steam, the hex web-API auth ticket).
         // fallback: answer locally, for example from a bundled llama.cpp server. Default is a neutral line.
-        public Client(string baseUrl, string titleId, string titleKey, Func<string> steamTicket,
+        public Client(string baseUrl, string titleId, string titleKey, Func<string> playerToken,
                       Func<List<Message>, Task<string>> fallback = null, double timeoutSeconds = 3,
                       double generationTimeoutSeconds = 60)
         {
@@ -70,7 +70,7 @@ namespace Anansi
             url = baseUrl.TrimEnd('/') + "/v1/npc";
             chatUrl = baseUrl.TrimEnd('/') + "/v1/chat/completions";
             baseUrlTrimmed = baseUrl.TrimEnd('/');
-            title = titleId; key = titleKey; this.steamTicket = steamTicket; this.fallback = fallback;
+            title = titleId; key = titleKey; this.playerToken = playerToken; this.fallback = fallback;
         }
 
         // Plain (unstructured) replies, one finished sentence at a time: onSentence runs for each sentence as it arrives.
@@ -91,7 +91,7 @@ namespace Anansi
                 };
                 req.Headers.Add("X-Anansi-Title", title);
                 req.Headers.Add("X-Anansi-Key", key);
-                req.Headers.Add("X-Steam-Ticket", steamTicket());
+                req.Headers.Add("X-Player-Token", playerToken());
                 using (var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token))
                 {
                     if (resp.IsSuccessStatusCode)
@@ -153,7 +153,7 @@ namespace Anansi
                 };
                 req.Headers.Add("X-Anansi-Title", title);
                 req.Headers.Add("X-Anansi-Key", key);
-                req.Headers.Add("X-Steam-Ticket", steamTicket());
+                req.Headers.Add("X-Player-Token", playerToken());
                 using (var resp = await genHttp.SendAsync(req).ConfigureAwait(false))
                     if (resp.IsSuccessStatusCode)
                         return Json.From<T>(await resp.Content.ReadAsStringAsync().ConfigureAwait(false));
@@ -173,7 +173,7 @@ namespace Anansi
                 };
                 req.Headers.Add("X-Anansi-Title", title);
                 req.Headers.Add("X-Anansi-Key", key);
-                req.Headers.Add("X-Steam-Ticket", steamTicket());
+                req.Headers.Add("X-Player-Token", playerToken());
                 using (var resp = await http.SendAsync(req).ConfigureAwait(false))
                 {
                     if (resp.IsSuccessStatusCode)

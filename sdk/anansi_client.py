@@ -10,7 +10,7 @@ class Anansi:
         self.http = httpx.Client(transport=transport)
         self.base, self.gen_timeout = base_url.rstrip("/"), gen_timeout
         self.url, self.timeout = self.base + "/v1/chat/completions", timeout
-        self.headers = {"X-Anansi-Title": title, "X-Anansi-Key": key, "X-Steam-Ticket": ticket}
+        self.headers = {"X-Anansi-Title": title, "X-Anansi-Key": key, "X-Player-Token": ticket}
         # fallback(messages) -> str. Point it at a local llama-server in a real game; default is a canned line.
         self.fallback = fallback or (lambda messages: "...")
 

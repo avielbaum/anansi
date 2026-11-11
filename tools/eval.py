@@ -17,7 +17,7 @@ ap.add_argument("--verbose", action="store_true")
 a = ap.parse_args()
 
 cases = [json.loads(line) for line in open(a.cases, encoding="utf-8") if line.strip()]
-H = {"X-Anansi-Title": a.title, "X-Anansi-Key": a.key, "X-Steam-Ticket": "dev:76561198000000099"}
+H = {"X-Anansi-Title": a.title, "X-Anansi-Key": a.key, "X-Player-Token": "dev:76561198000000099"}
 hits, per, lat, bad, filtered, long_replies = 0, collections.defaultdict(lambda: [0, 0]), [], 0, 0, 0
 for i, c in enumerate(cases):
     t0 = time.monotonic()

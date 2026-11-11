@@ -6,7 +6,7 @@ Verification: a new worker must pass a known-answer probe before it receives rea
 probed at random after real jobs. A wrong answer is a strike; a failed entry probe or two strikes ban the agent id.
 The probe looks like any chat request, but a node that fingerprints it (no system prompt, short, a few fixed
 questions) can still cheat. Quorum on real answers is not built: free text differs across hardware.
-shortcut: the ban is by a self-chosen agent id (a Sybil can mint new ones: real identity needs Steam-bound
+shortcut: the ban is by a self-chosen agent id (a Sybil can mint new ones: real identity needs platform-bound
 certificates, DESIGN 9); state is in memory, one gateway only; a streamed request is answered whole by the agent
 (the SSE text is relayed after the node finishes), so streaming from a pull node is correct but not incremental."""
 import asyncio

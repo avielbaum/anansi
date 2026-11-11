@@ -77,7 +77,7 @@ what it can be redeemed for, is undecided.
 ### What this does not give you
 
 - **No real identity:** the ban is by a self-chosen id, so a banned operator can mint a new one. Real identity needs the
-  Steam-bound certificates of DESIGN.md section 9.
+  platform-bound certificates of DESIGN.md section 9.
 - **Probes can be recognised:** a node that spots the probe (no system prompt, a few fixed questions) can pass them
   and still cheat on real jobs.
 - **No answer quorum:** free text differs between machines, so two nodes cannot simply be compared.

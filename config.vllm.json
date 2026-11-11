@@ -1,7 +1,7 @@
 {
   "default_model": "npc-small",
   "upstream_timeout_s": 30,
-  "steam": { "mode": "dev" },
+  "auth": { "mode": "dev" },
   "nodes": [
     {
       "url": "http://vllm:8000",

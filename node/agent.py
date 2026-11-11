@@ -3,7 +3,7 @@ OpenAI-compatible server (Ollama, llama-server, vLLM). No inbound port, so it wo
 Run: python node/agent.py --gateway https://gw.example --token TOKEN --local http://127.0.0.1:11434 [--slots 2]
 Each slot registers as its own worker. It only ever forwards /v1/chat/completions to the local server.
 Works the same on Windows, Linux and macOS (Apple Silicon: Ollama and llama.cpp use Metal).
-shortcut: the token is a shared secret per pool, not a per-user Steam-bound certificate (DESIGN.md section 9)."""
+shortcut: the token is a shared secret per pool, not a per-user, platform-bound certificate (DESIGN.md section 9)."""
 import argparse
 import asyncio
 import json

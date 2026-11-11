@@ -34,11 +34,11 @@ instead of answering until its verdict was constrained by JSON schema.
 ## Known limits
 
 - **No GPU runs.** vLLM, `llama-server` and Docker files are unrun; latency under GPU load is unknown.
-- **Live Steam ticket verification is untested** (needs a publisher key). The call follows the documented shape.
+- **Live platform identity checks are untested.** Only Steam is written (it needs a publisher key and follows the documented shape); other platforms need a check added.
 - **Safety is partial.** Regex blocklist, word-overlap leak guard and an optional judge. No trained classifier, no
   red-team set; paraphrased leaks get through. The judge does not run on streams.
 - **Streaming:** plain replies only; a bad sentence mid-stream cuts the stream off.
-- **State:** budgets, bans and the work ledger persist in SQLite (`db_path`), tested across a simulated restart. The Steam ticket cache and node registry are in memory, and SQLite means one gateway process.
+- **State:** budgets, bans and the work ledger persist in SQLite (`db_path`), tested across a simulated restart. The token cache and node registry are in memory, and SQLite means one gateway process.
 - **Volunteer nodes:** shared token, ban by self-chosen id, probes can be recognised, no quorum, no credit value or redemption, no model
   signing. Trust only your own machines.
 - **Unity:** the `JsonUtility` path, a real Unity project and structured actions from C# have not been run. No Unreal SDK.
@@ -49,4 +49,4 @@ instead of answering until its verdict was constrained by JSON schema.
 ## Next
 
 Credits and accounting for volunteers; a GPU run once hardware is available; a real safety classifier and red-team set;
-Redis-backed state; Steam ticket check with a publisher key; a Unity project test.
+Redis-backed state; a live Steam token check with a publisher key, and checks for other platforms; a Unity project test.

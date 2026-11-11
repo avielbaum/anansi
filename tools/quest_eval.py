@@ -26,7 +26,7 @@ ap.add_argument("--key", required=True)
 ap.add_argument("--n", type=int, default=6)
 ap.add_argument("--show", type=int, default=2)
 a = ap.parse_args()
-H = {"X-Anansi-Title": a.title, "X-Anansi-Key": a.key, "X-Steam-Ticket": "dev:76561198000000095"}
+H = {"X-Anansi-Title": a.title, "X-Anansi-Key": a.key, "X-Player-Token": "dev:76561198000000095"}
 ok, lat, shown = 0, [], 0
 steps_total = grounded = dupes = 0
 tiers = collections.Counter()

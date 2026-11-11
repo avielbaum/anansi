@@ -23,7 +23,7 @@ shown, that text stands.
 
 ```csharp
 var client = new Anansi.Client("https://gateway.example", "demo", "change-me",
-                               () => GetSteamWebTicketHex(), localFallback, timeoutSeconds: 3);
+                               () => GetPlayerToken(), localFallback, timeoutSeconds: 3);
 var reply = await client.ChatAsync(messages, "shopkeeper", structured: true);   // reply.Say, reply.Action
 await client.StreamAsync(messages, sentence => ui.Append(sentence), "shopkeeper");
 ```

@@ -24,7 +24,7 @@ async def main():
     sem = asyncio.Semaphore(a.concurrency)
 
     async def one(c, i):
-        h = {"X-Anansi-Title": a.title, "X-Anansi-Key": a.key, "X-Steam-Ticket": f"dev:{7656119800000000 + i % a.accounts}"}
+        h = {"X-Anansi-Title": a.title, "X-Anansi-Key": a.key, "X-Player-Token": f"dev:{7656119800000000 + i % a.accounts}"}
         body = {"messages": [{"role": "user", "content": a.prompt}], "anansi": {"npc_id": f"npc{i % a.npcs}"}}
         async with sem:
             t0 = time.monotonic()

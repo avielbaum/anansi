@@ -17,7 +17,7 @@
   <a href="DESIGN.md"><b>Design</b></a>
 </p>
 
-**Generative game content without the token bill.** Anansi is a Steam-first, "LLM@home" service. A game calls one
+**Generative game content without the token bill.** Anansi is an "LLM@home" service that works with any game platform. A game calls one
 OpenAI-compatible gateway; behind it sits a pool of small language models running on a paid cloud floor and,
 later, on the idle GPUs of players who volunteer, in the spirit of Folding@home. The gateway is built for games:
 dialogue, quests and storylines built only from the characters, places and items your game supplies, whitelisted NPC actions the model cannot get wrong, per-player daily budgets, sentence-by-sentence streaming,
@@ -25,7 +25,7 @@ output filtering and a local fallback so the game always gets an answer.
 
 ```
 $ curl -s localhost:8080/v1/npc -H "X-Anansi-Title: demo" -H "X-Anansi-Key: change-me" \
-       -H "X-Steam-Ticket: dev:76561198000000001" \
+       -H "X-Player-Token: dev:player-1" \
        -d '{"messages":[{"role":"user","content":"Could I have a discount? I am buying five potions."}],
             "npc_id":"shopkeeper","structured":true}'
 {"say":"Five potions? Fine, I can knock a little off.","action":"give_discount","filtered":false,"node":"http://127.0.0.1:11434"}
@@ -58,7 +58,7 @@ This project borrows the shape of that myth:
         |  one request: messages, npc_id, structured
         v
  +------------------------ gateway -----------------------+
- | auth (title key + Steam ticket) -> daily budget         |
+ | auth (title key + player token) -> daily budget         |
  | -> system prefix, field whitelist, constrained actions  |
  | -> scheduler: affinity, power-of-two, failover          |
  | -> output filter, leak guard, optional safety judge     |
@@ -90,7 +90,7 @@ Measured on one Windows PC with no GPU, running Qwen3-1.7B and 4B through Ollama
 | Linux | gateway and C# SDK tested in CI on Ubuntu; Docker, vLLM and systemd files written but never run |
 | macOS Apple Silicon | gateway tests pass on a CI arm64 runner; no real Mac, no real model |
 | **GPU nodes** (vLLM, llama-server) | **not tested, no GPU available** |
-| **Live Steam ticket check** | **not tested, needs a publisher key** |
+| **Live platform identity check** (Steam is the only one written) | **not tested, needs a Steam publisher key** |
 | Persistence (budgets, bans) and a volunteer work ledger in SQLite | working, tested across a restart; credit value and redemption not decided |
 | Model signing, per-user node identity, answer quorum | not built |
 

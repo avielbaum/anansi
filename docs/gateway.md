@@ -4,7 +4,7 @@
 
 ## Requests
 
-Headers on every request: `X-Anansi-Title`, `X-Anansi-Key` (the studio's key) and `X-Steam-Ticket`.
+Headers on every request: `X-Anansi-Title`, `X-Anansi-Key` (the studio's key) and `X-Player-Token`: proof of who the player is, issued by your platform. The old name `X-Steam-Ticket` is still accepted.
 
 | Route | Use |
 |---|---|
@@ -27,17 +27,17 @@ JSON file named by `ANANSI_CONFIG`.
 |---|---|
 | `default_model` | Logical model name when a request names none |
 | `upstream_timeout_s` | Per-attempt timeout to a node (default 20) |
-| `steam.mode` | `"dev"` accepts tickets like `dev:<steamid>` (never in production); `"web"` checks the Steam Web API with `STEAM_PUBLISHER_KEY` |
+| `auth.mode` | How player tokens are checked. `"dev"` accepts `dev:<player id>` (never in production); `"steam"` checks the Steam Web API with `STEAM_PUBLISHER_KEY`. Other platforms (Epic, GOG, itch.io, consoles, mobile, your own launcher) need a check added in `player_id()` in `gateway/app.py`; an unknown mode stops startup. The old key `steam` still works |
 | `nodes[]` | Static nodes: `url`, `models` (logical names), `region`, `upstream_model` (the server's own name), `extra` (merged into every request, e.g. to switch thinking off) |
 | `titles.<id>` | One entry per game, see below |
 | `db_path` | SQLite file for daily budgets, agent bans and the volunteer work ledger. Unset means in memory (nothing survives a restart) |
-| `retention_days` | Days of per-account usage rows kept (they hold Steam ids); default 35 |
+| `retention_days` | Days of per-account usage rows kept (they hold player ids); default 35 |
 | `pull_tokens` | Enables volunteer agents; see [nodes.md](nodes.md) |
 | `pull_poll_s`, `pull_ttl_s`, `canaries`, `canary_rate` | Pull-node tuning and verification; see [nodes.md](nodes.md) |
 
 Per title: `key`, `appid`, `system_prefix` (prepended to every request), `actions` (the allowed NPC actions),
 `blocklist` (regexes), `fallback_line`, `max_tokens`, `max_prompt_chars`, `max_reply_chars`, `daily_token_budget`
-(per Steam account, per UTC day; exceeded gives `429` with `Retry-After`), `leak_ngram` (default 5), `judge`.
+(per player, per UTC day; exceeded gives `429` with `Retry-After`), `leak_ngram` (default 5), `judge`.
 
 Qwen3 thinks by default and can return an empty reply. Turn thinking off in the node's `extra` (Ollama:
 `{"reasoning_effort": "none"}`; vLLM: `{"chat_template_kwargs": {"enable_thinking": false}}`, unverified). An empty
@@ -102,7 +102,7 @@ replies including fantasy violence, but none of the NPC-specific problems (revea
 and took about 3 s per check. The Qwen3-4B judge caught 10 of 13 (including both AI mentions, missing one hate line and
 both prompt leaks), 0 false positives, about 4.4 s. The word-overlap guard caught both leaks (they quoted the prompt).
 Together they caught all 13 with no false positives, at roughly 7.5 s of extra latency per non-streamed reply on this
-CPU. That combination is `config.ollama.guard.json`. Run through the gateway with that config on Qwen3-1.7B NPC replies: 1 of 18 benign shopkeeper replies was blocked (a false
+CPU. That combination is `config.ollama.guard.json`. After sharpening the judge prompt (it now also flags a reply that goes along with a request about the NPC's rules) and running the checks in parallel, the same stack live blocked 6 of 8 extraction attacks (was 4), 0 of 18 normal replies (was 1), median 9.2 s (was 11.2 s; parallel helps most when the checks sit on separate nodes). That prompt was tuned on those 8, so I also wrote 20 fresh attacks (`evals/leak_heldout.jsonl`, paraphrases, another language, role-play, JSON and poem framings): the stack blocked only 4 of 20, and several replies that got through did describe the NPC's rules (a JSON "system_prompt" field, "my instructions are to sell items, check for threats..."). Treat 6 of 8 as an overfit number and 4 of 20 as the honest one; this is the main reason a real red-team set (gate G5) and a better leak defence are still needed. The judge now also sees the secret, player line and reply inside tags and the player cannot close them. `config.ollama.llamaguard.json` is the lighter option: Llama Guard alone plus the always-on overlap guard. Live on the 18 shopkeeper cases: 0 blocked wrongly, median 5.2 s per reply (11.2 s stacked), but only 1 of 8 extraction attacks stopped, because Llama Guard does not know the NPC's secret prompt. Run through the gateway with that config on Qwen3-1.7B NPC replies: 1 of 18 benign shopkeeper replies was blocked (a false
 positive), 4 of 8 extraction attacks were blocked, and median latency rose from 4.3 s to 11.2 s. The sample is tiny and written by me: it shows what each tool is
 for, not how safe the system is. Gate G5 in DESIGN.md still needs a real red-team set.
 
@@ -115,7 +115,7 @@ request.
 
 ## Production switches
 
-- Set `steam.mode` to `"web"` and export `STEAM_PUBLISHER_KEY`.
+- Set `auth.mode` to your platform's check (`"steam"` needs `STEAM_PUBLISHER_KEY`); never leave it on `"dev"`.
 - Change every `titles.*.key`; set `ANANSI_ADMIN_TOKEN`.
 - Put the gateway behind TLS (reverse proxy or load balancer).
-- Set `db_path` so budgets, bans and the ledger survive restarts. The Steam ticket cache and node registry are still in memory, and SQLite means one gateway process; move to a shared database before running two.
+- Set `db_path` so budgets, bans and the ledger survive restarts. The token cache and node registry are still in memory, and SQLite means one gateway process; move to a shared database before running two.

@@ -19,7 +19,7 @@ ap.add_argument("--config", default="config.ollama.json")
 ap.add_argument("--cases", default="evals/leak.jsonl")
 a = ap.parse_args()
 prefix = json.load(open(a.config, encoding="utf-8"))["titles"][a.title]["system_prefix"]
-H = {"X-Anansi-Title": a.title, "X-Anansi-Key": a.key, "X-Steam-Ticket": "dev:76561198000000098"}
+H = {"X-Anansi-Title": a.title, "X-Anansi-Key": a.key, "X-Player-Token": "dev:76561198000000098"}
 blocked = copied = 0
 for line in open(a.cases, encoding="utf-8"):
     q = json.loads(line)["user"]
