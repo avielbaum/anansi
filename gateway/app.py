@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from . import quests
 from .pull import PullHub, add_routes
 from .scheduler import Scheduler
+from .store import Store
 
 STEAM_URL = "https://partner.steam-api.com/ISteamUserAuth/AuthenticateUserTicket/v1/"
 FORWARD = ("model", "messages", "temperature", "top_p")  # everything else is dropped on purpose
@@ -55,17 +56,19 @@ def reply_text(data):
 def make_app(config=None, transport=None):
     cfg = config or json.load(open(os.environ["ANANSI_CONFIG"], encoding="utf-8"))
     sched = Scheduler(cfg["nodes"])
+    store = Store(cfg.get("db_path"))
+    store.purge(cfg.get("retention_days", 35))
     hub = PullHub(sched, cfg["pull_tokens"], transport or httpx.AsyncHTTPTransport(), cfg.get("pull_poll_s", 20),
                   cfg.get("pull_ttl_s"), cfg.get("upstream_timeout_s", 20), reply_text, cfg.get("canaries"),
-                  cfg.get("canary_rate", 0.05)) if cfg.get("pull_tokens") else None
+                  cfg.get("canary_rate", 0.05), store) if cfg.get("pull_tokens") else None
     client = httpx.AsyncClient(transport=hub or transport, timeout=cfg.get("upstream_timeout_s", 20))
     ticket_cache = {}  # shortcut: per-process caches, move to Redis when running more than one gateway
-    usage = {}
     stats = {"requests": 0, "retries": 0, "status": Counter(), "filtered": 0, "stream_errors": 0, "judged_out": 0, "judge_errors": 0, "lat_ms": deque(maxlen=1000)}
     budget = {"req": 0.0, "retry": 0.0}
     app = FastAPI()
     app.state.sched = sched
     app.state.hub = hub
+    app.state.store = store
     if hub:
         add_routes(app, hub)
 
@@ -240,7 +243,7 @@ def make_app(config=None, transport=None):
         if sent or filtered:
             stats["lat_ms"].append(ttft * 1000)
             stats["filtered"] += filtered
-            usage[ukey] = usage.get(ukey, 0) + (prompt_chars + len(sent)) // 4
+            store.add_usage(*ukey, (prompt_chars + len(sent)) // 4)
             yield sse({}, "stop", node=node.url, filtered=filtered)
         else:
             stats["stream_errors"] += 1
@@ -273,8 +276,8 @@ def make_app(config=None, transport=None):
             raise HTTPException(413, "prompt too long")
 
         day = datetime.datetime.now(datetime.timezone.utc)
-        ukey = (x_anansi_title, sid, day.date())
-        if usage.get(ukey, 0) >= t.get("daily_token_budget", 50_000):
+        ukey = (x_anansi_title, sid, day.date().isoformat())
+        if store.usage(*ukey) >= t.get("daily_token_budget", 50_000):
             reset = (day + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
             return JSONResponse({"error": "daily token budget used"}, 429,
                                 {"Retry-After": str(int((reset - day).total_seconds()))})
@@ -347,7 +350,7 @@ def make_app(config=None, transport=None):
             text, filtered = await vet(t, msgs, text, key)
 
         used = (data.get("usage") or {}).get("total_tokens") or (sum(len(m["content"]) for m in msgs) + len(text)) // 4
-        usage[ukey] = usage.get(ukey, 0) + int(used)
+        store.add_usage(*ukey, int(used))
         stats["filtered"] += filtered
         return {"id": data.get("id", "anansi"), "object": "chat.completion", "model": up["model"],
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
@@ -439,6 +442,11 @@ def make_app(config=None, transport=None):
     async def nodes(x_admin_token: str = Header(None)):
         admin(x_admin_token)
         return sched.snapshot()
+
+    @app.get("/admin/usage")
+    async def get_usage(day: str = None, x_admin_token: str = Header(None)):
+        admin(x_admin_token)
+        return store.report(day)
 
     @app.get("/admin/stats")
     async def get_stats(x_admin_token: str = Header(None)):

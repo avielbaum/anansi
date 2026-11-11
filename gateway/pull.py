@@ -33,12 +33,13 @@ STRIKES = 2
 
 class PullHub(httpx.AsyncBaseTransport):
     def __init__(self, sched, tokens, inner, poll_s=20, ttl_s=None, job_timeout_s=60, reply_text=None,
-                 canaries=None, canary_rate=0.05):
+                 canaries=None, canary_rate=0.05, store=None):
         self.sched, self.tokens, self.inner = sched, tokens, inner
         self.poll_s, self.job_timeout_s = poll_s, job_timeout_s
         self.ttl_s = ttl_s if ttl_s is not None else poll_s + 15  # must outlast one long poll
         self.reply_text, self.canaries, self.canary_rate = reply_text, canaries or CANARIES, canary_rate
-        self.banned = set()
+        self.store = store
+        self.banned = store.bans() if store else set()  # bans survive a restart
         self.stats = {"probes": 0, "probe_failures": 0, "banned": 0}
         self.nodes = {}  # id -> {"node", "token", "agent", "q", "seen", "live", "strikes"}
         self.jobs = {}   # job id -> (node id, Future)
@@ -135,11 +136,15 @@ class PullHub(httpx.AsyncBaseTransport):
         if status != 200:
             return
         self.stats["probes"] += 1
+        ok = False
         try:
             answer = self.reply_text(json.loads(text))
         except ValueError:
             answer = ""
-        if re.search(c["expect"], answer):
+        ok = bool(re.search(c["expect"], answer))
+        if self.store:
+            self.store.probe(e["agent"], ok)
+        if ok:
             e["strikes"] = 0
             if not e["live"] and self.nodes.get(nid) is e:
                 e["live"] = True
@@ -149,6 +154,8 @@ class PullHub(httpx.AsyncBaseTransport):
         e["strikes"] += 1
         if e["strikes"] >= STRIKES or not e["live"]:
             self.banned.add(e["agent"])
+            if self.store:
+                self.store.ban(e["agent"], "failed verification")
             self.stats["banned"] += 1
             self.drop(nid)
 
@@ -158,6 +165,13 @@ class PullHub(httpx.AsyncBaseTransport):
             return await self.inner.handle_async_request(request)
         nid = host[len("pull-"):-len(".node")]
         status, body, ctype = await self.dispatch(nid, request.url.path, (await request.aread()).decode())
+        e = self.nodes.get(nid)
+        if self.store and status == 200 and e:  # credit the worker for a real job (probe traffic never comes through here)
+            try:
+                tokens = int(json.loads(body)["usage"]["total_tokens"])
+            except (ValueError, KeyError, TypeError):
+                tokens = len(body) // 4  # a streamed reply has no usage block: estimate from its size
+            self.store.credit(e["agent"], tokens)
         if random.random() < self.canary_rate and nid in self.nodes:  # spot-check the node that just served real traffic
             asyncio.get_running_loop().create_task(self.probe(nid))
         return httpx.Response(status, content=body.encode(), headers={"content-type": ctype})

@@ -46,6 +46,13 @@ whole after the node finishes.
   `~/.anansi-agent-id`. Timeouts and error replies are not strikes; the scheduler's ejection handles those.
 - `GET /admin/stats` shows `pull.probes`, `probe_failures`, `banned`.
 
+### Work ledger
+
+With `db_path` set, the gateway records for each agent and UTC day: real jobs served, tokens, and probes passed or failed
+(probe traffic is not counted as work; streamed replies are estimated from their size). `GET /admin/usage` shows it. Bans
+are stored too, so a restart does not forgive a banned agent. The ledger is raw usage only: what a credit is worth, or
+what it can be redeemed for, is undecided.
+
 ### What this does not give you
 
 - **No real identity:** the ban is by a self-chosen id, so a banned operator can mint a new one. Real identity needs the
@@ -54,7 +61,7 @@ whole after the node finishes.
   and still cheat on real jobs.
 - **No answer quorum:** free text differs between machines, so two nodes cannot simply be compared.
 - **Shared token:** one secret per pool. Use only with machines you trust.
-- **Not built:** credits, model signing and download, hardware checks, more than one gateway.
+- **Not built:** credit value and redemption, model signing and download, hardware checks, more than one gateway.
 
 ## Linux
 

@@ -12,6 +12,7 @@ Headers on every request: `X-Anansi-Title`, `X-Anansi-Key` (the studio's key) an
 | `POST /v1/npc` | Flat shape for Unity's `JsonUtility`: send `messages`, `npc_id`, `structured`; get `say`, `action`, `filtered`, `node`. No streaming. |
 | `POST /v1/quest` | One quest from your world data; see Quests below. |
 | `POST /v1/storyline` | A multi-beat story arc from your world data. |
+| `GET /admin/usage?day=YYYY-MM-DD` | Tokens and accounts per title, and jobs, tokens and probe results per volunteer agent, for one UTC day (default today). Same admin token. |
 | `GET /healthz` | Liveness. |
 | `GET /admin/nodes`, `GET /admin/stats` | Node load and ejection state; status counts, retries, filter hits, p50/p95/p99, pull-node probe counts. Header `X-Admin-Token`; 404 unless `ANANSI_ADMIN_TOKEN` is set. |
 
@@ -29,6 +30,8 @@ JSON file named by `ANANSI_CONFIG`.
 | `steam.mode` | `"dev"` accepts tickets like `dev:<steamid>` (never in production); `"web"` checks the Steam Web API with `STEAM_PUBLISHER_KEY` |
 | `nodes[]` | Static nodes: `url`, `models` (logical names), `region`, `upstream_model` (the server's own name), `extra` (merged into every request, e.g. to switch thinking off) |
 | `titles.<id>` | One entry per game, see below |
+| `db_path` | SQLite file for daily budgets, agent bans and the volunteer work ledger. Unset means in memory (nothing survives a restart) |
+| `retention_days` | Days of per-account usage rows kept (they hold Steam ids); default 35 |
 | `pull_tokens` | Enables volunteer agents; see [nodes.md](nodes.md) |
 | `pull_poll_s`, `pull_ttl_s`, `canaries`, `canary_rate` | Pull-node tuning and verification; see [nodes.md](nodes.md) |
 
@@ -104,4 +107,4 @@ request.
 - Set `steam.mode` to `"web"` and export `STEAM_PUBLISHER_KEY`.
 - Change every `titles.*.key`; set `ANANSI_ADMIN_TOKEN`.
 - Put the gateway behind TLS (reverse proxy or load balancer).
-- Caches and budgets live in process memory. Move them to Redis before running two gateways.
+- Set `db_path` so budgets, bans and the ledger survive restarts. The Steam ticket cache and node registry are still in memory, and SQLite means one gateway process; move to a shared database before running two.

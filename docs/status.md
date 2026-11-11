@@ -25,7 +25,7 @@ instead of answering until its verdict was constrained by JSON schema.
 
 | Area | Windows (this PC) | Ubuntu (CI) | macOS arm64 (CI) |
 |---|---|---|---|
-| Gateway and agent self-checks (23) | yes | yes | yes |
+| Gateway and agent self-checks (25) | yes | yes | yes |
 | C# SDK against a live gateway | yes | yes | no |
 | Real model through Ollama | yes (CPU) | no | no |
 | Docker, vLLM, systemd files | n/a | no | n/a |
@@ -37,8 +37,8 @@ instead of answering until its verdict was constrained by JSON schema.
 - **Safety is partial.** Regex blocklist, word-overlap leak guard and an optional judge. No trained classifier, no
   red-team set; paraphrased leaks get through. The judge does not run on streams.
 - **Streaming:** plain replies only; a bad sentence mid-stream cuts the stream off.
-- **State is in memory.** Budgets, ticket cache and node registry need Redis before a second gateway.
-- **Volunteer nodes:** shared token, ban by self-chosen id, probes can be recognised, no quorum, no credits, no model
+- **State:** budgets, bans and the work ledger persist in SQLite (`db_path`), tested across a simulated restart. The Steam ticket cache and node registry are in memory, and SQLite means one gateway process.
+- **Volunteer nodes:** shared token, ban by self-chosen id, probes can be recognised, no quorum, no credit value or redemption, no model
   signing. Trust only your own machines.
 - **Unity:** the `JsonUtility` path, a real Unity project and structured actions from C# have not been run. No Unreal SDK.
 - **Eval sets are small and self-written:** 18 action cases and 8 leak attacks. Gate G1 needs about 200 prompts.

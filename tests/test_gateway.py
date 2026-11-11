@@ -420,6 +420,77 @@ def t_sdk_quest():
     assert seen[-1][0] == "/v1/storyline" and seen[-1][1]["steps"] == 3
 
 
+def t_store():
+    import tempfile
+    from gateway.store import Store, today
+    path = os.path.join(tempfile.mkdtemp(), "a.db")
+    d = today()
+    s = Store(path)
+    s.add_usage("demo", "76561", d, 10)
+    s.add_usage("demo", "76561", d, 5)
+    s.ban("evil", "failed verification")
+    s.credit("good", 100)
+    s.credit("good", 50)
+    s.probe("good", True)
+    s.probe("good", False)
+    s.db.close()
+    s = Store(path)  # a restart: everything is still there
+    assert s.usage("demo", "76561", d) == 15 and s.usage("demo", "76561", "1999-01-01") == 0
+    assert s.bans() == {"evil"}
+    r = s.report()
+    assert r["agents"] == [{"agent": "good", "jobs": 2, "tokens": 150, "probes_ok": 1, "probes_failed": 1, "banned": False}]
+    s.add_usage("demo", "old", "2020-01-01", 1)
+    s.purge(35)  # old usage rows hold Steam ids and go; the ledger stays
+    assert s.usage("demo", "old", "2020-01-01") == 0 and s.usage("demo", "76561", d) == 15
+    assert s.report()["agents"][0]["jobs"] == 2 and s.report()["day"] == d
+
+
+async def t_budget_and_bans_survive_restart():
+    import tempfile
+    from node.agent import serve
+    os.environ["ANANSI_ADMIN_TOKEN"] = "t"
+    db = os.path.join(tempfile.mkdtemp(), "g.db")
+    cfg = copy.deepcopy(CFG)
+    cfg["titles"]["demo"]["daily_token_budget"] = 20  # each mock reply reports 15 tokens
+    cfg["db_path"] = db
+    _, _, _, c = setup(cfg)
+    assert (await c.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 200
+    assert (await c.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 200
+    assert (await c.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 429
+    _, _, _, c = setup(cfg)  # gateway restarted with the same database: the budget was not reset
+    assert (await c.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 429
+    usage = (await c.get("/admin/usage", headers={"X-Admin-Token": "t"})).json()
+    assert usage["titles"] == [{"title": "demo", "accounts": 1, "tokens": 30}]
+    assert (await c.get("/admin/usage")).status_code == 404
+
+    # volunteer ledger and bans, with a gateway restart in between
+    pcfg = copy.deepcopy(CFG)
+    pcfg.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2, pull_ttl_s=5, db_path=db,
+                canaries=[{"user": "say hi", "expect": "hello"}], canary_rate=0)
+    app = make_app(pcfg)
+    gw = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://gw")
+    good = httpx.AsyncClient(transport=httpx.ASGITransport(app=make_node("g")), base_url="http://l")
+    liar_node = make_node("liar")
+    liar_node.state.reply = "buy crypto now"
+    liar = httpx.AsyncClient(transport=httpx.ASGITransport(app=liar_node), base_url="http://l")
+    tl = asyncio.create_task(serve(gw, liar, "tok", log=lambda m: None, agent="evil"))
+    await asyncio.sleep(0.6)
+    tl.cancel()
+    tg = asyncio.create_task(serve(gw, good, "tok", log=lambda m: None, agent="steady"))
+    await asyncio.sleep(0.6)
+    for i in range(2):
+        assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 200
+    tg.cancel()
+    rep = app.state.store.report()
+    steady = next(a for a in rep["agents"] if a["agent"] == "steady")
+    assert steady["jobs"] == 2 and steady["tokens"] == 30 and steady["probes_ok"] >= 1  # probe tokens are not credited
+    assert next(a for a in rep["agents"] if a["agent"] == "evil")["banned"] is True
+    app2 = make_app(pcfg)  # restart: the ban is remembered
+    gw2 = httpx.AsyncClient(transport=httpx.ASGITransport(app=app2), base_url="http://gw")
+    assert (await gw2.post("/node/register", headers={"X-Node-Token": "tok", "X-Node-Agent": "evil"})).status_code == 403
+    assert (await gw2.post("/node/register", headers={"X-Node-Token": "tok", "X-Node-Agent": "steady"})).status_code == 200
+
+
 def t_leaks():
     p = "Stay in character and reply in one or two short sentences."
     assert leaks(p, "Ok: stay in character and reply in one or two short sentences, sure.")

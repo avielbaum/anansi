@@ -80,7 +80,7 @@ Measured on one Windows PC with no GPU, running Qwen3-1.7B and 4B through Ollama
 
 | | |
 |---|---|
-| Gateway: auth, budgets, constrained actions, filter, leak guard, failover, streaming | working, 23 self-checks |
+| Gateway: auth, budgets, constrained actions, filter, leak guard, failover, streaming | working, 25 self-checks |
 | Quest and storyline generation (`/v1/quest`, `/v1/storyline`) with Python and C# SDK methods | working: constrained to your game's own ids; 6 of 6 structurally valid with Qwen3-1.7B (33 s) and Qwen3-4B (65 s, more varied rewards and richer text) on CPU; writing quality unrated |
 | Real model end to end (Ollama, Qwen3-1.7B on CPU) | working: 21 of 21 requests, action accuracy 83% on 18 self-written cases |
 | Safety judge (second model call) | working with Qwen3-4B: blocked 3 of 8 leak attacks, no false positives; doubles latency |
@@ -90,7 +90,8 @@ Measured on one Windows PC with no GPU, running Qwen3-1.7B and 4B through Ollama
 | macOS Apple Silicon | gateway tests pass on a CI arm64 runner; no real Mac, no real model |
 | **GPU nodes** (vLLM, llama-server) | **not tested, no GPU available** |
 | **Live Steam ticket check** | **not tested, needs a publisher key** |
-| Credits, model signing, per-user node identity, answer quorum | not built |
+| Persistence (budgets, bans) and a volunteer work ledger in SQLite | working, tested across a restart; credit value and redemption not decided |
+| Model signing, per-user node identity, answer quorum | not built |
 
 ## Quick start
 
@@ -100,7 +101,7 @@ Needs Python 3.10 or newer. For a real model, install [Ollama](https://ollama.co
 git clone https://github.com/avielbaum/anansi
 cd anansi
 pip install -r requirements.txt
-python tests/test_gateway.py          # 23 self-checks, no GPU or network needed
+python tests/test_gateway.py          # 25 self-checks, no GPU or network needed
 ```
 
 Run the gateway against a local model:
