@@ -14,6 +14,7 @@ import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from .pull import PullHub, add_routes
 from .scheduler import Scheduler
 
 STEAM_URL = "https://partner.steam-api.com/ISteamUserAuth/AuthenticateUserTicket/v1/"
@@ -53,13 +54,18 @@ def reply_text(data):
 def make_app(config=None, transport=None):
     cfg = config or json.load(open(os.environ["ANANSI_CONFIG"], encoding="utf-8"))
     sched = Scheduler(cfg["nodes"])
-    client = httpx.AsyncClient(transport=transport, timeout=cfg.get("upstream_timeout_s", 20))
+    hub = PullHub(sched, cfg["pull_tokens"], transport or httpx.AsyncHTTPTransport(), cfg.get("pull_poll_s", 20),
+                  cfg.get("pull_ttl_s"), cfg.get("upstream_timeout_s", 20)) if cfg.get("pull_tokens") else None
+    client = httpx.AsyncClient(transport=hub or transport, timeout=cfg.get("upstream_timeout_s", 20))
     ticket_cache = {}  # shortcut: per-process caches, move to Redis when running more than one gateway
     usage = {}
     stats = {"requests": 0, "retries": 0, "status": Counter(), "filtered": 0, "stream_errors": 0, "judged_out": 0, "judge_errors": 0, "lat_ms": deque(maxlen=1000)}
     budget = {"req": 0.0, "retry": 0.0}
     app = FastAPI()
     app.state.sched = sched
+    app.state.hub = hub
+    if hub:
+        add_routes(app, hub)
 
     @app.middleware("http")
     async def measure(req, call_next):  # records every outcome, including auth failures and 4xx/5xx
@@ -240,6 +246,8 @@ def make_app(config=None, transport=None):
         yield "data: [DONE]\n\n"
 
     async def handle(req, x_anansi_title, x_anansi_key, x_steam_ticket, raw=None):
+        if hub:
+            hub.sweep()
         t = title_of(x_anansi_title, x_anansi_key)
         sid = await steam_id(t, x_steam_ticket)
         raw = await req.body() if raw is None else raw

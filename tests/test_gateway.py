@@ -254,6 +254,29 @@ async def t_judge():
     assert out == {"say": fb, "action": "none"}
 
 
+async def t_pull_nodes():
+    from node.agent import serve
+    cfg = copy.deepcopy(CFG)
+    cfg.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2, pull_ttl_s=0.6)
+    gw = httpx.AsyncClient(transport=httpx.ASGITransport(app=make_app(cfg)), base_url="http://gw")
+    local = httpx.AsyncClient(transport=httpx.ASGITransport(app=make_node("p")), base_url="http://local")
+    assert (await gw.post("/node/register", headers={"X-Node-Token": "bad"})).status_code == 401
+    assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 503  # nobody registered yet
+    agent = asyncio.create_task(serve(gw, local, "tok", slots=2, log=lambda m: None))
+    await asyncio.sleep(0.4)
+    r = await gw.post("/v1/chat/completions", json=BODY, headers=H)
+    assert r.status_code == 200 and r.json()["choices"][0]["message"]["content"] == "[p] hello"
+    assert r.json()["anansi"]["node"].startswith("http://pull-")
+    code, pieces, meta, err = await sse(gw)  # streaming works through a pull node (relayed whole)
+    assert code == 200 and not err and "".join(pieces) == "[p] hello"
+    nid = next(iter(gw._transport.app.state.hub.nodes))  # a worker cannot post results with the wrong token
+    bad = await gw.post("/node/result", json={"node_id": nid, "job": "x", "status": 200, "body": ""}, headers={"X-Node-Token": "nope"})
+    assert bad.status_code == 401
+    agent.cancel()
+    await asyncio.sleep(1.0)  # workers stopped polling: swept, so the pool is empty again
+    assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 503
+
+
 def t_leaks():
     p = "Stay in character and reply in one or two short sentences."
     assert leaks(p, "Ok: stay in character and reply in one or two short sentences, sure.")

@@ -17,7 +17,7 @@ model (Qwen3-1.7B via Ollama on CPU). There are no GPU nodes, volunteer nodes or
 | `tools/loadtest.py` | Closed-loop load test: client-side p50/p95/p99 latency, status counts, per-node spread |
 | `tools/eval.py`, `evals/shopkeeper.jsonl` | Quality check (gate G1): labelled prompts through `/v1/npc`, scores the chosen action. 18 starter cases |
 | `tools/leak_eval.py`, `evals/leak.jsonl` | Prompt-extraction attacks through the gateway; shows which leaks the guard blocks and which get through |
-| `tests/test_gateway.py` | 17 self-checks, no GPU or network needed |
+| `tests/test_gateway.py` | 18 self-checks, no GPU or network needed |
 
 ## Run
 
@@ -46,9 +46,19 @@ ollama pull qwen3:1.7b
 ANANSI_CONFIG=config.ollama.json python -m uvicorn gateway.app:make_app --factory --port 8080
 ```
 
+## Volunteer (pull) nodes
+
+`node/agent.py` runs on a volunteer PC and connects **out** to the gateway (no open port, works behind NAT). It polls for jobs and runs them on a local OpenAI-compatible server (Ollama, llama-server, vLLM). The gateway treats each registered worker as a normal node, so routing, failover and ejection apply. Enable it with `pull_tokens` in the gateway config (`config.pull.example.json`: a token maps to the models, `upstream_model` and `extra` the gateway sends that worker) and run:
+
+```bash
+python node/agent.py --gateway http://127.0.0.1:8080 --token change-me-node-token --local http://127.0.0.1:11434 --slots 2
+```
+
+Tested: in the self-checks (register, serve, stream, auth, expiry of silent workers) and end to end with Ollama on this PC. **Not built yet**: per-user identity (the token is a shared secret), result verification (quorum, canaries), credits, model download and signing, hardware checks. A stranger with the token can return wrong answers, so use it only with machines you trust until verification exists. Streams from pull nodes are correct but relayed whole after the node finishes.
+
 ## Linux
 
-The gateway is plain Python, so it runs the same on Linux. **Verified by CI on Ubuntu** (`.github/workflows/ci.yml`): the 17 self-checks and the C# SDK against a live gateway (`dotnet run --project sdk/unity/ci`) pass there.
+The gateway is plain Python, so it runs the same on Linux. **Verified by CI on Ubuntu** (`.github/workflows/ci.yml`): the 18 self-checks and the C# SDK against a live gateway (`dotnet run --project sdk/unity/ci`) pass there.
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
@@ -76,7 +86,7 @@ Deployment files, **written without a Linux or GPU machine and not run**: `deplo
 - The C# SDK is compiled and tested as plain .NET (Windows PowerShell's C# 5 compiler) against a live gateway. The
   `#if UNITY` JsonUtility branch, a Unity project and the structured-action path from C# have not been run. No Unreal SDK.
 - Tested with a real model only on CPU through Ollama (qwen3:1.7b). No GPU, vLLM or llama-server run yet (the vLLM compose file is unrun).
-- Nodes are the paid floor only. No volunteer node, no verification or credits.
+- Volunteer nodes exist in basic form (see above) with no verification or credits.
 
 ## Licence
 
