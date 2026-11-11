@@ -17,11 +17,11 @@
   <a href="DESIGN.md"><b>Design</b></a>
 </p>
 
-**Generative NPCs without the token bill.** Anansi is a Steam-first, "LLM@home" service. A game calls one
+**Generative game content without the token bill.** Anansi is a Steam-first, "LLM@home" service. A game calls one
 OpenAI-compatible gateway; behind it sits a pool of small language models running on a paid cloud floor and,
 later, on the idle GPUs of players who volunteer, in the spirit of Folding@home. The gateway is built for games:
 dialogue, quests and storylines built only from the characters, places and items your game supplies, whitelisted NPC actions the model cannot get wrong, per-player daily budgets, sentence-by-sentence streaming,
-output filtering and a local fallback so the NPC always answers.
+output filtering and a local fallback so the game always gets an answer.
 
 ```
 $ curl -s localhost:8080/v1/npc -H "X-Anansi-Title: demo" -H "X-Anansi-Key: change-me" \
