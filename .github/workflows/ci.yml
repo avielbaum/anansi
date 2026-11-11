@@ -1,0 +1,20 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements.txt
+      - name: Gateway self-checks
+        run: python tests/test_gateway.py
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: "8.0.x"}
+      - name: C# SDK against a live gateway
+        run: |
+          python tools/mock_node.py 9001 node-a & python tools/mock_node.py 9002 node-b &
+          ANANSI_CONFIG=config.example.json python -m uvicorn gateway.app:make_app --factory --port 8080 --log-level warning &
+          sleep 5
+          dotnet run --project sdk/unity/ci

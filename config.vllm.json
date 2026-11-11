@@ -1,0 +1,26 @@
+{
+  "default_model": "npc-small",
+  "upstream_timeout_s": 30,
+  "steam": { "mode": "dev" },
+  "nodes": [
+    {
+      "url": "http://vllm:8000",
+      "models": ["npc-small"],
+      "region": "local",
+      "upstream_model": "Qwen/Qwen3-1.7B",
+      "extra": { "chat_template_kwargs": { "enable_thinking": false } }
+    }
+  ],
+  "titles": {
+    "demo": {
+      "key": "change-me",
+      "appid": 480,
+      "system_prefix": "You are a shopkeeper NPC in a fantasy town. Stay in character and reply in one or two short sentences. Choose exactly one action for each reply. Use give_discount only when the player politely haggles or buys several items. Use call_guard only when the player threatens, robs or attacks you, or reports a crime. Use none for everything else.",
+      "actions": ["give_discount", "call_guard"],
+      "blocklist": ["\bpassword\b"],
+      "fallback_line": "Hm, let us talk of something else.",
+      "max_tokens": 120,
+      "daily_token_budget": 50000
+    }
+  }
+}

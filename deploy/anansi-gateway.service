@@ -1,0 +1,21 @@
+# Install: copy the repo to /opt/anansi, create /etc/anansi/{config.json,env}, then
+#   sudo cp deploy/anansi-gateway.service /etc/systemd/system/ && sudo systemctl enable --now anansi-gateway
+# /etc/anansi/env holds ANANSI_ADMIN_TOKEN=... and STEAM_PUBLISHER_KEY=... (chmod 600). Put TLS in front (Caddy/nginx).
+[Unit]
+Description=Anansi gateway
+After=network-online.target
+
+[Service]
+User=anansi
+WorkingDirectory=/opt/anansi
+Environment=ANANSI_CONFIG=/etc/anansi/config.json
+EnvironmentFile=/etc/anansi/env
+ExecStart=/opt/anansi/.venv/bin/python -m uvicorn gateway.app:make_app --factory --host 127.0.0.1 --port 8080
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

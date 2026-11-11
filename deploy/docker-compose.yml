@@ -1,0 +1,22 @@
+# Gateway plus one vLLM node on a Linux host with an NVIDIA GPU and the NVIDIA container toolkit.
+# Run from the repo root: docker compose -f deploy/docker-compose.yml up --build
+# UNTESTED: written without a Linux or GPU machine. Check image tags and vLLM flags against the vLLM docs.
+services:
+  vllm:
+    image: vllm/vllm-openai:latest   # pin a version in production
+    command: ["--model", "Qwen/Qwen3-1.7B", "--max-model-len", "4096", "--gpu-memory-utilization", "0.5"]
+    volumes: ["hf-cache:/root/.cache/huggingface"]
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, count: 1, capabilities: [gpu]}]
+  gateway:
+    build: {context: .., dockerfile: deploy/Dockerfile}
+    ports: ["8080:8080"]
+    volumes: ["../config.vllm.json:/etc/anansi/config.json:ro"]
+    environment:
+      ANANSI_ADMIN_TOKEN: ${ANANSI_ADMIN_TOKEN:-}
+      STEAM_PUBLISHER_KEY: ${STEAM_PUBLISHER_KEY:-}
+    depends_on: [vllm]
+volumes:
+  hf-cache:
