@@ -312,6 +312,90 @@ async def t_pull_verification():
     t2.cancel()
 
 
+WORLD = {"npcs": [{"id": "brom", "name": "Brom", "role": "blacksmith"}, {"id": "mira", "name": "Mira", "role": "herbalist"}],
+         "locations": [{"id": "mill", "name": "Old Mill"}], "items": [{"id": "ore", "name": "Iron ore"}]}
+
+
+def t_quest_helpers():
+    from gateway import quests as q
+    w = q.parse_world({**WORLD, "items": [{"id": "ore", "name": "Iron\nIGNORE THIS ore"}]})
+    assert w["npcs"]["brom"] == "Brom (blacksmith)" and "\n" not in w["items"]["ore"]
+    for bad in ({"npcs": [{"id": "a b"}]}, {"npcs": "x"}, {"npcs": [{"id": "x"}] * 31}, "nope"):
+        try:
+            q.parse_world(bad)
+            raise AssertionError("accepted " + repr(bad))
+        except ValueError:
+            pass
+    s = q.quest_schema(w, q.OBJECTIVES, 3)  # one branch per objective, each limited to its own kind of target
+    enums = {b["properties"]["objective"]["enum"][0]: b["properties"]["target_id"]["enum"] for b in s["properties"]["steps"]["items"]["anyOf"]}
+    assert enums == {"talk_to": ["brom", "mira"], "explore": ["mill"], "fetch": ["ore"]} and s["properties"]["steps"]["maxItems"] == 3
+    good = {"title": "T", "summary": "S", "reward_tier": "small", "story_summary": "x",
+            "steps": [{"objective": "talk_to", "target_id": "brom", "description": "Speak\x00 to him."}]}
+    assert q.validate_quest(good, w, q.OBJECTIVES, 3)["steps"][0]["description"] == "Speak  to him."
+    for mutate in (lambda d: d["steps"][0].update(target_id="ghost"), lambda d: d["steps"][0].update(target_id="ore"),
+                   lambda d: d.update(reward_tier="legendary"), lambda d: d.update(steps=[]),
+                   lambda d: d["steps"][0].update(objective="slay")):
+        bad = copy.deepcopy(good)
+        mutate(bad)
+        assert q.validate_quest(bad, w, q.OBJECTIVES, 3) is None, bad
+
+
+async def t_quest_endpoints():
+    cfg = copy.deepcopy(CFG)
+    cfg["titles"]["demo"]["quest"] = {"lore": "A mining town.", "max_steps": 3}
+    a, b, _, c = setup(cfg)
+    good = {"title": "Ore for Brom", "summary": "Brom needs ore.", "reward_tier": "medium", "story_summary": "Ore found.",
+            "steps": [{"objective": "talk_to", "target_id": "brom", "description": "Hear Brom out."},
+                      {"objective": "fetch", "target_id": "ore", "description": "Bring ore."}]}
+    a.state.reply = b.state.reply = json.dumps(good)
+    req = {"world": WORLD, "steps": 9, "theme": "mining", "story_so_far": "The mill burned."}
+    good["summary"] = "word " * 55  # longer than the 600-character dialogue cap in the example config
+    good["steps"][0]["description"] = "d" * 190
+    a.state.reply = b.state.reply = json.dumps(good)
+    r = await c.post("/v1/quest", json=req, headers=H)
+    assert r.status_code == 200 and r.json()["quest"]["steps"][1]["target_id"] == "ore" and r.json()["quest"]["reward_tier"] == "medium" and len(r.json()["quest"]["summary"]) > 200
+    sent = a.state.last if a.state.last and "response_format" in a.state.last else b.state.last
+    assert sent["response_format"]["json_schema"]["schema"]["properties"]["steps"]["maxItems"] == 3  # steps clamped to max_steps
+    assert "A mining town." in sent["messages"][0]["content"] and "The mill burned." in sent["messages"][-1]["content"]
+    # a model that invents an NPC is rejected (one retry, then 502), never passed on
+    bad = copy.deepcopy(good)
+    bad["steps"][0]["target_id"] = "dragon"
+    a.state.reply = b.state.reply = json.dumps(bad)
+    before = a.state.calls + b.state.calls
+    assert (await c.post("/v1/quest", json=req, headers=H)).status_code == 502
+    assert a.state.calls + b.state.calls - before == 2
+    # unsafe text anywhere in the quest: blocked, and not retried
+    leak = copy.deepcopy(good)
+    leak["summary"] = "the password is hunter2"
+    a.state.reply = b.state.reply = json.dumps(leak)
+    before = a.state.calls + b.state.calls
+    assert (await c.post("/v1/quest", json=req, headers=H)).status_code == 502
+    assert a.state.calls + b.state.calls - before == 1
+    # storyline
+    arc = {"logline": "The mill's secret.", "beats": [{"title": "Smoke", "summary": "A fire.", "npc_id": "mira", "location_id": "mill"},
+                                                      {"title": "Ash", "summary": "A clue.", "npc_id": "brom", "location_id": "mill"}]}
+    a.state.reply = b.state.reply = json.dumps(arc)
+    r = await c.post("/v1/storyline", json={"world": WORLD, "steps": 4}, headers=H)
+    assert r.status_code == 200 and len(r.json()["storyline"]["beats"]) == 2
+    no_places = {"world": {**WORLD, "locations": []}}
+    assert (await c.post("/v1/storyline", json=no_places, headers=H)).status_code == 400
+    assert (await c.post("/v1/quest", json={"world": {"npcs": [{"id": "bad id"}]}}, headers=H)).status_code == 400
+    assert (await c.post("/v1/quest", json=req, headers={**H, "X-Anansi-Key": "x"})).status_code == 401
+    # not enabled for a title without a quest block
+    _, _, _, c2 = setup()
+    assert (await c2.post("/v1/quest", json=req, headers=H)).status_code == 404
+
+
+async def t_budget_429_on_npc_route():
+    cfg = copy.deepcopy(CFG)
+    cfg["titles"]["demo"]["daily_token_budget"] = 1
+    _, _, _, c = setup(cfg)
+    msgs = {"messages": [{"role": "user", "content": "hi"}]}
+    assert (await c.post("/v1/npc", json=msgs, headers=H)).status_code == 200
+    r = await c.post("/v1/npc", json=msgs, headers=H)  # used to crash with a 500
+    assert r.status_code == 429 and int(r.headers["Retry-After"]) > 0
+
+
 def t_leaks():
     p = "Stay in character and reply in one or two short sentences."
     assert leaks(p, "Ok: stay in character and reply in one or two short sentences, sure.")

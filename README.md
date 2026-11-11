@@ -20,7 +20,7 @@
 **Generative NPCs without the token bill.** Anansi is a Steam-first, "LLM@home" service. A game calls one
 OpenAI-compatible gateway; behind it sits a pool of small language models running on a paid cloud floor and,
 later, on the idle GPUs of players who volunteer, in the spirit of Folding@home. The gateway is built for games:
-whitelisted NPC actions that the model cannot get wrong, per-player daily budgets, sentence-by-sentence streaming,
+dialogue, quests and storylines built only from the characters, places and items your game supplies, whitelisted NPC actions the model cannot get wrong, per-player daily budgets, sentence-by-sentence streaming,
 output filtering and a local fallback so the NPC always answers.
 
 ```
@@ -35,6 +35,21 @@ $ curl -s localhost:8080/v1/npc -H "X-Anansi-Title: demo" -H "X-Anansi-Key: chan
 
 `action` is always one of the actions your game allows (or `none`): the model's output is constrained to that list,
 and the gateway checks it again before the reply leaves.
+
+## Why Anansi
+
+In the folklore of the Akan people of Ghana, Anansi is the spider, a trickster and the keeper of stories and wisdom.
+The tale goes that all the stories once belonged to Nyame, the sky god. Anansi, small and without any strength to
+speak of, won them by cleverness, by completing tasks that seemed impossible, and carried them down to people.
+
+This project borrows the shape of that myth:
+
+- **Stories are the product.** Dialogue, quests and storylines for game worlds, generated on demand.
+- **Cleverness over strength.** Instead of one giant, expensive model, many small models do the work, on hardware that
+  is otherwise idle.
+- **The web.** A spider's web is many threads that hold together even when one breaks. Anansi's mesh of cloud and
+  volunteer nodes is built the same way: nodes come and go, the scheduler routes around the ones that fail, and
+  the game sees one thread, a single endpoint.
 
 ## How it works
 
@@ -65,7 +80,8 @@ Measured on one Windows PC with no GPU, running Qwen3-1.7B and 4B through Ollama
 
 | | |
 |---|---|
-| Gateway: auth, budgets, constrained actions, filter, leak guard, failover, streaming | working, 19 self-checks |
+| Gateway: auth, budgets, constrained actions, filter, leak guard, failover, streaming | working, 22 self-checks |
+| Quest and storyline generation (`/v1/quest`, `/v1/storyline`) | working: constrained to your game's own ids, 6 of 6 structurally valid with Qwen3-1.7B on CPU (about 33 s each); story quality is mediocre and unrated |
 | Real model end to end (Ollama, Qwen3-1.7B on CPU) | working: 21 of 21 requests, action accuracy 83% on 18 self-written cases |
 | Safety judge (second model call) | working with Qwen3-4B: blocked 3 of 8 leak attacks, no false positives; doubles latency |
 | Volunteer node agent, entry probe, spot checks, bans | working in tests and with Ollama |
@@ -84,7 +100,7 @@ Needs Python 3.10 or newer. For a real model, install [Ollama](https://ollama.co
 git clone https://github.com/avielbaum/anansi
 cd anansi
 pip install -r requirements.txt
-python tests/test_gateway.py          # 19 self-checks, no GPU or network needed
+python tests/test_gateway.py          # 22 self-checks, no GPU or network needed
 ```
 
 Run the gateway against a local model:

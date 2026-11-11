@@ -14,6 +14,7 @@ import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from . import quests
 from .pull import PullHub, add_routes
 from .scheduler import Scheduler
 
@@ -72,7 +73,7 @@ def make_app(config=None, transport=None):
     async def measure(req, call_next):  # records every outcome, including auth failures and 4xx/5xx
         t0 = time.monotonic()
         resp = await call_next(req)
-        if req.url.path in ("/v1/chat/completions", "/v1/npc"):
+        if req.url.path in ("/v1/chat/completions", "/v1/npc", "/v1/quest", "/v1/storyline"):
             stats["status"][resp.status_code] += 1
             # a stream's latency is time to first sentence, recorded by the stream itself
             if resp.status_code == 200 and resp.media_type != "text/event-stream":
@@ -246,10 +247,16 @@ def make_app(config=None, transport=None):
             yield 'data: {"error": "no node available"}\n\n'
         yield "data: [DONE]\n\n"
 
-    async def handle(req, x_anansi_title, x_anansi_key, x_steam_ticket, raw=None):
+    async def handle(req, x_anansi_title, x_anansi_key, x_steam_ticket, raw=None, gen=None):
+        """gen (set only by the quest and storyline routes, never from a request) swaps in a designer prompt, a larger
+        token cap and a JSON schema for the reply; the judge is skipped because it is written for NPC dialogue."""
         if hub:
             hub.sweep()
         t = title_of(x_anansi_title, x_anansi_key)
+        if gen:
+            t = {**t, "system_prefix": gen["prefix"], "max_tokens": gen["max_tokens"], "max_prompt_chars": 12_000,
+                 "leak_ngram": gen.get("leak_ngram", 8), "judge": None, "actions": None,
+                 "max_reply_chars": 6000}  # the title's dialogue cap would cut the JSON off
         sid = await steam_id(t, x_steam_ticket)
         raw = await req.body() if raw is None else raw
         if len(raw) > MAX_BODY:
@@ -285,7 +292,9 @@ def make_app(config=None, transport=None):
                 "properties": {"say": {"type": "string"},
                                "action": {"type": "string", "enum": t["actions"] + ["none"]}}}}}
 
-        stream = bool(body.get("stream"))
+        if gen:
+            up["response_format"] = {"type": "json_schema", "json_schema": {"name": gen["name"], "schema": gen["schema"]}}
+        stream = bool(body.get("stream")) and not gen
         if stream and structured:  # a JSON reply cannot be checked or shown until it is complete
             raise HTTPException(400, "streaming is only for plain replies, not structured actions")
         npc = meta.get("npc_id")
@@ -359,6 +368,8 @@ def make_app(config=None, transport=None):
         except Exception:
             raise HTTPException(400, "bad request body")
         r = await handle(req, x_anansi_title, x_anansi_key, x_steam_ticket, raw.encode())
+        if isinstance(r, JSONResponse):  # daily budget used: pass the 429 and its Retry-After through
+            return r
         text, out = r["choices"][0]["message"]["content"], {"action": "none"}
         try:
             parsed = json.loads(text) if want else None
@@ -366,6 +377,59 @@ def make_app(config=None, transport=None):
         except (ValueError, KeyError):
             out["say"] = text
         return {**out, "filtered": r["anansi"]["filtered"], "node": r["anansi"]["node"]}
+
+    async def generate(kind, req, x_anansi_title, x_anansi_key, x_steam_ticket):
+        """POST /v1/quest and /v1/storyline. Needs a `quest` block in the title config."""
+        t = title_of(x_anansi_title, x_anansi_key)
+        q = t.get("quest")
+        if not q:
+            raise HTTPException(404, "quest generation is not enabled for this title")
+        raw = await req.body()
+        if len(raw) > MAX_BODY:
+            raise HTTPException(413, "request too large")
+        try:
+            d = json.loads(raw)
+            world = quests.parse_world(d["world"])
+            objectives = q.get("objectives", quests.OBJECTIVES)
+            top = int(q.get("max_steps", 4))
+            n = max(1, min(int(d.get("steps") or 3), top))
+            if kind == "quest":
+                schema = quests.quest_schema(world, objectives, n)
+                system, check = quests.QUEST_SYSTEM, lambda o: quests.validate_quest(o, world, objectives, n)
+            else:
+                schema = quests.arc_schema(world, n)
+                system, check = quests.ARC_SYSTEM, lambda o: quests.validate_arc(o, world, n)
+            system = system.format(lore=q.get("lore", ""), n=n, objs=", ".join(objectives))
+            prompt = quests.user_prompt(world, str(d.get("theme") or ""), str(d.get("difficulty") or "normal"),
+                                        str(d.get("story_so_far") or ""), str(d.get("player") or ""))
+        except (ValueError, KeyError, TypeError, AttributeError) as e:
+            raise HTTPException(400, f"bad request: {e}")
+        gen = {"prefix": system, "max_tokens": q.get("max_tokens", 500), "schema": schema, "name": kind,
+               "leak_ngram": q.get("leak_ngram", 8)}
+        body = json.dumps({"messages": [{"role": "user", "content": prompt}]}).encode()
+        for _ in range(2):  # one retry: a small model sometimes truncates the JSON
+            r = await handle(req, x_anansi_title, x_anansi_key, x_steam_ticket, body, gen)
+            if isinstance(r, JSONResponse):
+                return r
+            try:
+                out = check(json.loads(r["choices"][0]["message"]["content"]))
+            except ValueError:
+                out = None
+            if out:
+                return {kind: out, "filtered": False, "node": r["anansi"]["node"]}
+            if r["anansi"]["filtered"]:  # blocked by the safety checks: do not ask again
+                break
+        raise HTTPException(502, f"could not generate a valid {kind}")
+
+    @app.post("/v1/quest")
+    async def quest(req: Request, x_anansi_title: str = Header(None), x_anansi_key: str = Header(None),
+                    x_steam_ticket: str = Header(None)):
+        return await generate("quest", req, x_anansi_title, x_anansi_key, x_steam_ticket)
+
+    @app.post("/v1/storyline")
+    async def storyline(req: Request, x_anansi_title: str = Header(None), x_anansi_key: str = Header(None),
+                        x_steam_ticket: str = Header(None)):
+        return await generate("storyline", req, x_anansi_title, x_anansi_key, x_steam_ticket)
 
     @app.get("/healthz")
     async def health():

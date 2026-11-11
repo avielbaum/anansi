@@ -10,6 +10,8 @@ Headers on every request: `X-Anansi-Title`, `X-Anansi-Key` (the studio's key) an
 |---|---|
 | `POST /v1/chat/completions` | OpenAI shape. Extras go in an `anansi` object: `npc_id` (keeps one NPC on one node), `structured` (constrained actions). `"stream": true` for sentence streaming (plain replies only). |
 | `POST /v1/npc` | Flat shape for Unity's `JsonUtility`: send `messages`, `npc_id`, `structured`; get `say`, `action`, `filtered`, `node`. No streaming. |
+| `POST /v1/quest` | One quest from your world data; see Quests below. |
+| `POST /v1/storyline` | A multi-beat story arc from your world data. |
 | `GET /healthz` | Liveness. |
 | `GET /admin/nodes`, `GET /admin/stats` | Node load and ejection state; status counts, retries, filter hits, p50/p95/p99, pull-node probe counts. Header `X-Admin-Token`; 404 unless `ANANSI_ADMIN_TOKEN` is set. |
 
@@ -43,6 +45,33 @@ reply counts as a node failure and the gateway retries elsewhere.
 With `"structured": true`, the node is asked for JSON `{"say", "action"}` under a JSON schema whose `action` is one of
 the title's `actions` or `none`. The gateway re-validates: an unlisted action becomes `none`, malformed JSON becomes
 the fallback line.
+
+## Quests and storylines
+
+Enable per title with a `quest` block: `{"lore": "...", "max_steps": 4, "max_tokens": 500, "objectives": {"talk_to": "npcs", "explore": "locations", "fetch": "items"}}`
+(objectives is optional; each maps an objective name to the kind of thing it targets).
+
+`POST /v1/quest` takes the world your game already has and returns a quest that can only use it:
+
+```json
+{"world": {"npcs": [{"id": "brom", "name": "Brom", "role": "blacksmith"}],
+           "locations": [{"id": "mill", "name": "the burnt mill"}], "items": [{"id": "ore", "name": "silver ore"}]},
+ "steps": 3, "difficulty": "normal", "theme": "mining", "story_so_far": "...", "player": "level 4 miner"}
+```
+
+Reply: `{"quest": {"title", "summary", "steps": [{"objective", "target_id", "description"}], "reward_tier", "story_summary"}, "filtered", "node"}`.
+
+- The reply is constrained by JSON schema so each step's `target_id` must be an id you sent, of the kind its objective
+  targets (a `talk_to` step can only name an NPC). The gateway checks this again and rejects anything else.
+- The model never picks a reward. It picks `small`, `medium` or `large` and your game maps that to its own loot.
+- Feed `story_summary` back as `story_so_far` on the next call to continue a story.
+- `POST /v1/storyline` returns `{"storyline": {"logline", "beats": [{"title", "summary", "npc_id", "location_id"}]}}`; call
+  `/v1/quest` per beat with the beat as `story_so_far`.
+- Invalid output is retried once, then `502` so your game can use an authored quest. Text that trips the blocklist or leak
+  guard gives `502` without a retry. The safety judge does not run on quests (it is written for dialogue).
+- Limits: 30 entries per list, ids of letters, digits and `_ . -` (max 40), names capped at 60 characters.
+- Names and roles go into the prompt. If any are typed by players, treat them as untrusted: the schema still limits the
+  result to your ids and enums, but the text fields could be steered.
 
 ## Streaming
 
