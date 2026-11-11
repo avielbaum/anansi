@@ -1,6 +1,6 @@
 <h1 align="center">Anansi</h1>
 
-<p align="center"><b>One endpoint for NPC dialogue, powered by idle GPUs.</b></p>
+<p align="center"><b>One endpoint for living game worlds: NPC dialogue, quests and storylines, powered by idle GPUs.</b></p>
 
 <p align="center">
   <a href="https://github.com/avielbaum/anansi/actions/workflows/ci.yml"><img src="https://github.com/avielbaum/anansi/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
