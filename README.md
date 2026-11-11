@@ -42,3 +42,10 @@ Linux (`vllm serve Qwen/Qwen3-8B`) or `llama-server` on Windows. Set `model` nam
 - Two fixed attempts per request, no retry budget, no hedging.
 - Live Steam ticket verification is untested (needs a publisher key). The `Steam Web API` call follows its documented shape [verify].
 - No Unity or C# SDK yet (no .NET toolchain here). Nodes are the paid floor only. No volunteer node, no verification or credits.
+
+## Licence
+
+[PolyForm Noncommercial 1.0.0](LICENSE). Free for personal use, research, study, hobby projects and other
+noncommercial purposes. **Commercial use, including shipping it inside a paid or monetised game or running
+it as a paid service, needs a separate commercial licence from the licensor.** This is source-available,
+not open source by the OSI definition.
