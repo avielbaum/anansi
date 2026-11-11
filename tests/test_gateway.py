@@ -257,12 +257,13 @@ async def t_judge():
 async def t_pull_nodes():
     from node.agent import serve
     cfg = copy.deepcopy(CFG)
-    cfg.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2, pull_ttl_s=0.6)
+    cfg.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2, pull_ttl_s=0.6,
+               canaries=[{"user": "say hi", "expect": "hello"}], canary_rate=0)
     gw = httpx.AsyncClient(transport=httpx.ASGITransport(app=make_app(cfg)), base_url="http://gw")
     local = httpx.AsyncClient(transport=httpx.ASGITransport(app=make_node("p")), base_url="http://local")
-    assert (await gw.post("/node/register", headers={"X-Node-Token": "bad"})).status_code == 401
+    assert (await gw.post("/node/register", headers={"X-Node-Token": "bad", "X-Node-Agent": "a"})).status_code == 401
     assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 503  # nobody registered yet
-    agent = asyncio.create_task(serve(gw, local, "tok", slots=2, log=lambda m: None))
+    agent = asyncio.create_task(serve(gw, local, "tok", slots=2, log=lambda m: None, agent="good"))
     await asyncio.sleep(0.4)
     r = await gw.post("/v1/chat/completions", json=BODY, headers=H)
     assert r.status_code == 200 and r.json()["choices"][0]["message"]["content"] == "[p] hello"
@@ -275,6 +276,40 @@ async def t_pull_nodes():
     agent.cancel()
     await asyncio.sleep(1.0)  # workers stopped polling: swept, so the pool is empty again
     assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 503
+
+
+async def t_pull_verification():
+    from node.agent import serve
+    cfg = copy.deepcopy(CFG)
+    cfg.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2, pull_ttl_s=5,
+               canaries=[{"user": "say hi", "expect": "hello"}], canary_rate=1.0)  # probe after every real job
+    app = make_app(cfg)
+    hub = app.state.hub
+    gw = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://gw")
+    # 1. a node that fails its entry probe never receives traffic and its agent id is banned
+    liar = make_node("liar")
+    liar.state.reply = "buy crypto now"
+    t1 = asyncio.create_task(serve(gw, httpx.AsyncClient(transport=httpx.ASGITransport(app=liar), base_url="http://l"),
+                                   "tok", log=lambda m: None, agent="evil"))
+    await asyncio.sleep(0.6)
+    assert "evil" in hub.banned and not app.state.sched.nodes
+    assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 503
+    assert (await gw.post("/node/register", headers={"X-Node-Token": "tok", "X-Node-Agent": "evil"})).status_code == 403
+    assert (await gw.post("/node/register", headers={"X-Node-Token": "tok"})).status_code == 400  # agent id is required
+    t1.cancel()
+    # 2. an honest node is admitted after its probe, then goes bad: two failed spot checks ban it
+    mock = make_node("p")
+    t2 = asyncio.create_task(serve(gw, httpx.AsyncClient(transport=httpx.ASGITransport(app=mock), base_url="http://l"),
+                                   "tok", log=lambda m: None, agent="drifter"))
+    await asyncio.sleep(0.6)
+    assert len(app.state.sched.nodes) == 1 and "drifter" not in hub.banned
+    mock.state.reply = "buy crypto now"
+    for _ in range(2):  # the real request is served, then the spot check catches the bad answer
+        assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 200
+        await asyncio.sleep(0.5)
+    assert "drifter" in hub.banned and not app.state.sched.nodes and hub.stats["banned"] == 2
+    assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 503
+    t2.cancel()
 
 
 def t_leaks():

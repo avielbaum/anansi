@@ -2,21 +2,34 @@
 OpenAI-compatible server (Ollama, llama-server, vLLM). No inbound port, so it works behind home NAT.
 Run: python node/agent.py --gateway https://gw.example --token TOKEN --local http://127.0.0.1:11434 [--slots 2]
 Each slot registers as its own worker. It only ever forwards /v1/chat/completions to the local server.
+Works the same on Windows, Linux and macOS (Apple Silicon: Ollama and llama.cpp use Metal).
 shortcut: the token is a shared secret per pool, not a per-user Steam-bound certificate (DESIGN.md section 9)."""
 import argparse
 import asyncio
+import pathlib
+import secrets
 
 import httpx
 
 ALLOWED = "/v1/chat/completions"
 
 
-async def worker(gw, local, token, log=print):
-    H, nid, backoff = {"X-Node-Token": token}, None, 1
+def agent_id(path=pathlib.Path.home() / ".anansi-agent-id"):
+    """Stable random id for this installation, created on first run. The gateway bans by this id."""
+    if not path.exists():
+        path.write_text(secrets.token_hex(16))
+    return path.read_text().strip()
+
+
+async def worker(gw, local, token, agent, log=print):
+    H, nid, backoff = {"X-Node-Token": token, "X-Node-Agent": agent}, None, 1
     while True:
         try:
             if nid is None:
                 r = await gw.post("/node/register", headers=H)
+                if r.status_code == 403:
+                    log("this agent id is banned by the gateway")
+                    return
                 r.raise_for_status()
                 nid, poll_s = r.json()["node_id"], r.json()["poll_s"]
                 log(f"registered as {nid}")
@@ -45,8 +58,9 @@ async def worker(gw, local, token, log=print):
             backoff = min(backoff * 2, 30)
 
 
-async def serve(gw, local, token, slots=1, log=print):
-    await asyncio.gather(*[worker(gw, local, token, log) for _ in range(slots)])
+async def serve(gw, local, token, slots=1, log=print, agent=None):
+    agent = agent or agent_id()
+    await asyncio.gather(*[worker(gw, local, token, agent, log) for _ in range(slots)])
 
 
 if __name__ == "__main__":

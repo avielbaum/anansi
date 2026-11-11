@@ -18,3 +18,11 @@ jobs:
           ANANSI_CONFIG=config.example.json python -m uvicorn gateway.app:make_app --factory --port 8080 --log-level warning &
           sleep 5
           dotnet run --project sdk/unity/ci
+  macos:
+    runs-on: macos-14   # Apple Silicon (M1)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements.txt
+      - run: python tests/test_gateway.py

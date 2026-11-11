@@ -636,6 +636,23 @@ mass market. That is a judgment, not a measured result. WSL stays an option for 
 6. Optional Linux/WSL power cell for T2 (Petals vs Parallax bake-off), then Windows T2
    (option A, then B).
 
+### 19.1 macOS on Apple Silicon (M1/M2 and later)
+
+Mac gamers are a small slice of Steam, but the hardware suits this workload and the support is cheap, because
+the node agent is plain Python and the gateway never sees what runs behind it.
+
+- **Runtime:** Ollama and llama.cpp both run on Apple Silicon through Metal. Nothing in the gateway or `node/agent.py`
+  is platform specific. MLX is another option later; it is not needed for Phase 1.
+- **Memory model:** Apple Silicon has unified memory, so there is no separate VRAM to cap. The 1-2 GB budget of
+  section 21 applies to the model's share of RAM instead. The Lite profile (Qwen3-1.7B Q4, about 1.4 GB) fits
+  a base 8 GB M1 beside a game; Standard (4B, about 2.5 GB) is the ceiling on 8 GB machines and should wait for
+  16 GB or more. A Mac node must also yield memory when the game asks, which macOS does less gracefully than a
+  dedicated GPU does, so the idle-only rule in section 21 matters more here.
+- **Verification:** probes and spot checks (section 22) treat a Mac node like any other. Do not assume bit-identical
+  output between Metal and CUDA nodes; that is why verification uses known-answer checks, not output equality.
+- **Status:** the self-checks run on a macOS arm64 runner in CI. Not tested here: Ollama or llama.cpp on a real Mac,
+  thermal behaviour, and game co-residency.
+
 ## 20. Partial residency on each node (Colibri-style) (supersedes the T2 priority in 18-19)
 
 **Requirement:** a node must serve a model larger than its GPU memory by keeping only the

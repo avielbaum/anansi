@@ -55,7 +55,8 @@ def make_app(config=None, transport=None):
     cfg = config or json.load(open(os.environ["ANANSI_CONFIG"], encoding="utf-8"))
     sched = Scheduler(cfg["nodes"])
     hub = PullHub(sched, cfg["pull_tokens"], transport or httpx.AsyncHTTPTransport(), cfg.get("pull_poll_s", 20),
-                  cfg.get("pull_ttl_s"), cfg.get("upstream_timeout_s", 20)) if cfg.get("pull_tokens") else None
+                  cfg.get("pull_ttl_s"), cfg.get("upstream_timeout_s", 20), reply_text, cfg.get("canaries"),
+                  cfg.get("canary_rate", 0.05)) if cfg.get("pull_tokens") else None
     client = httpx.AsyncClient(transport=hub or transport, timeout=cfg.get("upstream_timeout_s", 20))
     ticket_cache = {}  # shortcut: per-process caches, move to Redis when running more than one gateway
     usage = {}
@@ -381,7 +382,7 @@ def make_app(config=None, transport=None):
         lat = sorted(stats["lat_ms"])
         pct = lambda p: round(lat[min(len(lat) - 1, int(p * len(lat)))], 1) if lat else None
         return {"requests": stats["requests"], "retries": stats["retries"], "filtered": stats["filtered"],
-                "stream_errors": stats["stream_errors"], "judged_out": stats["judged_out"], "judge_errors": stats["judge_errors"], "status": {str(k): v for k, v in stats["status"].items()},
+                "stream_errors": stats["stream_errors"], "pull": hub.stats if hub else None, "judged_out": stats["judged_out"], "judge_errors": stats["judge_errors"], "status": {str(k): v for k, v in stats["status"].items()},
                 "latency_ms": {"p50": pct(0.5), "p95": pct(0.95), "p99": pct(0.99), "samples": len(lat)}}
 
     return app

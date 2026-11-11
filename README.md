@@ -17,7 +17,7 @@ model (Qwen3-1.7B via Ollama on CPU). There are no GPU nodes, volunteer nodes or
 | `tools/loadtest.py` | Closed-loop load test: client-side p50/p95/p99 latency, status counts, per-node spread |
 | `tools/eval.py`, `evals/shopkeeper.jsonl` | Quality check (gate G1): labelled prompts through `/v1/npc`, scores the chosen action. 18 starter cases |
 | `tools/leak_eval.py`, `evals/leak.jsonl` | Prompt-extraction attacks through the gateway; shows which leaks the guard blocks and which get through |
-| `tests/test_gateway.py` | 18 self-checks, no GPU or network needed |
+| `tests/test_gateway.py` | 19 self-checks, no GPU or network needed |
 
 ## Run
 
@@ -54,11 +54,17 @@ ANANSI_CONFIG=config.ollama.json python -m uvicorn gateway.app:make_app --factor
 python node/agent.py --gateway http://127.0.0.1:8080 --token change-me-node-token --local http://127.0.0.1:11434 --slots 2
 ```
 
-Tested: in the self-checks (register, serve, stream, auth, expiry of silent workers) and end to end with Ollama on this PC. **Not built yet**: per-user identity (the token is a shared secret), result verification (quorum, canaries), credits, model download and signing, hardware checks. A stranger with the token can return wrong answers, so use it only with machines you trust until verification exists. Streams from pull nodes are correct but relayed whole after the node finishes.
+Verification: a new worker only joins the pool after answering a known-answer probe correctly (`canaries` in the config, a few built-in questions by default). Live workers are spot-checked after real jobs (`canary_rate`, default 5%). A failed entry probe, or two failed spot checks, bans the agent id (`/admin/stats` shows `pull.probes`, `probe_failures`, `banned`). Each agent keeps a random id in `~/.anansi-agent-id`.
+
+Tested: in the self-checks (register, serve, stream, auth, expiry of silent workers, a lying node refused at entry, an honest node banned after going bad) and end to end with Ollama on this PC. **Limits**: the ban is by a self-chosen id, so someone can mint a new one (real identity needs the Steam-bound certificates of DESIGN.md section 9); a node that recognises probes (no system prompt, a few fixed questions) can pass them and cheat on real jobs; there is no quorum on real answers because free text differs between machines; no credits, model signing or hardware checks. The token is still a shared secret, so use it only with machines you trust. Streams from pull nodes are correct but relayed whole after the node finishes.
+
+## macOS (Apple Silicon)
+
+Nothing in the gateway or `node/agent.py` is platform specific. On an M1/M2 or later Mac, install Ollama (it uses Metal), `ollama pull qwen3:1.7b`, and run the agent as above. The self-checks run on a macOS arm64 runner in CI. **Not tested on a real Mac**: model speed, memory pressure beside a game, thermals. Memory guidance (unified memory, 8 GB machines get the Lite model only) is in DESIGN.md section 19.1.
 
 ## Linux
 
-The gateway is plain Python, so it runs the same on Linux. **Verified by CI on Ubuntu** (`.github/workflows/ci.yml`): the 18 self-checks and the C# SDK against a live gateway (`dotnet run --project sdk/unity/ci`) pass there.
+The gateway is plain Python, so it runs the same on Linux. **Verified by CI on Ubuntu** (`.github/workflows/ci.yml`): the 19 self-checks and the C# SDK against a live gateway (`dotnet run --project sdk/unity/ci`) pass there.
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
