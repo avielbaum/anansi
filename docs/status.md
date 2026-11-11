@@ -13,7 +13,8 @@ CPU. They show the system works; they are not performance claims.
 | Prompt leaks | The word-overlap guard blocked 1 of 8 extraction attacks (verbatim quote). Paraphrases pass |
 | Safety judge, Qwen3-1.7B | blocked 0 of 8 leak attacks |
 | Safety judge, Qwen3-4B | blocked 3 of 8 (4 of 8 with the overlap guard), 0 false positives on 18 benign cases; median latency 4.3 s to 8.6 s |
-| Quest generation (Qwen3-1.7B, CPU) | 6 of 6 structurally valid, every target an id from the supplied world, about 33 s each. Quality is mixed: step text sometimes does not match its target, and every reward tier came out `medium`. Nobody has rated the writing |
+| Quest generation, Qwen3-1.7B (CPU) | 6 of 6 structurally valid, every target an id from the supplied world, p50 33 s. All 6 rewards were `medium`; no repeated steps; step text named its target in 18 of 18 steps. Earlier samples showed text drifting from the step's target, which that check cannot see |
+| Quest generation, Qwen3-4B (CPU) | 6 of 6 valid, p50 65 s (twice as slow). Rewards varied (2 small, 4 medium); step text named its target in 16 of 17 steps; the writing reads more vividly, with in-character dialogue. Nobody has rated either model's writing |
 | Streaming | first sentence arrived before the second in a real run; one CPU sample, no conclusion about GPUs |
 
 Findings that changed the code: the dialogue length cap silently cut quest JSON in half (every quest failed until quests got their own cap); Qwen3 thinking mode returned empty replies (now turned off per node and empty replies
@@ -24,7 +25,7 @@ instead of answering until its verdict was constrained by JSON schema.
 
 | Area | Windows (this PC) | Ubuntu (CI) | macOS arm64 (CI) |
 |---|---|---|---|
-| Gateway and agent self-checks (22) | yes | yes | yes |
+| Gateway and agent self-checks (23) | yes | yes | yes |
 | C# SDK against a live gateway | yes | yes | no |
 | Real model through Ollama | yes (CPU) | no | no |
 | Docker, vLLM, systemd files | n/a | no | n/a |

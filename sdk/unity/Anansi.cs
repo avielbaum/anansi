@@ -28,6 +28,19 @@ namespace Anansi
     [Serializable] public class Choice { [System.Runtime.Serialization.OptionalField] public Delta delta; }
     [Serializable] public class Chunk { [System.Runtime.Serialization.OptionalField] public List<Choice> choices; }
 
+    // Quest and storyline generation (POST /v1/quest, /v1/storyline). Send the world your game already has.
+    [Serializable] public class Entity { public string id; public string name; public string role; }
+    [Serializable] public class World { public List<Entity> npcs = new List<Entity>(); public List<Entity> locations = new List<Entity>(); public List<Entity> items = new List<Entity>(); }
+    [Serializable] public class QuestStep { public string objective; public string target_id; public string description; }
+    [Serializable] public class Quest { public string title; public string summary; public List<QuestStep> steps; public string reward_tier; public string story_summary; }
+    [Serializable] public class Beat { public string title; public string summary; public string npc_id; public string location_id; }
+    [Serializable] public class Storyline { public string logline; public List<Beat> beats; }
+    [Serializable] public class GenRequest { public World world; public int steps; public string theme; public string difficulty; public string story_so_far; public string player; }
+    [Serializable] public class QuestEnvelope { public Quest quest; }
+    [Serializable] public class StoryEnvelope { public Storyline storyline; }
+    public class QuestResult { public Quest Quest; public string Source; }      // Source: "gateway" or "fallback"; Quest is null on fallback unless you set QuestFallback
+    public class StorylineResult { public Storyline Storyline; public string Source; }
+
     public class Reply
     {
         public string Say;
@@ -38,19 +51,25 @@ namespace Anansi
 
     public class Client
     {
-        readonly HttpClient http;
-        readonly string url, chatUrl, title, key;
+        readonly HttpClient http, genHttp;
+        /// <summary>Supplies an authored quest when the gateway cannot (optional). Without it QuestResult.Quest is null.</summary>
+        public Func<World, Task<Quest>> QuestFallback;
+        public Func<World, Task<Storyline>> StorylineFallback;
+        readonly string url, chatUrl, baseUrlTrimmed, title, key;
         readonly Func<string> steamTicket;
         readonly Func<List<Message>, Task<string>> fallback;
 
         // steamTicket: return the hex auth ticket for the web API (Steamworks.NET: SteamUser.GetAuthTicketForWebApi).
         // fallback: answer locally, for example from a bundled llama.cpp server. Default is a neutral line.
         public Client(string baseUrl, string titleId, string titleKey, Func<string> steamTicket,
-                      Func<List<Message>, Task<string>> fallback = null, double timeoutSeconds = 3)
+                      Func<List<Message>, Task<string>> fallback = null, double timeoutSeconds = 3,
+                      double generationTimeoutSeconds = 60)
         {
             http = new HttpClient { Timeout = TimeSpan.FromSeconds(timeoutSeconds) };
+            genHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(generationTimeoutSeconds) }; // generation is slow: tens of seconds on a small GPU
             url = baseUrl.TrimEnd('/') + "/v1/npc";
             chatUrl = baseUrl.TrimEnd('/') + "/v1/chat/completions";
+            baseUrlTrimmed = baseUrl.TrimEnd('/');
             title = titleId; key = titleKey; this.steamTicket = steamTicket; this.fallback = fallback;
         }
 
@@ -103,6 +122,44 @@ namespace Anansi
             var say = fallback != null ? await fallback(messages) : "...";
             onSentence(say);
             return new Reply { Say = say, Action = "none", Filtered = false, Source = "fallback" };
+        }
+
+        // One quest that can only use the characters, places and items in `world`. The reward comes back as a tier
+        // (small, medium, large): map it to your own loot. Feed quest.story_summary back as storySoFar to continue a story.
+        public async Task<QuestResult> QuestAsync(World world, int steps = 3, string theme = null,
+                                                  string difficulty = "normal", string storySoFar = null, string player = null)
+        {
+            var env = await Generate<QuestEnvelope>("quest", world, steps, theme, difficulty, storySoFar, player);
+            if (env != null && env.quest != null) return new QuestResult { Quest = env.quest, Source = "gateway" };
+            return new QuestResult { Quest = QuestFallback != null ? await QuestFallback(world) : null, Source = "fallback" };
+        }
+
+        public async Task<StorylineResult> StorylineAsync(World world, int beats = 4, string theme = null)
+        {
+            var env = await Generate<StoryEnvelope>("storyline", world, beats, theme, "normal", null, null);
+            if (env != null && env.storyline != null) return new StorylineResult { Storyline = env.storyline, Source = "gateway" };
+            return new StorylineResult { Storyline = StorylineFallback != null ? await StorylineFallback(world) : null, Source = "fallback" };
+        }
+
+        async Task<T> Generate<T>(string kind, World world, int steps, string theme, string difficulty, string story, string player) where T : class
+        {
+            try
+            {
+                var body = new GenRequest { world = world, steps = steps, theme = theme ?? "", difficulty = difficulty ?? "normal",
+                                            story_so_far = story ?? "", player = player ?? "" };
+                var req = new HttpRequestMessage(HttpMethod.Post, baseUrlTrimmed + "/v1/" + kind)
+                {
+                    Content = new StringContent(Json.To(body), Encoding.UTF8, "application/json")
+                };
+                req.Headers.Add("X-Anansi-Title", title);
+                req.Headers.Add("X-Anansi-Key", key);
+                req.Headers.Add("X-Steam-Ticket", steamTicket());
+                using (var resp = await genHttp.SendAsync(req).ConfigureAwait(false))
+                    if (resp.IsSuccessStatusCode)
+                        return Json.From<T>(await resp.Content.ReadAsStringAsync().ConfigureAwait(false));
+            }
+            catch (Exception) { } // timeout, 502 (no valid quest), bad JSON: the caller falls back
+            return null;
         }
 
         public async Task<Reply> ChatAsync(List<Message> messages, string npcId = null, bool structured = false)

@@ -382,7 +382,9 @@ async def t_quest_endpoints():
     assert (await c.post("/v1/quest", json={"world": {"npcs": [{"id": "bad id"}]}}, headers=H)).status_code == 400
     assert (await c.post("/v1/quest", json=req, headers={**H, "X-Anansi-Key": "x"})).status_code == 401
     # not enabled for a title without a quest block
-    _, _, _, c2 = setup()
+    nocfg = copy.deepcopy(CFG)
+    del nocfg["titles"]["demo"]["quest"]
+    _, _, _, c2 = setup(nocfg)
     assert (await c2.post("/v1/quest", json=req, headers=H)).status_code == 404
 
 
@@ -394,6 +396,28 @@ async def t_budget_429_on_npc_route():
     assert (await c.post("/v1/npc", json=msgs, headers=H)).status_code == 200
     r = await c.post("/v1/npc", json=msgs, headers=H)  # used to crash with a 500
     assert r.status_code == 429 and int(r.headers["Retry-After"]) > 0
+
+
+def t_sdk_quest():
+    from sdk.anansi_client import Anansi
+    seen = []
+
+    def make(code, payload):
+        def handler(req):
+            seen.append((req.url.path, json.loads(req.content)))
+            return httpx.Response(code, json=payload)
+        return Anansi("http://gw", "demo", "k", "dev:1", transport=httpx.MockTransport(handler))
+    quest = {"title": "T", "steps": [{"objective": "talk_to", "target_id": "brom", "description": "x"}]}
+    r = make(200, {"quest": quest, "filtered": False, "node": "n"}).quest(WORLD, steps=2, theme="mining")
+    assert r == {"source": "gateway", "quest": quest}
+    assert seen[0][0] == "/v1/quest" and seen[0][1]["world"] == WORLD and seen[0][1]["steps"] == 2
+    r = make(502, {"detail": "no"}).quest(WORLD)  # gateway could not make one: no quest, the game uses its own
+    assert r == {"source": "fallback", "quest": None}
+    r = make(502, {}).quest(WORLD, fallback=lambda w: {"title": "Authored", "steps": []})
+    assert r["source"] == "fallback" and r["quest"]["title"] == "Authored"
+    arc = {"logline": "L", "beats": []}
+    assert make(200, {"storyline": arc}).storyline(WORLD, beats=3) == {"source": "gateway", "storyline": arc}
+    assert seen[-1][0] == "/v1/storyline" and seen[-1][1]["steps"] == 3
 
 
 def t_leaks():

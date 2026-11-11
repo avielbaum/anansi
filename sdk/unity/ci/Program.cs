@@ -33,6 +33,20 @@ static class Program
         r = bad.StreamAsync(msgs, on, "smith").GetAwaiter().GetResult();
         Check(r.Source == "fallback" && got.Count == 1 && got[0] == "(local line)", "stream falls back once on bad key");
 
+        var w = new World();
+        w.npcs.Add(new Entity { id = "brom", name = "Brom", role = "blacksmith" });
+        w.locations.Add(new Entity { id = "mill", name = "Old Mill" });
+        w.items.Add(new Entity { id = "ore", name = "Iron ore" });
+        var q = c.QuestAsync(w, 2, "mining").GetAwaiter().GetResult();
+        Check(q.Source == "gateway" && q.Quest.steps.Count >= 1 && q.Quest.steps[0].target_id == "brom", "quest from gateway uses a world id");
+        var arc = c.StorylineAsync(w, 3).GetAwaiter().GetResult();
+        Check(arc.Source == "gateway" && arc.Storyline.beats.Count >= 1, "storyline from gateway");
+        q = bad.QuestAsync(w, 2).GetAwaiter().GetResult();
+        Check(q.Source == "fallback" && q.Quest == null, "quest with bad key: no quest");
+        bad.QuestFallback = x => Task.FromResult(new Quest { title = "Authored", steps = new List<QuestStep>() });
+        q = bad.QuestAsync(w, 2).GetAwaiter().GetResult();
+        Check(q.Source == "fallback" && q.Quest.title == "Authored", "quest fallback supplies an authored quest");
+
         var none = new Client(url, "demo", "change-me", ticket, null, 1);
         got.Clear();
         r = new Client("http://127.0.0.1:9", "demo", "change-me", ticket, fb, 1).StreamAsync(msgs, on).GetAwaiter().GetResult();

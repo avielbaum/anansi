@@ -3,7 +3,9 @@ python tools/quest_eval.py --key change-me [--n 6] [--show 2]
 Counts how many requests give a valid quest (every target in the supplied world, objective fits its target) and
 prints samples. Structure is checked automatically; whether the quests are GOOD is for a person to judge."""
 import argparse
+import collections
 import json
+import re
 import time
 
 import httpx
@@ -26,6 +28,20 @@ ap.add_argument("--show", type=int, default=2)
 a = ap.parse_args()
 H = {"X-Anansi-Title": a.title, "X-Anansi-Key": a.key, "X-Steam-Ticket": "dev:76561198000000095"}
 ok, lat, shown = 0, [], 0
+steps_total = grounded = dupes = 0
+tiers = collections.Counter()
+
+
+def names(world):
+    return {e["id"]: e.get("name", e["id"]) for kind in world.values() for e in kind}
+
+
+def mentions(desc, name):
+    """The step text names its target (any word of its name, ignoring short filler words)."""
+    words = [w.lower() for w in re.findall(r"\w+", name)]
+    words = [w for w in words if len(w) >= 4] or words
+    return any(w in desc.lower() for w in words)
+
 story = ""
 for i in range(a.n):
     w = WORLDS[i % len(WORLDS)]
@@ -38,6 +54,15 @@ for i in range(a.n):
         continue
     q = r.json()["quest"]
     ok += 1
+    lookup = names(w)
+    tiers[q["reward_tier"]] += 1
+    seen = set()
+    for st in q["steps"]:
+        steps_total += 1
+        grounded += mentions(st["description"], lookup[st["target_id"]])
+        key = (st["objective"], st["target_id"])
+        dupes += key in seen
+        seen.add(key)
     if i % len(WORLDS) == 0:
         story = q["story_summary"]  # feed the summary back, as a game would, to continue the story
     if shown < a.show:
@@ -46,4 +71,5 @@ for i in range(a.n):
         for s in q["steps"]:
             print(f"  - {s['objective']} {s['target_id']}: {s['description']}")
 lat.sort()
-print(f"\nquests={a.n} valid={ok} latency_s p50={lat[len(lat) // 2]:.1f} max={lat[-1]:.1f}")
+print(f"\nstep text names its target: {grounded}/{steps_total} | repeated steps: {dupes} | reward tiers: {dict(tiers)}")
+print(f"quests={a.n} valid={ok} latency_s p50={lat[len(lat) // 2]:.1f} max={lat[-1]:.1f}")

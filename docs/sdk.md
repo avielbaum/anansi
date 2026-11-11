@@ -32,6 +32,29 @@ await client.StreamAsync(messages, sentence => ui.Append(sentence), "shopkeeper"
 - `StreamAsync` runs your callback on the caller's synchronization context, which is the main thread in Unity.
 - Uses `/v1/npc` for `ChatAsync` and `/v1/chat/completions` for `StreamAsync`.
 
+## Quests and storylines
+
+Both clients can ask the gateway for a quest or story arc built only from the world your game supplies (see
+[gateway.md](gateway.md#quests-and-storylines)). Generation is slow (tens of seconds on a small CPU), so it has its own,
+longer timeout (60 s by default) and is meant for loading screens or pre-generation, not mid-conversation.
+
+```python
+world = {"npcs": [{"id": "brom", "name": "Brom", "role": "blacksmith"}],
+         "locations": [{"id": "mill", "name": "the burnt mill"}], "items": [{"id": "ore", "name": "silver ore"}]}
+r = npc.quest(world, steps=3, theme="mining", fallback=lambda w: authored_quest)   # {"source", "quest"}
+arc = npc.storyline(world, beats=4)                                               # {"source", "storyline"}
+```
+
+```csharp
+var q = await client.QuestAsync(world, steps: 3, theme: "mining");      // q.Source, q.Quest (null if no fallback)
+client.QuestFallback = w => Task.FromResult(authoredQuest);             // optional authored quest
+var arc = await client.StorylineAsync(world, beats: 4);
+```
+
+If the gateway cannot produce a valid quest (a `502`), times out or is unreachable, you get `source: "fallback"` and your
+fallback quest, or `None`/`null` if you did not give one. The reward is a tier (`small`, `medium`, `large`): map it to
+your own loot.
+
 ## Status
 
 The C# SDK is tested as plain .NET against a live gateway (Windows PowerShell test and a `dotnet` test run in CI on

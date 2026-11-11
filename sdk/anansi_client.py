@@ -6,9 +6,10 @@ import httpx
 
 
 class Anansi:
-    def __init__(self, base_url, title, key, ticket, fallback=None, timeout=3.0, transport=None):
+    def __init__(self, base_url, title, key, ticket, fallback=None, timeout=3.0, transport=None, gen_timeout=60.0):
         self.http = httpx.Client(transport=transport)
-        self.url, self.timeout = base_url.rstrip("/") + "/v1/chat/completions", timeout
+        self.base, self.gen_timeout = base_url.rstrip("/"), gen_timeout
+        self.url, self.timeout = self.base + "/v1/chat/completions", timeout
         self.headers = {"X-Anansi-Title": title, "X-Anansi-Key": key, "X-Steam-Ticket": ticket}
         # fallback(messages) -> str. Point it at a local llama-server in a real game; default is a canned line.
         self.fallback = fallback or (lambda messages: "...")
@@ -53,3 +54,23 @@ class Anansi:
             pass
         if not got:
             yield self.fallback(messages)
+
+    def quest(self, world, steps=3, theme="", difficulty="normal", story_so_far="", player="", fallback=None):
+        """One quest built only from `world` (dict of npcs, locations, items, each a list of {id, name, role}).
+        Returns {"source": "gateway" | "fallback", "quest": {...} or None}. On any failure `fallback(world)` supplies
+        an authored quest if given; without one, quest is None so the game can use its own."""
+        return self._generate("quest", fallback, world=world, steps=steps, theme=theme, difficulty=difficulty,
+                              story_so_far=story_so_far, player=player)
+
+    def storyline(self, world, beats=4, theme="", fallback=None):
+        """A story arc: {"source", "storyline": {"logline", "beats": [{title, summary, npc_id, location_id}]} or None}."""
+        return self._generate("storyline", fallback, world=world, steps=beats, theme=theme)
+
+    def _generate(self, kind, fallback, **body):
+        try:  # generation is slow (tens of seconds on a small GPU), so it has its own, longer timeout
+            r = self.http.post(self.base + "/v1/" + kind, json=body, headers=self.headers, timeout=self.gen_timeout)
+            if r.status_code == 200:
+                return {"source": "gateway", kind: r.json()[kind]}
+        except (httpx.HTTPError, ValueError, KeyError):
+            pass
+        return {"source": "fallback", kind: fallback(body["world"]) if fallback else None}

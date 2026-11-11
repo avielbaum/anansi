@@ -9,6 +9,10 @@ namespace Anansi { public static class TestHooks {
   public static System.Func<string> Ticket = () => "dev:76561198000000001";
   public static System.Func<System.Collections.Generic.List<Message>, System.Threading.Tasks.Task<string>> Fallback =
     m => System.Threading.Tasks.Task.FromResult("(local line)");
+  public static World World = MakeWorld();
+  static World MakeWorld() { var w = new World(); w.npcs.Add(new Entity { id = "brom", name = "Brom", role = "blacksmith" }); w.locations.Add(new Entity { id = "mill", name = "Old Mill" }); w.items.Add(new Entity { id = "ore", name = "Iron ore" }); return w; }
+  public static System.Func<World, System.Threading.Tasks.Task<Quest>> QuestFallback =
+    w => System.Threading.Tasks.Task.FromResult(new Quest { title = "Authored", steps = new System.Collections.Generic.List<QuestStep>() });
   public static System.Collections.Generic.List<string> Got = new System.Collections.Generic.List<string>();
   public static System.Action<string> OnSentence = s => { lock (Got) Got.Add(s); };
 } }
@@ -39,6 +43,16 @@ try {
   Check ($r.Source -eq "fallback" -and $r.Say -eq "(local line)") "bad key falls back"
 
   $got = [Anansi.TestHooks]::Got; $on = [Anansi.TestHooks]::OnSentence
+  $w = [Anansi.TestHooks]::World
+  $q = $c.QuestAsync($w, 2, "mining", "normal", $null, $null).GetAwaiter().GetResult()
+  Check ($q.Source -eq "gateway" -and $q.Quest.steps.Count -ge 1 -and $q.Quest.steps[0].target_id -eq "brom") "quest from gateway uses a world id ($($q.Quest.title))"
+  $s2 = $c.StorylineAsync($w, 3, $null).GetAwaiter().GetResult()
+  Check ($s2.Source -eq "gateway" -and $s2.Storyline.beats.Count -ge 1) "storyline from gateway"
+  $q = $bad.QuestAsync($w, 2, $null, "normal", $null, $null).GetAwaiter().GetResult()
+  Check ($q.Source -eq "fallback" -and $q.Quest -eq $null) "quest with bad key: no quest"
+  $bad.QuestFallback = [Anansi.TestHooks]::QuestFallback
+  $q = $bad.QuestAsync($w, 2, $null, "normal", $null, $null).GetAwaiter().GetResult()
+  Check ($q.Source -eq "fallback" -and $q.Quest.title -eq "Authored") "quest fallback supplies an authored quest"
   $r = $c.StreamAsync($msgs, $on, "smith").GetAwaiter().GetResult()
   Check ($r.Source -eq "gateway" -and $got.Count -ge 1 -and ($got -join "") -like "*hello" -and $r.Say -eq ($got -join "")) "stream delivers sentences ($($got -join '|'))"
   $got.Clear()
@@ -55,4 +69,6 @@ try {
   $got.Clear()
   $r = $c.StreamAsync($msgs, $on, "smith").GetAwaiter().GetResult()
   Check ($r.Source -eq "fallback" -and $got.Count -eq 1 -and $got[0] -eq "(local line)") "stream with gateway down falls back"
+  $q = $c.QuestAsync([Anansi.TestHooks]::World, 2, "mining", "normal", $null, $null).GetAwaiter().GetResult()
+  Check ($q.Source -eq "fallback" -and $q.Quest -eq $null) "quest with gateway down: no quest, no crash"
 } finally { $procs | ForEach-Object { if (-not $_.HasExited) { Stop-Process -Id $_.Id -Force } } }

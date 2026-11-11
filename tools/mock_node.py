@@ -8,6 +8,19 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 
+def sample(kind, schema):
+    """A valid quest or storyline built from the request's schema (first allowed id everywhere)."""
+    pr = schema["properties"]
+    if kind == "quest":
+        step = pr["steps"]["items"]["anyOf"][0]["properties"]
+        return {"title": "Mock quest", "summary": "A mock quest.", "reward_tier": "small", "story_summary": "It began.",
+                "steps": [{"objective": step["objective"]["enum"][0], "target_id": step["target_id"]["enum"][0],
+                           "description": "Do the mock thing."}]}
+    beat = pr["beats"]["items"]["properties"]
+    return {"logline": "A mock story.", "beats": [{"title": "One", "summary": "First.", "npc_id": beat["npc_id"]["enum"][0],
+                                                    "location_id": beat["location_id"]["enum"][0]}] * 2}
+
+
 def make_node(name, latency=0.0):
     app = FastAPI()
     app.state.fail, app.state.reply, app.state.calls, app.state.last = False, None, 0, None
@@ -23,17 +36,18 @@ def make_node(name, latency=0.0):
         await asyncio.sleep(latency)
         if "SAFE" in (body["messages"][0]["content"] if body.get("messages") else ""):  # the gateway's judge call
             return {"choices": [{"message": {"content": json.dumps({"verdict": app.state.judge})}}]}
+        rf = (body.get("response_format") or {}).get("json_schema") or {}
+        text = app.state.reply
+        if text is None:  # a quest or storyline request with no scripted reply gets a valid one built from its schema
+            text = json.dumps(sample(rf["name"], rf["schema"])) if rf.get("name") in ("quest", "storyline") else f"[{name}] hello"
         if body.get("stream"):  # SSE in 7-character pieces, like a real server emitting tokens
-            text = app.state.reply or f"[{name}] hello"
-
             async def pieces():
                 for i in range(0, len(text), 7):
                     yield "data: " + json.dumps({"choices": [{"delta": {"content": text[i:i + 7]}}]}) + "\n\n"
                 yield "data: [DONE]\n\n"
             return StreamingResponse(pieces(), media_type="text/event-stream")
         return {"id": f"mock-{name}", "object": "chat.completion", "model": body.get("model"),
-                "choices": [{"index": 0, "message": {"role": "assistant", "content": app.state.reply or f"[{name}] hello"},
-                             "finish_reason": "stop"}],
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
                 "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}}
 
     return app
