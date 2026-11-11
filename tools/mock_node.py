@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 def make_node(name, latency=0.0):
     app = FastAPI()
     app.state.fail, app.state.reply, app.state.calls, app.state.last = False, None, 0, None
+    app.state.judge = "SAFE"  # answer given to the gateway's safety-judge calls
 
     @app.post("/v1/chat/completions")
     async def chat(req: Request):
@@ -20,6 +21,8 @@ def make_node(name, latency=0.0):
         if app.state.fail:
             raise HTTPException(500, "mock failure")
         await asyncio.sleep(latency)
+        if "SAFE" in (body["messages"][0]["content"] if body.get("messages") else ""):  # the gateway's judge call
+            return {"choices": [{"message": {"content": app.state.judge}}]}
         if body.get("stream"):  # SSE in 7-character pieces, like a real server emitting tokens
             text = app.state.reply or f"[{name}] hello"
 

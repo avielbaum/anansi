@@ -17,7 +17,7 @@ model (Qwen3-1.7B via Ollama on CPU). There are no GPU nodes, volunteer nodes or
 | `tools/loadtest.py` | Closed-loop load test: client-side p50/p95/p99 latency, status counts, per-node spread |
 | `tools/eval.py`, `evals/shopkeeper.jsonl` | Quality check (gate G1): labelled prompts through `/v1/npc`, scores the chosen action. 18 starter cases |
 | `tools/leak_eval.py`, `evals/leak.jsonl` | Prompt-extraction attacks through the gateway; shows which leaks the guard blocks and which get through |
-| `tests/test_gateway.py` | 16 self-checks, no GPU or network needed |
+| `tests/test_gateway.py` | 17 self-checks, no GPU or network needed |
 
 ## Run
 

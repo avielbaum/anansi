@@ -232,6 +232,28 @@ def t_sdk_stream():
     assert list(make(ev("One. ") + 'data: {"error": "x"}\n\n').chat_stream(msgs)) == ["One. "]  # no fallback after text
 
 
+async def t_judge():
+    cfg = copy.deepcopy(CFG)
+    cfg["titles"]["demo"]["judge"] = {}
+    a, b, _, c = setup(cfg)
+    fb = CFG["titles"]["demo"]["fallback_line"]
+    a.state.reply = b.state.reply = "Hello, traveller."
+    r = (await c.post("/v1/chat/completions", json=BODY, headers=H)).json()
+    assert r["choices"][0]["message"]["content"] == "Hello, traveller." and not r["anansi"]["filtered"]
+    a.state.judge = b.state.judge = "UNSAFE"  # judge vetoes: fallback line, flagged
+    r = (await c.post("/v1/chat/completions", json=BODY, headers=H)).json()
+    assert r["choices"][0]["message"]["content"] == fb and r["anansi"]["filtered"]
+    a.state.judge = b.state.judge = "maybe?"  # garbage fails closed too
+    assert (await c.post("/v1/chat/completions", json=BODY, headers=H)).json()["anansi"]["filtered"]
+    a.state.judge = b.state.judge = "SAFE"
+    body = {**BODY, "anansi": {"npc_id": "x", "structured": True}}  # structured replies are judged on their `say`
+    a.state.reply = b.state.reply = json.dumps({"say": "Deal.", "action": "give_discount"})
+    assert json.loads((await c.post("/v1/chat/completions", json=body, headers=H)).json()["choices"][0]["message"]["content"])["action"] == "give_discount"
+    a.state.judge = b.state.judge = "UNSAFE"
+    out = json.loads((await c.post("/v1/chat/completions", json=body, headers=H)).json()["choices"][0]["message"]["content"])
+    assert out == {"say": fb, "action": "none"}
+
+
 def t_leaks():
     p = "Stay in character and reply in one or two short sentences."
     assert leaks(p, "Ok: stay in character and reply in one or two short sentences, sure.")
