@@ -1,0 +1,28 @@
+{
+  "default_model": "npc-small",
+  "upstream_timeout_s": 60,
+  "steam": { "mode": "dev" },
+  "nodes": [
+    {
+      "url": "http://127.0.0.1:11434",
+      "models": ["npc-small"],
+      "region": "local",
+      "upstream_model": "qwen3:1.7b",
+      "extra": { "reasoning_effort": "none" }
+    }
+  ],
+  "titles": {
+    "demo": {
+      "key": "change-me",
+      "appid": 480,
+      "system_prefix": "You are a shopkeeper NPC. Stay in character. Reply in one or two short sentences.",
+      "actions": ["give_discount", "call_guard"],
+      "blocklist": ["\\bpassword\\b"],
+      "fallback_line": "Hm, let us talk of something else.",
+      "max_tokens": 120,
+      "max_prompt_chars": 8000,
+      "max_reply_chars": 600,
+      "daily_token_budget": 50000
+    }
+  }
+}

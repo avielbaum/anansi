@@ -11,7 +11,7 @@ Plans: [DESIGN.md](DESIGN.md), [BUSINESS_PLAN.md](BUSINESS_PLAN.md). This folder
 | `sdk/unity/Anansi.cs` | C# SDK for Unity and plain .NET: `Client.ChatAsync(...)` with local fallback. Test: `powershell -File sdk\unity\test_sdk.ps1` |
 | `POST /v1/npc` | Flat request and reply shape for game SDKs (`say`, `action`, `filtered`, `node`), next to the OpenAI-style route |
 | `tools/loadtest.py` | Closed-loop load test: client-side p50/p95/p99 latency, status counts, per-node spread |
-| `tests/test_gateway.py` | 10 self-checks, no GPU or network needed |
+| `tests/test_gateway.py` | 12 self-checks, no GPU or network needed |
 
 ## Run
 
@@ -28,8 +28,17 @@ python tools/mock_node.py 9002 node-b
 ANANSI_CONFIG=config.example.json python -m uvicorn gateway.app:make_app --factory --port 8080
 ```
 
-Real nodes: point `nodes[].url` in the config at any OpenAI-compatible server, for example vLLM on
-Linux (`vllm serve Qwen/Qwen3-8B`) or `llama-server` on Windows. Set `model` names to match.
+Real nodes: point `nodes[].url` at any OpenAI-compatible server (vLLM on Linux, `llama-server` or Ollama on
+Windows). Per node, `upstream_model` maps our logical model name to the server's name and `extra` is merged
+into every request. **Qwen3 models think by default and can spend the whole token budget on reasoning, which
+returns an empty reply**: switch thinking off in `extra` (Ollama: `{"reasoning_effort": "none"}`; vLLM:
+`{"chat_template_kwargs": {"enable_thinking": false}}` [verify]). The gateway treats an empty reply as a node
+failure and retries elsewhere. Try it with Ollama and `config.ollama.json`:
+
+```bash
+ollama pull qwen3:1.7b
+ANANSI_CONFIG=config.ollama.json python -m uvicorn gateway.app:make_app --factory --port 8080
+```
 
 ## Production switches
 
@@ -47,7 +56,8 @@ Linux (`vllm serve Qwen/Qwen3-8B`) or `llama-server` on Windows. Set `model` nam
 - Live Steam ticket verification is untested (needs a publisher key). The `Steam Web API` call follows its documented shape [verify].
 - The C# SDK is compiled and tested as plain .NET (Windows PowerShell's C# 5 compiler) against a live gateway. The
   `#if UNITY` JsonUtility branch, a Unity project and the structured-action path from C# have not been run. No Unreal SDK.
-- Nodes are the paid floor only. No volunteer node, no verification or credits. No real model has been tried.
+- Tested with a real model only on CPU through Ollama (qwen3:1.7b). No GPU, vLLM or llama-server run yet.
+- Nodes are the paid floor only. No volunteer node, no verification or credits.
 
 ## Licence
 

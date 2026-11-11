@@ -4,6 +4,7 @@ import copy
 import json
 import os
 import sys
+import time
 
 import httpx
 
@@ -57,12 +58,11 @@ async def t_failover_and_ejection():
     for _ in range(6):  # every request still succeeds via the other node
         r = await c.post("/v1/chat/completions", json={"messages": BODY["messages"]}, headers=H)
         assert r.status_code == 200 and r.json()["anansi"]["node"] == "http://node-b"
-    assert [n for n in gw.state.sched.snapshot() if n["url"] == "http://node-a"][0]["ejected"]
     # panic mode: with both nodes ejected the gateway still tries rather than refusing outright
     a.state.fail = b.state.fail = True
     for _ in range(8):
         await c.post("/v1/chat/completions", json={"messages": BODY["messages"]}, headers=H)
-    b.state.fail = False
+    a.state.fail = b.state.fail = False  # both nodes are still ejected, panic mode must route to them anyway
     assert (await c.post("/v1/chat/completions", json={"messages": BODY["messages"]}, headers=H)).status_code == 200
 
 
@@ -121,7 +121,7 @@ async def t_retry_budget_and_stats():
     for _ in range(30):
         assert (await c.post("/v1/chat/completions", json={"messages": BODY["messages"]}, headers=H)).status_code == 503
     s = (await c.get("/admin/stats", headers={"X-Admin-Token": "t"})).json()
-    assert s["retries"] <= 0.1 * 30 + 3, s  # a dead pool must not multiply load
+    assert s["retries"] <= 9, s  # a dead pool must not multiply load (30 would be one retry per request)
     assert s["status"]["503"] == 30 and s["latency_ms"]["samples"] == 0
     a.state.fail = b.state.fail = False
     await c.post("/v1/chat/completions", json=BODY, headers=H)
@@ -143,6 +143,44 @@ async def t_npc_flat_endpoint():
     assert r["action"] == "none"
     assert (await c.post("/v1/npc", json={"nope": 1}, headers=H)).status_code == 400
     assert (await c.post("/v1/npc", json={"messages": msgs}, headers={**H, "X-Anansi-Key": "x"})).status_code == 401
+
+
+async def t_node_overrides_and_empty_replies():
+    cfg = copy.deepcopy(CFG)
+    for n in cfg["nodes"]:
+        n.update(upstream_model="up-model", extra={"reasoning_effort": "none"})
+    a, b, _, c = setup(cfg)
+    await c.post("/v1/chat/completions", json=BODY, headers=H)
+    seen = a.state.last or b.state.last
+    assert seen["model"] == "up-model" and seen["reasoning_effort"] == "none"
+    a.state.reply = b.state.reply = "<think>plan the answer</think>Hi there"  # leaked reasoning is stripped
+    r = (await c.post("/v1/chat/completions", json=BODY, headers=H)).json()
+    assert r["choices"][0]["message"]["content"] == "Hi there"
+    a.state.reply = "<think>ran out of tokens</think>"  # empty after stripping: counts as a node failure, other node serves
+    b.state.reply = "Fine."
+    for i in range(6):
+        r = await c.post("/v1/chat/completions", json={"messages": BODY["messages"]}, headers=H)
+        assert r.status_code == 200 and r.json()["choices"][0]["message"]["content"] == "Fine."
+    b.state.reply = "<think>only thoughts</think>"
+    assert (await c.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 503
+
+
+def t_ejection_and_backoff():  # deterministic: drives the scheduler directly instead of relying on random picks
+    s = Scheduler([{"url": "http://x", "models": ["m"]}, {"url": "http://y", "models": ["m"]}])
+    x, y = s.nodes
+    for _ in range(3):
+        s.begin(x)
+        s.end(x, False, 5)
+    first = x.ejected_until - time.monotonic()
+    assert first > 0 and all(s.pick("m") is y for _ in range(20))
+    x.ejected_until = 0  # ejection window over
+    for _ in range(3):
+        s.begin(x)
+        s.end(x, False, 5)
+    assert x.ejected_until - time.monotonic() > first * 1.5  # back-off doubles
+    s.begin(x)
+    s.end(x, True, 5)
+    assert x.ejections == 0  # a success resets it
 
 
 def t_bounded_load():

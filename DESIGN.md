@@ -855,6 +855,27 @@ starting values, to be agreed with the pilot studio. They are not measured requi
 | **4. Verification and credits** | Quorum, reputation, outlier ejection, retry budgets, priority failover, autoscaler, default-deny firewall, Steam Inventory credits. Public opt-in. | G4 and G5 passed |
 | **5. Scale and options** | Plus profile with title heat files and cache-aware routing, Vivaldi cells, relays, second title. Research track: volunteer sharding bake-off (sections 10, 18). | Per-feature gates |
 
+### 22.1a Phase 1 findings (measured on this PC, 2026-11-10)
+
+Setup: the gateway in front of Ollama 0.40.4 serving `qwen3:1.7b` on this PC's CPU (no GPU).
+
+- **The path works end to end:** 21 of 21 requests succeeded, including JSON-schema-constrained
+  requests. Constrained output stayed valid JSON with an action from the whitelist.
+- **Thinking mode breaks small budgets.** With default settings Qwen3 spent all 120 tokens on
+  reasoning and returned an empty reply. Fix: per-node `extra` settings to disable thinking, and
+  treating an empty reply as a node failure. This applies to every Qwen3 node we run.
+- **Latency on CPU:** about 1.8-2.1 s for a one-sentence reply and 3-5 s for longer ones, p50
+  2.6 s at 2 concurrent requests. A GPU node will differ. Treat this as a floor for debugging, not
+  the G2 measurement. Without streaming, a 3-5 s wait is long for a player, so streaming matters.
+- **Action choice is weak at 1.7B.** In 3 structured prompts, including "Thieves! Someone is
+  stealing from you!", the model always chose `none`. The system prompt did not say when to use
+  each action. This is early evidence for gate G1 (quality), not a result: it needs the 200-prompt
+  evaluation, better prompts and an adapter.
+- **Prompt leakage.** Asked to ignore its instructions and reveal its system prompt, the model
+  paraphrased it. Nothing in the gateway catches this. It belongs in the G5 red-team set.
+- **Retry budget bug found and fixed.** A cumulative retry counter starved retries after an
+  outage had passed. The budget now uses decayed counts (about a 100-request window).
+
 ### 22.2 Go/no-go gates
 
 | Gate | Question | Proposed threshold |

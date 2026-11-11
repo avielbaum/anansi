@@ -12,8 +12,11 @@ LOAD_FACTOR = 1.25     # bounded-load cap over the mean in-flight
 
 
 class Node:
-    def __init__(self, url, models, region="default"):
+    def __init__(self, url, models, region="default", upstream_model=None, extra=None):
         self.url, self.models, self.region = url.rstrip("/"), set(models), region
+        # models are our logical names; upstream_model is what this server calls it. extra is trusted
+        # per-node config merged into every request (for example to switch off a model's thinking mode).
+        self.upstream_model, self.extra = upstream_model, extra or {}
         self.inflight = 0
         self.ewma_ms = 0.0
         self.consecutive = 0
@@ -30,7 +33,8 @@ def _score(key, url):
 
 class Scheduler:
     def __init__(self, nodes):
-        self.nodes = [Node(n["url"], n["models"], n.get("region", "default")) for n in nodes]
+        self.nodes = [Node(n["url"], n["models"], n.get("region", "default"), n.get("upstream_model"), n.get("extra"))
+                      for n in nodes]
 
     def pick(self, model, key=None, exclude=()):
         now = time.monotonic()

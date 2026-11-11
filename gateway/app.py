@@ -18,7 +18,16 @@ from .scheduler import Scheduler
 STEAM_URL = "https://partner.steam-api.com/ISteamUserAuth/AuthenticateUserTicket/v1/"
 FORWARD = ("model", "messages", "temperature", "top_p")  # everything else is dropped on purpose
 MAX_BODY = 64_000
-RETRY_RATIO, RETRY_MIN = 0.1, 3
+RETRY_RATIO, RETRY_MIN, DECAY = 0.1, 3, 0.99  # decay 0.99 per request is a window of roughly 100 requests
+THINK = re.compile(r"<think>.*?</think>", re.S)
+
+
+def reply_text(data):
+    """Assistant text of an OpenAI-style reply, with leaked <think> blocks removed. Empty if missing."""
+    try:
+        return THINK.sub("", data["choices"][0]["message"]["content"] or "").strip()
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return ""
 
 
 def make_app(config=None, transport=None):
@@ -28,6 +37,7 @@ def make_app(config=None, transport=None):
     ticket_cache = {}  # shortcut: per-process caches, move to Redis when running more than one gateway
     usage = {}
     stats = {"requests": 0, "retries": 0, "status": Counter(), "filtered": 0, "lat_ms": deque(maxlen=1000)}
+    budget = {"req": 0.0, "retry": 0.0}
     app = FastAPI()
     app.state.sched = sched
 
@@ -121,12 +131,15 @@ def make_app(config=None, transport=None):
         npc = meta.get("npc_id")
         key = f"{x_anansi_title}:{npc}" if npc else None
         stats["requests"] += 1
+        budget["req"] = budget["req"] * DECAY + 1  # decayed counts: an old outage must not starve retries after recovery
+        budget["retry"] *= DECAY
         tried, data, node = [], None, None
         for attempt in range(3):
-            if attempt:  # retry budget: retries stay near 10% of traffic so a sick pool cannot multiply load
-                if stats["retries"] >= RETRY_RATIO * stats["requests"] + RETRY_MIN:
+            if attempt:  # retry budget: retries stay near 10% of recent traffic so a sick pool cannot multiply load
+                if budget["retry"] >= RETRY_RATIO * budget["req"] + RETRY_MIN:
                     break
                 stats["retries"] += 1
+                budget["retry"] += 1
             node = sched.pick(up["model"], key, exclude=tried)
             if node is None:
                 break
@@ -134,11 +147,16 @@ def make_app(config=None, transport=None):
             sched.begin(node)
             t0 = time.monotonic()
             ok = False
+            payload = {**up, **node.extra}
+            if node.upstream_model:
+                payload["model"] = node.upstream_model
             try:
-                r = await client.post(node.url + "/v1/chat/completions", json=up)
+                r = await client.post(node.url + "/v1/chat/completions", json=payload)
                 ok = r.status_code == 200
                 data = r.json() if ok else None
             except (httpx.HTTPError, ValueError):
+                data = None
+            if data is not None and not reply_text(data):  # empty reply (e.g. a thinking model out of tokens) is a node failure
                 data = None
             sched.end(node, ok and data is not None, (time.monotonic() - t0) * 1000)
             if data:
@@ -146,10 +164,7 @@ def make_app(config=None, transport=None):
         if not data:
             raise HTTPException(503, "no node available")
 
-        try:
-            text = data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError):
-            raise HTTPException(502, "bad node reply")
+        text = reply_text(data)
         filtered = False
         if structured:
             try:
