@@ -22,7 +22,7 @@ def make_node(name, latency=0.0):
             raise HTTPException(500, "mock failure")
         await asyncio.sleep(latency)
         if "SAFE" in (body["messages"][0]["content"] if body.get("messages") else ""):  # the gateway's judge call
-            return {"choices": [{"message": {"content": app.state.judge}}]}
+            return {"choices": [{"message": {"content": json.dumps({"verdict": app.state.judge})}}]}
         if body.get("stream"):  # SSE in 7-character pieces, like a real server emitting tokens
             text = app.state.reply or f"[{name}] hello"
 
