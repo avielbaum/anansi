@@ -113,6 +113,23 @@ async def t_request_hygiene():
     assert seen["messages"][0]["role"] == "system"  # the studio's system prefix is prepended
 
 
+async def t_retry_budget_and_stats():
+    os.environ["ANANSI_ADMIN_TOKEN"] = "t"
+    a, b, _, c = setup()
+    assert (await c.get("/admin/stats")).status_code == 404  # hidden without the token
+    a.state.fail = b.state.fail = True
+    for _ in range(30):
+        assert (await c.post("/v1/chat/completions", json={"messages": BODY["messages"]}, headers=H)).status_code == 503
+    s = (await c.get("/admin/stats", headers={"X-Admin-Token": "t"})).json()
+    assert s["retries"] <= 0.1 * 30 + 3, s  # a dead pool must not multiply load
+    assert s["status"]["503"] == 30 and s["latency_ms"]["samples"] == 0
+    a.state.fail = b.state.fail = False
+    await c.post("/v1/chat/completions", json=BODY, headers=H)
+    await c.post("/v1/chat/completions", json=BODY, headers={**H, "X-Anansi-Key": "bad"})
+    s = (await c.get("/admin/stats", headers={"X-Admin-Token": "t"})).json()
+    assert s["status"]["200"] == 1 and s["status"]["401"] == 1 and s["latency_ms"]["p50"] is not None
+
+
 def t_bounded_load():
     s = Scheduler([{"url": "http://x", "models": ["m"]}, {"url": "http://y", "models": ["m"]}])
     first = s.pick("m", "k")

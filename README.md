@@ -8,7 +8,8 @@ Plans: [DESIGN.md](DESIGN.md), [BUSINESS_PLAN.md](BUSINESS_PLAN.md). This folder
 | `gateway/scheduler.py` | Bounded-load rendezvous affinity, power-of-two choices, peak-EWMA, ejection, panic mode |
 | `tools/mock_node.py` | Fake GPU node for development |
 | `sdk/anansi_client.py` | Python reference SDK with local fallback (the Unity/Unreal plugins follow this contract) |
-| `tests/test_gateway.py` | 8 self-checks, no GPU or network needed |
+| `tools/loadtest.py` | Closed-loop load test: client-side p50/p95/p99 latency, status counts, per-node spread |
+| `tests/test_gateway.py` | 9 self-checks, no GPU or network needed |
 
 ## Run
 
@@ -31,7 +32,8 @@ Linux (`vllm serve Qwen/Qwen3-8B`) or `llama-server` on Windows. Set `model` nam
 ## Production switches
 
 - `steam.mode`: set `"web"` and export `STEAM_PUBLISHER_KEY`. `"dev"` accepts `dev:<id>` tickets and must never be used in production.
-- `ANANSI_ADMIN_TOKEN` enables `GET /admin/nodes` (node load and ejection state). Unset means the route returns 404.
+- `ANANSI_ADMIN_TOKEN` enables `GET /admin/nodes` (node load and ejection state) and `GET /admin/stats`
+  (status counts, retries, filter hits, gateway p50/p95/p99), sent as `X-Admin-Token`. Unset means both return 404.
 - Change every `titles.*.key`. Put the gateway behind TLS (a reverse proxy or load balancer).
 
 ## Known limits (deliberate, see `shortcut:` notes in code)
@@ -39,7 +41,7 @@ Linux (`vllm serve Qwen/Qwen3-8B`) or `llama-server` on Windows. Set `model` nam
 - Non-streaming only. The output filter needs the full reply.
 - Filter is a per-title regex blocklist plus a length cap. It is **not** the safety classifier gate G5 requires.
 - Caches and budgets are in process memory. Use Redis before running two gateways.
-- Two fixed attempts per request, no retry budget, no hedging.
+- Retries are capped near 10% of traffic (3 attempts max per request). No hedging yet.
 - Live Steam ticket verification is untested (needs a publisher key). The `Steam Web API` call follows its documented shape [verify].
 - No Unity or C# SDK yet (no .NET toolchain here). Nodes are the paid floor only. No volunteer node, no verification or credits.
 

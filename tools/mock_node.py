@@ -28,4 +28,6 @@ def make_node(name, latency=0.0):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(make_node(sys.argv[2] if len(sys.argv) > 2 else "mock"), port=int(sys.argv[1]))
+    # args: port [name [latency_seconds]]
+    uvicorn.run(make_node(sys.argv[2] if len(sys.argv) > 2 else "mock", float(sys.argv[3]) if len(sys.argv) > 3 else 0.0),
+                port=int(sys.argv[1]), log_level="warning")

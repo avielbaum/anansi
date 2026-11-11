@@ -3,6 +3,7 @@ OpenAI-compatible POST /v1/chat/completions in front of any OpenAI-compatible no
 (vLLM, llama-server, the mock in tools/). Non-streaming only: the output filter needs the whole reply."""
 import datetime
 import hmac
+from collections import Counter, deque
 import json
 import os
 import re
@@ -17,6 +18,7 @@ from .scheduler import Scheduler
 STEAM_URL = "https://partner.steam-api.com/ISteamUserAuth/AuthenticateUserTicket/v1/"
 FORWARD = ("model", "messages", "temperature", "top_p")  # everything else is dropped on purpose
 MAX_BODY = 64_000
+RETRY_RATIO, RETRY_MIN = 0.1, 3
 
 
 def make_app(config=None, transport=None):
@@ -25,8 +27,24 @@ def make_app(config=None, transport=None):
     client = httpx.AsyncClient(transport=transport, timeout=cfg.get("upstream_timeout_s", 20))
     ticket_cache = {}  # shortcut: per-process caches, move to Redis when running more than one gateway
     usage = {}
+    stats = {"requests": 0, "retries": 0, "status": Counter(), "filtered": 0, "lat_ms": deque(maxlen=1000)}
     app = FastAPI()
     app.state.sched = sched
+
+    @app.middleware("http")
+    async def measure(req, call_next):  # records every outcome, including auth failures and 4xx/5xx
+        t0 = time.monotonic()
+        resp = await call_next(req)
+        if req.url.path == "/v1/chat/completions":
+            stats["status"][resp.status_code] += 1
+            if resp.status_code == 200:
+                stats["lat_ms"].append((time.monotonic() - t0) * 1000)
+        return resp
+
+    def admin(token):
+        want = os.environ.get("ANANSI_ADMIN_TOKEN")
+        if not want or not hmac.compare_digest(want.encode(), (token or "").encode()):
+            raise HTTPException(404)
 
     def title_of(tid, key):
         t = cfg["titles"].get(tid or "")
@@ -104,8 +122,13 @@ def make_app(config=None, transport=None):
 
         npc = meta.get("npc_id")
         key = f"{x_anansi_title}:{npc}" if npc else None
+        stats["requests"] += 1
         tried, data, node = [], None, None
-        for _ in range(2):  # shortcut: fixed 2 attempts, replace with a retry budget (DESIGN.md 16.2)
+        for attempt in range(3):
+            if attempt:  # retry budget: retries stay near 10% of traffic so a sick pool cannot multiply load
+                if stats["retries"] >= RETRY_RATIO * stats["requests"] + RETRY_MIN:
+                    break
+                stats["retries"] += 1
             node = sched.pick(up["model"], key, exclude=tried)
             if node is None:
                 break
@@ -146,6 +169,7 @@ def make_app(config=None, transport=None):
 
         used = (data.get("usage") or {}).get("total_tokens") or (sum(len(m["content"]) for m in msgs) + len(text)) // 4
         usage[ukey] = usage.get(ukey, 0) + int(used)
+        stats["filtered"] += filtered
         return {"id": data.get("id", "anansi"), "object": "chat.completion", "model": up["model"],
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
                 "usage": data.get("usage"), "anansi": {"node": node.url, "filtered": filtered}}
@@ -156,9 +180,16 @@ def make_app(config=None, transport=None):
 
     @app.get("/admin/nodes")
     async def nodes(x_admin_token: str = Header(None)):
-        want = os.environ.get("ANANSI_ADMIN_TOKEN")
-        if not want or not hmac.compare_digest(want.encode(), (x_admin_token or "").encode()):
-            raise HTTPException(404)
+        admin(x_admin_token)
         return sched.snapshot()
+
+    @app.get("/admin/stats")
+    async def get_stats(x_admin_token: str = Header(None)):
+        admin(x_admin_token)
+        lat = sorted(stats["lat_ms"])
+        pct = lambda p: round(lat[min(len(lat) - 1, int(p * len(lat)))], 1) if lat else None
+        return {"requests": stats["requests"], "retries": stats["retries"], "filtered": stats["filtered"],
+                "status": {str(k): v for k, v in stats["status"].items()},
+                "latency_ms": {"p50": pct(0.5), "p95": pct(0.95), "p99": pct(0.99), "samples": len(lat)}}
 
     return app
