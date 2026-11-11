@@ -46,6 +46,17 @@ ollama pull qwen3:1.7b
 ANANSI_CONFIG=config.ollama.json python -m uvicorn gateway.app:make_app --factory --port 8080
 ```
 
+## Linux
+
+The gateway is plain Python, so it runs the same on Linux. **Verified by CI on Ubuntu** (`.github/workflows/ci.yml`): the 17 self-checks and the C# SDK against a live gateway (`dotnet run --project sdk/unity/ci`) pass there.
+
+```bash
+python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
+ANANSI_CONFIG=config.example.json python -m uvicorn gateway.app:make_app --factory --port 8080
+```
+
+Deployment files, **written without a Linux or GPU machine and not run**: `deploy/Dockerfile` (gateway image), `deploy/docker-compose.yml` (gateway plus a vLLM node, needs an NVIDIA GPU and the container toolkit), `config.vllm.json` (node settings for vLLM, including turning Qwen3 thinking off [verify]) and `deploy/anansi-gateway.service` (systemd unit, gateway on localhost behind a TLS proxy). Expect to adjust image tags and vLLM flags.
+
 ## Production switches
 
 - `steam.mode`: set `"web"` and export `STEAM_PUBLISHER_KEY`. `"dev"` accepts `dev:<id>` tickets and must never be used in production.
@@ -64,7 +75,7 @@ ANANSI_CONFIG=config.ollama.json python -m uvicorn gateway.app:make_app --factor
 - Live Steam ticket verification is untested (needs a publisher key). The `Steam Web API` call follows its documented shape [verify].
 - The C# SDK is compiled and tested as plain .NET (Windows PowerShell's C# 5 compiler) against a live gateway. The
   `#if UNITY` JsonUtility branch, a Unity project and the structured-action path from C# have not been run. No Unreal SDK.
-- Tested with a real model only on CPU through Ollama (qwen3:1.7b). No GPU, vLLM or llama-server run yet.
+- Tested with a real model only on CPU through Ollama (qwen3:1.7b). No GPU, vLLM or llama-server run yet (the vLLM compose file is unrun).
 - Nodes are the paid floor only. No volunteer node, no verification or credits.
 
 ## Licence
