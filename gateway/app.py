@@ -35,7 +35,7 @@ def make_app(config=None, transport=None):
     async def measure(req, call_next):  # records every outcome, including auth failures and 4xx/5xx
         t0 = time.monotonic()
         resp = await call_next(req)
-        if req.url.path == "/v1/chat/completions":
+        if req.url.path in ("/v1/chat/completions", "/v1/npc"):
             stats["status"][resp.status_code] += 1
             if resp.status_code == 200:
                 stats["lat_ms"].append((time.monotonic() - t0) * 1000)
@@ -79,12 +79,10 @@ def make_app(config=None, transport=None):
                 return t.get("fallback_line", "..."), True
         return text[: t.get("max_reply_chars", 1000)], False
 
-    @app.post("/v1/chat/completions")
-    async def chat(req: Request, x_anansi_title: str = Header(None), x_anansi_key: str = Header(None),
-                   x_steam_ticket: str = Header(None)):
+    async def handle(req, x_anansi_title, x_anansi_key, x_steam_ticket, raw=None):
         t = title_of(x_anansi_title, x_anansi_key)
         sid = await steam_id(t, x_steam_ticket)
-        raw = await req.body()
+        raw = await req.body() if raw is None else raw
         if len(raw) > MAX_BODY:
             raise HTTPException(413, "request too large")
         try:
@@ -173,6 +171,29 @@ def make_app(config=None, transport=None):
         return {"id": data.get("id", "anansi"), "object": "chat.completion", "model": up["model"],
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
                 "usage": data.get("usage"), "anansi": {"node": node.url, "filtered": filtered}}
+
+    @app.post("/v1/chat/completions")
+    async def chat(req: Request, x_anansi_title: str = Header(None), x_anansi_key: str = Header(None),
+                   x_steam_ticket: str = Header(None)):
+        return await handle(req, x_anansi_title, x_anansi_key, x_steam_ticket)
+
+    @app.post("/v1/npc")  # flat shape for game SDKs: Unity's JsonUtility cannot read the nested OpenAI shape
+    async def npc(req: Request, x_anansi_title: str = Header(None), x_anansi_key: str = Header(None),
+                  x_steam_ticket: str = Header(None)):
+        try:
+            d = json.loads(await req.body())
+            want = bool(d.get("structured"))
+            raw = json.dumps({"messages": d["messages"], "anansi": {"npc_id": d.get("npc_id") or None, "structured": want}})
+        except Exception:
+            raise HTTPException(400, "bad request body")
+        r = await handle(req, x_anansi_title, x_anansi_key, x_steam_ticket, raw.encode())
+        text, out = r["choices"][0]["message"]["content"], {"action": "none"}
+        try:
+            parsed = json.loads(text) if want else None
+            out.update(say=parsed["say"], action=parsed["action"]) if isinstance(parsed, dict) else out.update(say=text)
+        except (ValueError, KeyError):
+            out["say"] = text
+        return {**out, "filtered": r["anansi"]["filtered"], "node": r["anansi"]["node"]}
 
     @app.get("/healthz")
     async def health():

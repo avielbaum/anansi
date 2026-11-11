@@ -7,9 +7,11 @@ Plans: [DESIGN.md](DESIGN.md), [BUSINESS_PLAN.md](BUSINESS_PLAN.md). This folder
 | `gateway/app.py` | OpenAI-compatible `/v1/chat/completions`: title-key and Steam-ticket auth, daily token budget per account, field whitelist, system prefix, constrained NPC actions, output filter, failover |
 | `gateway/scheduler.py` | Bounded-load rendezvous affinity, power-of-two choices, peak-EWMA, ejection, panic mode |
 | `tools/mock_node.py` | Fake GPU node for development |
-| `sdk/anansi_client.py` | Python reference SDK with local fallback (the Unity/Unreal plugins follow this contract) |
+| `sdk/anansi_client.py` | Python reference SDK with local fallback (the Unreal plugin would follow this contract) |
+| `sdk/unity/Anansi.cs` | C# SDK for Unity and plain .NET: `Client.ChatAsync(...)` with local fallback. Test: `powershell -File sdk\unity\test_sdk.ps1` |
+| `POST /v1/npc` | Flat request and reply shape for game SDKs (`say`, `action`, `filtered`, `node`), next to the OpenAI-style route |
 | `tools/loadtest.py` | Closed-loop load test: client-side p50/p95/p99 latency, status counts, per-node spread |
-| `tests/test_gateway.py` | 9 self-checks, no GPU or network needed |
+| `tests/test_gateway.py` | 10 self-checks, no GPU or network needed |
 
 ## Run
 
@@ -43,7 +45,9 @@ Linux (`vllm serve Qwen/Qwen3-8B`) or `llama-server` on Windows. Set `model` nam
 - Caches and budgets are in process memory. Use Redis before running two gateways.
 - Retries are capped near 10% of traffic (3 attempts max per request). No hedging yet.
 - Live Steam ticket verification is untested (needs a publisher key). The `Steam Web API` call follows its documented shape [verify].
-- No Unity or C# SDK yet (no .NET toolchain here). Nodes are the paid floor only. No volunteer node, no verification or credits.
+- The C# SDK is compiled and tested as plain .NET (Windows PowerShell's C# 5 compiler) against a live gateway. The
+  `#if UNITY` JsonUtility branch, a Unity project and the structured-action path from C# have not been run. No Unreal SDK.
+- Nodes are the paid floor only. No volunteer node, no verification or credits. No real model has been tried.
 
 ## Licence
 

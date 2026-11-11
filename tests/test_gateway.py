@@ -130,6 +130,21 @@ async def t_retry_budget_and_stats():
     assert s["status"]["200"] == 1 and s["status"]["401"] == 1 and s["latency_ms"]["p50"] is not None
 
 
+async def t_npc_flat_endpoint():
+    a, b, _, c = setup()
+    msgs = [{"role": "user", "content": "hi"}]
+    r = (await c.post("/v1/npc", json={"messages": msgs, "npc_id": "smith"}, headers=H)).json()
+    assert r["say"].endswith("hello") and r["action"] == "none" and r["filtered"] is False and r["node"].startswith("http")
+    a.state.reply = b.state.reply = json.dumps({"say": "Deal.", "action": "give_discount"})
+    r = (await c.post("/v1/npc", json={"messages": msgs, "npc_id": "smith", "structured": True}, headers=H)).json()
+    assert (r["say"], r["action"]) == ("Deal.", "give_discount")
+    a.state.reply = b.state.reply = json.dumps({"say": "Take it.", "action": "give_sword"})  # not whitelisted
+    r = (await c.post("/v1/npc", json={"messages": msgs, "structured": True}, headers=H)).json()
+    assert r["action"] == "none"
+    assert (await c.post("/v1/npc", json={"nope": 1}, headers=H)).status_code == 400
+    assert (await c.post("/v1/npc", json={"messages": msgs}, headers={**H, "X-Anansi-Key": "x"})).status_code == 401
+
+
 def t_bounded_load():
     s = Scheduler([{"url": "http://x", "models": ["m"]}, {"url": "http://y", "models": ["m"]}])
     first = s.pick("m", "k")
