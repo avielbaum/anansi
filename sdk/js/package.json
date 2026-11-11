@@ -1,0 +1,10 @@
+{
+  "name": "anansi-client",
+  "version": "0.1.0",
+  "description": "Anansi game SDK for JavaScript and TypeScript",
+  "type": "module",
+  "main": "anansi.mjs",
+  "types": "anansi.d.ts",
+  "scripts": { "test": "node test.mjs" },
+  "license": "PolyForm-Noncommercial-1.0.0"
+}

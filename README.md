@@ -54,7 +54,7 @@ This project borrows the shape of that myth:
 ## How it works
 
 ```
- game (Unity / Unreal / any HTTP client)
+ game (Unity / Unreal / Godot / any HTTP client)
         |  one request: messages, npc_id, structured
         v
  +------------------------ gateway -----------------------+
@@ -87,6 +87,8 @@ Measured on one Windows PC with no GPU, running Qwen3-1.7B and 4B through Ollama
 | Volunteer node agent, entry probe, spot checks, bans; one-step `join` setup | working in tests and with Ollama; no idle detection yet |
 | Layered output safety: overlap guard, Llama Guard classifier, judge model | working; on 23 self-written pairs the combination caught all violations with no false positives, about 7.5 s extra on CPU |
 | Python and C# SDKs with sentence streaming and local fallback | working (C# as plain .NET; Unity untested) |
+| JavaScript / TypeScript SDK (browsers, Node, Electron, Deno, Bun) | working: 11 checks against a live gateway in CI; browsers need a same-origin proxy (no CORS headers yet) |
+| Unreal Engine 5 plugin (C++, Blueprint-callable) and Godot 4 addon (GDScript) | **written, never compiled or run: no Unreal or Godot install was available** |
 | Linux | gateway and C# SDK tested in CI on Ubuntu; Docker, vLLM and systemd files written but never run |
 | macOS Apple Silicon | gateway tests pass on a CI arm64 runner; no real Mac, no real model |
 | **GPU nodes** (vLLM, llama-server) | **not tested, no GPU available** |
@@ -122,7 +124,7 @@ No model installed? Use the mock nodes: [docs/quickstart.md](docs/quickstart.md)
 | [Quick start](docs/quickstart.md) | Mock nodes, Ollama, Linux, macOS, running the tests |
 | [Gateway](docs/gateway.md) | Config reference, endpoints, streaming, filter, leak guard, safety judge, production switches |
 | [Nodes](docs/nodes.md) | Cloud nodes, volunteer agent, verification, Linux and macOS notes |
-| [SDKs](docs/sdk.md) | Python and C# (Unity) clients and their fallback behaviour |
+| [SDKs](docs/sdk.md) | Python, C# (Unity), JavaScript/TypeScript, Unreal and Godot clients and their fallback behaviour |
 | [Status](docs/status.md) | Measured results, known limits, what is untested |
 | [DESIGN.md](DESIGN.md) | Architecture, security model, roadmap and go/no-go gates |
 
@@ -132,7 +134,7 @@ No model installed? Use the mock nodes: [docs/quickstart.md](docs/quickstart.md)
 |---|---|
 | `gateway/` | The gateway (`app.py`), node scheduler (`scheduler.py`), pull-node hub (`pull.py`) |
 | `node/agent.py` | Volunteer node agent |
-| `sdk/` | Python client; C# client for Unity and .NET, with a cross-platform CI test |
+| `sdk/` | Python client; C# client for Unity and .NET, with a cross-platform CI test; JavaScript/TypeScript client (`sdk/js`); Unreal plugin (`sdk/unreal`); Godot addon (`sdk/godot`) |
 | `tools/` | Mock node, load test, action-accuracy eval, prompt-leak eval |
 | `evals/` | Labelled test prompts |
 | `tests/` | Self-checks |

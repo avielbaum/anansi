@@ -18,6 +18,7 @@ jobs:
           ANANSI_CONFIG=config.example.json python -m uvicorn gateway.app:make_app --factory --port 8080 --log-level warning &
           sleep 5
           dotnet run --project sdk/unity/ci
+          node sdk/js/test.mjs   # the runner's default Node (18+) has fetch
   macos:
     runs-on: macos-latest   # Apple Silicon
     steps:

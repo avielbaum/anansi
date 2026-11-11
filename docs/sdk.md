@@ -1,6 +1,6 @@
 # SDKs
 
-Both clients follow one contract: ask the gateway, and on a timeout, a `429`, an auth error or any failure, answer from
+All clients follow one contract: ask the gateway, and on a timeout, a `429`, an auth error or any failure, answer from
 a local fallback so the NPC never goes silent. The default fallback is a neutral line (`"..."`).
 
 ## Python (`sdk/anansi_client.py`)
@@ -55,8 +55,61 @@ If the gateway cannot produce a valid quest (a `502`), times out or is unreachab
 fallback quest, or `None`/`null` if you did not give one. The reward is a tier (`small`, `medium`, `large`): map it to
 your own loot.
 
+## JavaScript and TypeScript (`sdk/js`)
+
+One ES module (`anansi.mjs`) with types (`anansi.d.ts`) for browsers, Node 18+, Electron, Deno and Bun. No dependencies.
+
+```js
+import { Anansi } from "./anansi.mjs";
+const npc = new Anansi({ baseUrl: "https://gateway.example", title: "demo", key: "change-me",
+                         playerToken: () => getPlatformToken(), fallback: () => "Hm, let us talk of something else." });
+const r = await npc.chat(messages, { npcId: "shopkeeper", structured: true });          // r.say, r.action, r.source
+await npc.chatStream(messages, (sentence) => label.append(sentence), { npcId: "shopkeeper" });
+const q = await npc.quest(world, { steps: 3, theme: "mining" });                         // q.source, q.quest
+```
+
+`playerToken` can be a string or a function (sync or async) if your platform's token expires. **Browsers:** the gateway
+sends no CORS headers yet, so a page on another origin cannot call it directly; use a same-origin proxy, and do not
+ship a title key to browsers you do not control. Tested against a live gateway (`node sdk/js/test.mjs`, also in CI).
+
+## Unreal Engine 5 (`sdk/unreal/Anansi`)
+
+A C++ plugin whose class `UAnansiClient` is also callable from Blueprints. Copy the `Anansi` folder to
+`YourProject/Plugins/`, add `"Anansi"` to your module's `PublicDependencyModuleNames`, and regenerate project files.
+
+```cpp
+UAnansiClient* Npc = UAnansiClient::Create(this, TEXT("https://gateway.example"), TEXT("demo"), TEXT("change-me"));
+Npc->PlayerToken = PlatformToken;                       // from your platform; refresh it, tokens expire
+Npc->FallbackLine = TEXT("Hm, let us talk of something else.");
+Npc->Chat(Messages, TEXT("shopkeeper"), /*bStructured*/ true, Delegate);          // FAnansiReply: Say, Action, Source
+Npc->ChatStream(Messages, TEXT("shopkeeper"), OnSentenceDelegate, OnDoneDelegate); // one sentence at a time
+Npc->RequestQuest(World, 3, TEXT("mining"), TEXT("normal"), TEXT(""), TEXT(""), QuestDelegate);
+```
+
+Results are delivered through delegates (Blueprint "Create Event" pins) on the game thread. Written for UE 5.1 to 5.3;
+later versions compile with a deprecation warning on the progress callback. Streaming needs the HTTP backend to report
+body data while the reply is still open; where it does not, all sentences arrive together at the end.
+
+## Godot 4 (`sdk/godot/addons/anansi/anansi.gd`)
+
+A GDScript class (`class_name Anansi`) for Godot 4.2+. Copy `addons/anansi` into your project, add an `Anansi` node to
+the scene tree and use it with `await`:
+
+```gdscript
+var npc := Anansi.new()
+add_child(npc)
+npc.setup("https://gateway.example", "demo", "change-me", platform_token)
+npc.fallback = func(messages): return "Hm, let us talk of something else."
+var r := await npc.chat([{"role": "user", "content": "What do you sell?"}], "shopkeeper", true)   # r.say, r.action
+await npc.chat_stream(messages, func(sentence): label.text += sentence, "shopkeeper")
+var q := await npc.quest(world, 3, "mining")                                                  # q.source, q.quest
+```
+
+Streaming uses `HTTPClient` and a manual poll loop, because the `HTTPRequest` node only returns the whole body.
+
 ## Status
 
 The C# SDK is tested as plain .NET against a live gateway (Windows PowerShell test and a `dotnet` test run in CI on
-Ubuntu). The Unity `JsonUtility` branch and a real Unity project have not been run. There is no Unreal SDK; it would
-follow the same contract over HTTP.
+Ubuntu). The Unity `JsonUtility` branch and a real Unity project have not been run. The Unreal plugin and the Godot addon are
+**untested drafts**: they follow the same contract and the same JSON shapes, but have never been compiled or run in
+their engines, and CI does not build them. Other engines can call the HTTP API directly; it is plain JSON and SSE.
