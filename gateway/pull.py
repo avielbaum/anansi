@@ -37,8 +37,9 @@ MAX_RESULT = 512_000  # bytes a volunteer may send back for one job
 
 class PullHub(httpx.AsyncBaseTransport):
     def __init__(self, sched, tokens, inner, poll_s=20, ttl_s=None, job_timeout_s=60, reply_text=None,
-                 canaries=None, canary_rate=0.05, store=None):
+                 canaries=None, canary_rate=0.05, store=None, rates=None):
         self.sched, self.tokens, self.inner = sched, tokens, inner
+        self.rates = rates or {}  # credits per 1,000 tokens by the model name sent to the node; "default" for the rest
         self.poll_s, self.job_timeout_s = poll_s, job_timeout_s
         self.ttl_s = ttl_s if ttl_s is not None else poll_s + 15  # must outlast one long poll
         self.reply_text, self.canaries, self.canary_rate = reply_text, canaries or CANARIES, canary_rate
@@ -47,7 +48,8 @@ class PullHub(httpx.AsyncBaseTransport):
         self.nodes = {}  # id -> {"node", "token", "agent", "q", "seen", "live", "strikes"}
         self.jobs = {}   # job id -> (node id, Future)
 
-    def register(self, token, agent):
+    def check(self, token, agent):
+        """(token config, token ban id) for a known token and an agent that is not banned; raises otherwise."""
         if not agent or len(agent) > 64:
             raise HTTPException(400, "X-Node-Agent id required")
         cfg = next((c for t, c in self.tokens.items() if hmac.compare_digest(t.encode(), (token or "").encode())), None)
@@ -59,6 +61,17 @@ class PullHub(httpx.AsyncBaseTransport):
         bans = self.store.bans()
         if agent in bans or tid in bans:
             raise HTTPException(403, "agent banned")
+        return cfg, tid
+
+    def link_code(self, token, agent, ttl_s=600):
+        """A one-time code the volunteer types into a game to link this machine to their player account."""
+        self.check(token, agent)
+        code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(8))  # no 0/O or 1/I
+        self.store.add_link_code(code, agent, ttl_s)
+        return {"code": code[:4] + "-" + code[4:], "expires_s": ttl_s}
+
+    def register(self, token, agent):
+        cfg, tid = self.check(token, agent)
         if sum(e["token"] == token for e in self.nodes.values()) >= cfg.get("max_workers", 8):
             raise HTTPException(429, "too many workers on this token")  # one token cannot flood the pool
         nid = secrets.token_hex(6)
@@ -183,7 +196,13 @@ class PullHub(httpx.AsyncBaseTransport):
                 tokens = int(json.loads(body)["usage"]["total_tokens"])
             except (ValueError, KeyError, TypeError):
                 tokens = len(body) // 4  # a streamed reply has no usage block: estimate from its size
-            self.store.credit(e["agent"], min(tokens, (len(sent) + len(body)) // 2))  # a volunteer cannot claim more than the text could hold
+            tokens = min(tokens, (len(sent) + len(body)) // 2)  # a volunteer cannot claim more than the text could hold
+            try:
+                model = json.loads(sent).get("model")
+            except (ValueError, AttributeError):
+                model = None
+            rate = self.rates.get(model, self.rates.get("default", 1.0))
+            self.store.credit(e["agent"], tokens, milli=round(tokens * rate))  # rate per 1,000 tokens = milli-credits per token
         if random.random() < self.canary_rate and nid in self.nodes:  # spot-check the node that just served real traffic
             asyncio.get_running_loop().create_task(self.probe(nid))
         return httpx.Response(status, content=body.encode(), headers={"content-type": ctype})
@@ -194,6 +213,10 @@ def add_routes(app, hub):
     async def register(x_node_token: str = Header(None), x_node_agent: str = Header(None)):
         hub.sweep()
         return {"node_id": hub.register(x_node_token, x_node_agent), "poll_s": hub.poll_s}
+
+    @app.post("/node/link-code")
+    async def link_code(x_node_token: str = Header(None), x_node_agent: str = Header(None)):
+        return hub.link_code(x_node_token, x_node_agent)
 
     @app.get("/node/poll")
     async def poll(node_id: str, x_node_token: str = Header(None)):

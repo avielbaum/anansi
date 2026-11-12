@@ -13,6 +13,9 @@ Headers on every request: `X-Anansi-Title`, `X-Anansi-Key` (the studio's key) an
 | `POST /v1/quest` | One quest from your world data; see Quests below. |
 | `POST /v1/storyline` | A multi-beat story arc from your world data. |
 | `GET /admin/usage?day=YYYY-MM-DD` | Tokens and accounts per title, and jobs, tokens and probe results per volunteer agent, for one UTC day (default today). Same admin token. |
+| `GET /v1/credits` | The player's volunteer credit: `balance` (spendable), `pending` (still in the hold), `nodes` (machines linked). See [nodes.md](nodes.md#credits). |
+| `POST /v1/credits/link` | `{"code": "ABCD-EFGH"}`: the code a volunteer's agent printed; links that machine to this player. |
+| `POST /v1/credits/spend` | **Game server only:** headers `X-Anansi-Title` and `X-Anansi-Server-Key`, body `{"player": "<platform id>", "amount": 5, "ref": "<purchase id>"}`. `result` is `ok`, `duplicate` (that `ref` was already charged; nothing taken) or `short` (status `402`; nothing taken). Grant the item only on `ok`. |
 | `GET /healthz` | Liveness. |
 | `GET /admin/nodes`, `GET /admin/stats` | Node load and ejection state; status counts, retries, filter hits, p50/p95/p99, pull-node probe counts. Header `X-Admin-Token`; 404 unless `ANANSI_ADMIN_TOKEN` is set. |
 
@@ -35,6 +38,7 @@ JSON file named by `ANANSI_CONFIG`.
 | `retention_days` | Days of per-account usage rows kept (they hold player ids); default 35 |
 | `pull_tokens` | Enables volunteer agents; see [nodes.md](nodes.md) |
 | `pull_poll_s`, `pull_ttl_s`, `canaries`, `canary_rate` | Pull-node tuning and verification; see [nodes.md](nodes.md) |
+| `credits` | `per_1k_tokens` (credits per 1,000 tokens by the model name sent to the node, plus `"default"`; default 1) and `hold_days` (default 7); see [nodes.md](nodes.md#credits) |
 | `auth_fail_limit` | Failed logins (bad title key or ticket) one client address may make per minute before it gets `429` for the rest of that minute; default 30. Behind a proxy, list it in `trusted_proxies`, or every player shares the proxy's address and one bot locks them all out |
 | `trusted_proxies` | Addresses of your own reverse proxies or load balancers. A request from one of them is counted under the right-most `X-Forwarded-For` entry that is not a listed proxy (entries further left are written by the client). Empty by default: the header is ignored |
 | `max_inflight` | Requests the gateway serves at once (default 256; a stream counts until it ends). Past it, new requests get `429` with `Retry-After: 1` instead of queueing without limit. It is per gateway process |
@@ -43,7 +47,8 @@ JSON file named by `ANANSI_CONFIG`.
 Per title: `key`, `appid`, `system_prefix` (prepended to every request), `actions` (the allowed NPC actions),
 `blocklist` (regexes), `fallback_line`, `max_tokens`, `max_prompt_chars`, `max_reply_chars`, `daily_token_budget`
 (per player, per UTC day; exceeded gives `429` with `Retry-After`), `leak_ngram` (default 5), `judge`,
-`allow_volunteers` (default `false`: volunteer pull nodes never serve this title, because they see every prompt, including the secret system prompt; safety-judge calls never use them either), `allow_overflow`.
+`allow_volunteers` (default `false`: volunteer pull nodes never serve this title, because they see every prompt, including the secret system prompt; safety-judge calls never use them either), `allow_overflow`,
+`server_key` (a second secret for your game's server only, needed to spend credits; never ship it in the game client, where `key` lives).
 
 Qwen3 thinks by default and can return an empty reply. Turn thinking off in the node's `extra` (Ollama:
 `{"reasoning_effort": "none"}`; vLLM: `{"chat_template_kwargs": {"enable_thinking": false}}`, unverified). An empty

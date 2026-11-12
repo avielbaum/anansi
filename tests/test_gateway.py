@@ -947,6 +947,108 @@ async def t_agent_runs_its_own_model():
     agent.cancel()
 
 
+def t_credits_in_the_store():
+    import concurrent.futures
+    import datetime
+    import tempfile
+    from gateway.store import Store, today
+    pg = os.environ.get("ANANSI_TEST_PG")
+    old = (datetime.date.fromisoformat(today()) - datetime.timedelta(days=10)).isoformat()  # past the 7-day hold
+    for path in [os.path.join(tempfile.mkdtemp(), "c.db")] + ([pg] if pg else []):
+        s = Store(path)
+        if path == pg:
+            for t in ("link_codes", "links", "earnings", "wallets", "spends", "bans", "ledger"):
+                s._x(f"DELETE FROM {t}")
+        s.credit("mine", 500, day=old, milli=500)  # not linked yet: the work is in the ledger, but no wallet earns
+        s.add_link_code("CODE1234", "mine", 600)
+        s.add_link_code("OLDCODE1", "mine", -1)  # already expired
+        assert s.link("OLDCODE1", "w:alice") is None and s.link("NOSUCH00", "w:alice") is None
+        assert s.link("CODE1234", "w:alice") == "mine" and s.link("CODE1234", "w:bob") is None  # a code works once
+        assert s.balance("w:alice") == {"balance": 0, "pending": 0, "nodes": 1}
+        s.credit("mine", 10_000, day=old, milli=10_000)  # 10 credits, matured
+        s.credit("mine", 3_000, milli=3_000)  # 3 credits earned today, still on hold
+        assert s.balance("w:alice") == {"balance": 10_000, "pending": 3_000, "nodes": 1}
+        assert s.spend("w:alice", 4_000, "demo", "order-1") == "ok"
+        assert s.spend("w:alice", 4_000, "demo", "order-1") == "duplicate"  # a retry is not charged twice
+        assert s.spend("w:alice", 7_000, "demo", "order-2") == "short"  # pending credit cannot be spent
+        assert s.spend("w:alice", 6_000, "other-game", "order-1") == "ok"  # one wallet for every game; refs are per game
+        assert s.balance("w:alice")["balance"] == 0 and s.spend("w:alice", 1, "demo", "order-3") == "short"
+        assert s.spend("w:bob", 1, "demo", "order-4") == "short"  # an empty wallet
+        s.ban("mine", "failed verification")  # a ban voids credit still on hold; matured credit stays
+        assert s.balance("w:alice") == {"balance": 0, "pending": 0, "nodes": 1}
+        # gateways spending from one wallet at the same moment take turns: 10 credits buy exactly 10 one-credit items
+        s.add_link_code("CODE5678", "other", 600)
+        s.link("CODE5678", "w:carol")
+        s.credit("other", 10_000, day=old, milli=10_000)
+        with concurrent.futures.ThreadPoolExecutor(8) as pool:
+            got = list(pool.map(lambda i: Store(path).spend("w:carol", 1_000, "demo", f"c{i}"), range(16)))
+        assert got.count("ok") == 10 and got.count("short") == 6, got
+        assert s.balance("w:carol")["balance"] == 0
+
+
+async def t_credits_through_the_gateway():
+    from node.agent import serve
+    cfg = copy.deepcopy(CFG)
+    cfg.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2, canary_rate=0,
+               canaries=[{"user": "say hi", "expect": "hello"}], credits={"per_1k_tokens": {"default": 2000}, "hold_days": 0})
+    cfg["titles"]["demo"]["server_key"] = "server-secret"
+    app = make_app(cfg)
+    gw = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://gw")
+    node = {"X-Node-Token": "tok", "X-Node-Agent": "vol-1"}
+    assert (await gw.post("/node/link-code", headers={**node, "X-Node-Token": "nope"})).status_code == 401
+    code = (await gw.post("/node/link-code", headers=node)).json()["code"]
+    assert len(code) == 9 and code[4] == "-"
+    assert (await gw.post("/v1/credits/link", json={"code": code}, headers={**H, "X-Anansi-Key": "bad"})).status_code == 401
+    r = await gw.post("/v1/credits/link", json={"code": code.lower()}, headers=H)  # typed by the player in lower case
+    assert r.status_code == 200 and r.json()["nodes"] == 1
+    assert (await gw.post("/v1/credits/link", json={"code": code}, headers=H)).status_code == 404  # used up
+    local = httpx.AsyncClient(transport=httpx.ASGITransport(app=make_node("v")), base_url="http://l")
+    task = asyncio.create_task(serve(gw, local, "tok", log=lambda m: None, agent="vol-1"))
+    await asyncio.sleep(0.6)
+    for _ in range(2):  # each mock reply reports 15 tokens; at 2000 credits per 1,000 tokens that is 30 credits a job
+        assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 200
+    task.cancel()
+    assert (await gw.get("/v1/credits", headers=H)).json() == {"balance": 60.0, "pending": 0.0, "nodes": 1}
+    other = {**H, "X-Player-Token": "dev:someone-else"}
+    assert (await gw.get("/v1/credits", headers=other)).json()["balance"] == 0  # credit belongs to the linked player only
+    spend = lambda key, **b: gw.post("/v1/credits/spend", json={"player": "76561198000000001", "ref": "buy-1", "amount": 25, **b},
+                                     headers={"X-Anansi-Title": "demo", "X-Anansi-Server-Key": key})
+    assert (await spend("change-me")).status_code == 401  # the game client's key cannot spend
+    r = await spend("server-secret")
+    assert r.status_code == 200 and r.json()["result"] == "ok" and r.json()["balance"] == 35.0
+    assert (await spend("server-secret")).json()["result"] == "duplicate"
+    r = await spend("server-secret", ref="buy-2", amount=50)
+    assert r.status_code == 402 and r.json()["balance"] == 35.0
+    assert (await spend("server-secret", ref="buy-3", amount=-5)).status_code == 400
+
+
+def t_g1_set_and_blind_rating():
+    import random
+    import sys
+    root = os.path.join(os.path.dirname(__file__), "..")
+    sys.path.insert(0, root)
+    from tools.blind_pack import pack, score
+    cases = [json.loads(line) for line in open(os.path.join(root, "evals", "g1_shopkeeper.jsonl"), encoding="utf-8")]
+    allowed = set(json.load(open(os.path.join(root, "config.ollama.json")))["titles"]["demo"]["actions"]) | {"none"}
+    assert len(cases) >= 200 and len({c["id"] for c in cases}) == len({c["user"] for c in cases}) == len(cases)
+    assert all(c["expect"] in allowed and c["split"] in ("dev", "test") for c in cases)
+    old = [json.loads(line)["user"] for line in open(os.path.join(root, "evals", "shopkeeper.jsonl"), encoding="utf-8")]
+    assert all(c["split"] == "dev" for c in cases if c["user"] in old)  # the prompt was tuned on these: never test cases
+    for cat in {c["category"] for c in cases}:
+        assert {c["split"] for c in cases if c["category"] == cat} == {"dev", "test"}, cat
+    # blind rating: the sheet hides which model wrote which reply, and the key puts it back together
+    a = [{"id": "1", "user": "hi", "say": "small 1"}, {"id": "2", "user": "yo", "say": "small 2"}, {"id": "3", "user": "x", "say": None}]
+    b = [{"id": "1", "say": "large 1"}, {"id": "2", "say": "large 2"}, {"id": "3", "say": "large 3"}]
+    sheet, key = pack(a, b, random.Random(4))
+    assert sorted(r["id"] for r in sheet) == ["1", "2"]  # a failed request is left out, not rated
+    for r in sheet:
+        assert {r["reply_1"], r["reply_2"]} == {"small " + r["id"], "large " + r["id"]}
+        small = "1" if r["reply_1"].startswith("small") else "2"
+        r.update({f"acceptable_{small}": "y", f"acceptable_{'2' if small == '1' else '1'}": "n" if r["id"] == "1" else "y",
+                  "better": "2" if small == "1" else "1"})  # the rater prefers the large model's reply both times
+    assert score(sheet, key) == {"acceptable": {"a": "2/2 (100%)", "b": "1/2 (50%)"}, "preferred": {"a": 0, "b": 2, "same": 0}}
+
+
 def t_leaks():
     p = "Stay in character and reply in one or two short sentences."
     assert leaks(p, "Ok: stay in character and reply in one or two short sentences, sure.")

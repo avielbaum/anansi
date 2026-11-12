@@ -28,9 +28,13 @@ python tools/loadtest.py --help
 ```bash
 ollama pull qwen3:1.7b
 ANANSI_CONFIG=config.ollama.json python -m uvicorn gateway.app:make_app --factory --port 8080
-python tools/eval.py --key change-me --cases evals/shopkeeper.jsonl
+python tools/eval.py --key change-me --cases evals/g1_shopkeeper.jsonl --split test   # 106 held-out action cases
 python tools/leak_eval.py --key change-me
 ```
+
+For gate G1's blind rating, save two models' replies with `--out`, then
+`python tools/blind_pack.py pack small.jsonl large.jsonl --sheet rate.csv --key key.json`. Someone rates the sheet without
+seeing the key, and `python tools/blind_pack.py score rate.csv key.json` gives each model's acceptable rate.
 
 `config.ollama.json` turns Qwen3's thinking mode off for the node. Without that, Qwen3 can spend the whole token
 budget on reasoning and return an empty reply. To add the optional safety judge (a second model, `qwen3:4b`), use

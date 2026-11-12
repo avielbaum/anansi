@@ -62,12 +62,13 @@ def reply_text(data):
 def make_app(config=None, transport=None):
     cfg = config or json.load(open(os.environ["ANANSI_CONFIG"], encoding="utf-8"))
     sched = Scheduler(cfg["nodes"], cfg.get("overflow_spill_at", 4))
-    store = Store(cfg.get("db_path"))
+    credits = cfg.get("credits") or {}
+    store = Store(cfg.get("db_path"), credits.get("hold_days", 7))
     store.purge(cfg.get("retention_days", 35))
     purged = [datetime.date.today()]
     hub = PullHub(sched, cfg["pull_tokens"], transport or httpx.AsyncHTTPTransport(), cfg.get("pull_poll_s", 20),
                   cfg.get("pull_ttl_s"), cfg.get("upstream_timeout_s", 20), reply_text, cfg.get("canaries"),
-                  cfg.get("canary_rate", 0.05), store) if cfg.get("pull_tokens") else None
+                  cfg.get("canary_rate", 0.05), store, credits.get("per_1k_tokens")) if cfg.get("pull_tokens") else None
     client = httpx.AsyncClient(transport=hub or transport, timeout=cfg.get("upstream_timeout_s", 20))
     ticket_cache = {}  # shortcut: per-process caches, move to Redis when running more than one gateway
     stats = {"requests": 0, "retries": 0, "status": Counter(), "filtered": 0, "stream_errors": 0, "judged_out": 0, "judge_errors": 0, "lat_ms": deque(maxlen=1000)}
@@ -641,6 +642,49 @@ def make_app(config=None, transport=None):
     @app.post("/v1/storyline")
     async def storyline(req: Request, c=Depends(creds)):
         return await generate("storyline", req, *c)
+
+    # Volunteer credits. One wallet per platform account, shared by every title on this gateway.
+    async def wallet_of(c):
+        return f"{auth['mode']}:{await player_id(title_of(c[0], c[1]), c[2])}"
+
+    def in_credits(b):
+        return {k: v / 1000 for k, v in b.items() if k != "nodes"} | {"nodes": b["nodes"]}
+
+    @app.get("/v1/credits")
+    async def credit_balance(c=Depends(creds)):
+        """The player's balance (spendable), pending (still in the hold window) and how many nodes are linked."""
+        return in_credits(store.balance(await wallet_of(c)))
+
+    @app.post("/v1/credits/link")
+    async def credit_link(req: Request, c=Depends(creds)):
+        """The player typed the code their node agent printed: from now on that node's credit goes to this player."""
+        wallet = await wallet_of(c)
+        try:
+            code = str((await req.json())["code"]).replace("-", "").strip().upper()
+        except (ValueError, KeyError, TypeError):
+            raise HTTPException(400, 'body must be {"code": "ABCD-EFGH"}')
+        if not store.link(code, wallet):
+            raise HTTPException(404, "unknown or expired code")
+        return {"linked": True, **in_credits(store.balance(wallet))}
+
+    @app.post("/v1/credits/spend")
+    async def credit_spend(req: Request, x_anansi_title: str = Header(None), x_anansi_server_key: str = Header(None)):
+        """For the game's own server, never the game client: the server key stays on the server. The server grants the item
+        only after an "ok". ref is the server's purchase id, so a retry is never charged twice."""
+        t = cfg["titles"].get(x_anansi_title or "")
+        if not t or not t.get("server_key") or not hmac.compare_digest(t["server_key"].encode(), (x_anansi_server_key or "").encode()):
+            raise HTTPException(401, "bad title server key")
+        try:
+            d = await req.json()
+            player, ref, milli = str(d["player"]), str(d["ref"]), round(float(d["amount"]) * 1000)
+        except (ValueError, KeyError, TypeError):
+            raise HTTPException(400, 'body must be {"player": "<platform id>", "amount": 5, "ref": "<purchase id>"}')
+        if not (0 < milli <= 10**12) or not player or not 0 < len(ref) <= 128:
+            raise HTTPException(400, "amount must be above 0, and player and ref (at most 128 characters) set")
+        wallet = f"{auth['mode']}:{player}"
+        result = store.spend(wallet, milli, x_anansi_title, ref)
+        body = {"result": result, **in_credits(store.balance(wallet))}
+        return JSONResponse(body, 402 if result == "short" else 200)
 
     @app.get("/healthz")
     async def health():

@@ -2,6 +2,7 @@
 OpenAI-compatible server (Ollama, llama-server, vLLM). No inbound port, so it works behind home NAT.
 Run: python node/agent.py --gateway https://gw.example --token TOKEN --local http://127.0.0.1:11434 [--slots 2]
 It pauses while the owner is busy (CPU or GPU above 60 percent; --cpu-limit, --gpu-limit, --ignore-load).
+To earn credits: run once with --link and type the printed code into a game that uses Anansi.
 Each slot registers as its own worker. It only ever forwards /v1/chat/completions to the local server.
 Works the same on Windows, Linux and macOS (Apple Silicon: Ollama and llama.cpp use Metal).
 shortcut: the token is a shared secret per pool, not a per-user, platform-bound certificate (DESIGN.md section 9)."""
@@ -235,8 +236,15 @@ if __name__ == "__main__":
     ap.add_argument("--local", default="http://127.0.0.1:11434")
     ap.add_argument("--slots", type=int, default=1)
     ap.add_argument("--model", help="local model name to run every job on (default: the name the gateway sends)")
+    ap.add_argument("--link", action="store_true", help="print a code to type into a game, so this machine earns credits for you")
     add_load_args(ap)
     a = ap.parse_args()
+    if a.link:
+        r = httpx.post(a.gateway + "/node/link-code", headers={"X-Node-Token": a.token, "X-Node-Agent": agent_id()}, timeout=20)
+        r.raise_for_status()
+        d = r.json()
+        print(f"Type this code into a game that uses Anansi within {d['expires_s'] // 60} minutes: {d['code']}")
+        raise SystemExit
 
     async def main():
         async with httpx.AsyncClient(base_url=a.gateway) as gw, httpx.AsyncClient(base_url=a.local) as local:

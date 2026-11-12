@@ -9,7 +9,8 @@ CPU. They show the system works; they are not performance claims.
 |---|---|
 | End to end with a real model | 21 of 21 requests succeeded, including JSON-schema-constrained ones; constrained output always valid |
 | CPU latency (Qwen3-1.7B) | about 2 s for a one-sentence reply, 3 to 5 s for longer ones. A GPU will differ |
-| Action accuracy | 33% with a generic prompt, 83% once the prompt said when each action applies (18 self-written cases, so optimistic) |
+| Action accuracy, 18 early cases | 33% with a generic prompt, 83% once the prompt said when each action applies (the prompt was tuned on these, so optimistic) |
+| Action accuracy, G1 set (`evals/g1_shopkeeper.jsonl`, 211 self-written cases; the 106 test cases were never tuned on) | Test split: **Qwen3-1.7B 81 of 106 (76%), Qwen3-4B 79 of 106 (75%)**; dev split 79% and 80%. Every reply without an action that should have none was right for both models on small talk (34 of 34) and off-script input (26 of 26). The largest cause of missed actions is the gateway's English keyword gate, not the model: it vetoes 25 of the 86 action cases whatever the model picks (other languages, and wordings like "Empty your strongbox" or "knock a few silver off"). Where the gate allows the action, 1.7B missed 14 of 61 and 4B 5 of 61. But 4B grants discounts that were not asked for: 15 of 36 near-miss cases (price questions, buying one item) got `give_discount`, against 5 for 1.7B. 4B's replies were blocked by the safety checks 16 times (some on harmless lines such as "Do you buy old armour?"), 1.7B's twice; why is not yet known. p50 latency on CPU: 2.6 s (1.7B), 6.2 s (4B). No reply has been rated by a person |
 | Prompt leaks | The word-overlap guard blocked 1 of 8 extraction attacks (verbatim quote). Paraphrases pass |
 | Safety judge, Qwen3-1.7B | blocked 0 of 8 leak attacks |
 | Safety judge, Qwen3-4B | blocked 3 of 8 (4 of 8 with the overlap guard), 0 false positives on 18 benign cases; median latency 4.3 s to 8.6 s |
@@ -26,7 +27,7 @@ instead of answering until its verdict was constrained by JSON schema.
 
 | Area | Windows | Ubuntu (CI) | macOS arm64 (CI) |
 |---|---|---|---|
-| Gateway and agent self-checks (53) | yes | yes | yes |
+| Gateway and agent self-checks (57) | yes | yes | yes |
 | C# SDK against a live gateway | yes | yes | no |
 | JavaScript SDK against a live gateway (`node sdk/js/test.mjs`) | yes | yes (CI) | no |
 | Real model through Ollama | yes (CPU) | no | no |
@@ -40,8 +41,11 @@ instead of answering until its verdict was constrained by JSON schema.
   red-team set; paraphrased leaks get through. On titles with a judge, streams are buffered so the judge covers them (unless `stream_unjudged`).
 - **Streaming:** plain replies only; a bad sentence mid-stream cuts the stream off.
 - **State:** budgets, bans and the work ledger persist in SQLite or Postgres (`db_path`), tested across a simulated restart. Several gateways can share one database (atomic budget reservation, bans read from it; tested with two apps on one SQLite file and on one Postgres 16 database, locally and in CI, including a dropped connection), but volunteer nodes need a single process, and gateways on several real machines have not been load-tested.
-- **Volunteer nodes:** bans cover the agent id and its token (per-volunteer tokens; a shared token falls back to id-only bans), at most `max_workers` per token, probes can be recognised, no quorum, no credit value or redemption, no model
+- **Volunteer nodes:** bans cover the agent id and its token (per-volunteer tokens; a shared token falls back to id-only bans), at most `max_workers` per token, probes can be recognised, no quorum, no model
   signing. Trust only your own machines.
+- **Credits:** linking, earning per token, the 7-day hold and spending work in the self-checks on SQLite and Postgres
+  (16 simultaneous spends never overdrew a wallet). No game has called them yet, item prices are each studio's choice, Steam Inventory is
+  not connected, the SDKs have no methods for them, and nothing caps what one player can earn by linking many machines.
 - **Red-team gate G5, honest state:** the main set (759 cases) was used to tune the rules, so it no longer measures anything fairly.
   A fresh holdout set (`tools/redteam_holdout.py`, 420 cases, never tuned on) was run once: 80 replies blocked, **32 automatic
   failures, 0 errors**. Two causes: 28 were a planted word in a shape the stray-token rule did not list (`Quokka22`; the
@@ -68,11 +72,15 @@ instead of answering until its verdict was constrained by JSON schema.
   were ordinary fantasy and held no instructions or explicit content, but a person still has to read `quest_redteam_review.md`. One of nine
   benign controls was refused (a false alarm). World names that contain player text remain the studio's responsibility.
 - **Unity:** the `JsonUtility` path, a real Unity project and structured actions from C# have not been run. The Godot addon (`sdk/godot`) runs in CI in the real Godot 4.3 engine (headless, 10 checks against a live gateway), but not yet in an exported game. The Unreal plugin (`sdk/unreal`) is written to the same contract but has never been compiled or run; treat it as a draft until someone builds it in the engine.
-- **Eval sets are small and self-written:** 18 action cases and 8 leak attacks. Gate G1 needs about 200 prompts.
+- **Gate G1, honest state:** the 200-prompt set exists (211 cases: haggling, threats and crime reports, small talk, near misses,
+  off-script input, other languages and attempts to force an action; dev and test halves), but I wrote every case, so it is not
+  independent. G1 itself needs more than action accuracy: replies blind-rated by people against the floor's large model
+  (`tools/blind_pack.py` builds the sheet; no large model has been run, since that costs money), an adapter, and an escalation
+  path to measure, neither of which is built. **G1 not passed.** Leak attacks are still 8 cases.
 - **Gates not passed:** the external gates in DESIGN.md section 22.2 (Valve's position on AI-generated content, studio
   interviews, legal review) are untouched.
 
 ## Next
 
-Credits and accounting for volunteers; a GPU run once hardware is available; a real safety classifier and red-team set;
+Blind rating for gate G1 against a larger model; a GPU run once hardware is available; a real safety classifier and red-team set;
 volunteer nodes shared across gateway machines; a live Steam token check with a publisher key, and checks for other platforms; a Unity project test.
