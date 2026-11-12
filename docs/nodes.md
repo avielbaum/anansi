@@ -74,8 +74,12 @@ python node/join.py --gateway ... --token ... --dry-run                     # sh
 - **Entry probe:** a new worker joins the pool only after answering a known-answer question correctly (temperature 0,
   answer matched by regex). Built-in questions are used unless `canaries` (list of `{"user", "expect"}`) is set.
 - **Spot checks:** after real jobs, with probability `canary_rate` (default 0.05), the same node is probed again.
-- **Bans:** a failed entry probe, or two failed spot checks, bans the agent id. Each agent keeps a random id in
+- **Bans:** a failed entry probe, or two failed spot checks, bans the agent id and the node token it used (the token is
+  stored as a hash), and drops that token's other workers. Picking a new agent id does not get round it. Give each
+  volunteer their own token. A token marked `"shared": true` (one pool token for everyone) is never banned, because that
+  would lock out every volunteer; only the agent id is, and a new id gets round that. Each agent keeps a random id in
   `~/.anansi-agent-id`. Timeouts and error replies are not strikes; the scheduler's ejection handles those.
+- **Worker cap:** one token may have at most `max_workers` workers registered at once (default 8); past it, `429`.
 - `GET /admin/stats` shows `pull.probes`, `probe_failures`, `banned`.
 
 ### Work ledger
@@ -87,8 +91,8 @@ what it can be redeemed for, is undecided.
 
 ### What this does not give you
 
-- **No real identity:** the ban is by a self-chosen id, so a banned operator can mint a new one. Real identity needs the
-  platform-bound certificates of DESIGN.md section 9.
+- **No real identity:** a ban costs the volunteer their token, but whoever issues tokens can be asked for a new one, and on
+  a shared token the ban is by self-chosen id only. Real identity needs the platform-bound certificates of DESIGN.md section 9.
 - **Probes can be recognised:** a node that spots the probe (no system prompt, a few fixed questions) can pass them
   and still cheat on real jobs.
 - **No answer quorum:** free text differs between machines, so two nodes cannot simply be compared.

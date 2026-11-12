@@ -574,7 +574,9 @@ async def t_pull_nodes():
 async def t_pull_verification():
     from node.agent import serve
     cfg = copy.deepcopy(CFG)
-    cfg.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2, pull_ttl_s=5,
+    cfg.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"]}, "tok2": {"models": ["npc-small"]},
+                                      "pool": {"models": ["npc-small"], "shared": True},
+                                      "small": {"models": ["npc-small"], "max_workers": 2}}, pull_poll_s=0.2, pull_ttl_s=5,
                canaries=[{"user": "say hi", "expect": "hello"}], canary_rate=1.0)  # probe after every real job
     app = make_app(cfg)
     hub = app.state.hub
@@ -589,11 +591,15 @@ async def t_pull_verification():
     assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 503
     assert (await gw.post("/node/register", headers={"X-Node-Token": "tok", "X-Node-Agent": "evil"})).status_code == 403
     assert (await gw.post("/node/register", headers={"X-Node-Token": "tok"})).status_code == 400  # agent id is required
+    r = await gw.post("/node/register", headers={"X-Node-Token": "tok", "X-Node-Agent": "evil-renamed"})
+    assert r.status_code == 403  # a new self-chosen id does not help: the token itself is banned
+    tbans = [b[len("token:"):] for b in hub.store.bans() if b.startswith("token:")]
+    assert len(tbans) == 1 and tbans[0] != "tok" and len(tbans[0]) == 16  # stored as a hash, not the token itself
     t1.cancel()
     # 2. an honest node is admitted after its probe, then goes bad: two failed spot checks ban it
     mock = make_node("p")
     t2 = asyncio.create_task(serve(gw, httpx.AsyncClient(transport=httpx.ASGITransport(app=mock), base_url="http://l"),
-                                   "tok", log=lambda m: None, agent="drifter"))
+                                   "tok2", log=lambda m: None, agent="drifter"))
     await asyncio.sleep(0.6)
     assert len(app.state.sched.nodes) == 1 and "drifter" not in hub.store.bans()
     mock.state.reply = "buy crypto now"
@@ -603,6 +609,16 @@ async def t_pull_verification():
     assert "drifter" in hub.store.bans() and not app.state.sched.nodes and hub.stats["banned"] == 2
     assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 503
     t2.cancel()
+    # 3. a shared pool token: one bad agent is banned by id only, so the token keeps working for everyone else
+    t3 = asyncio.create_task(serve(gw, httpx.AsyncClient(transport=httpx.ASGITransport(app=liar), base_url="http://l"),
+                                   "pool", log=lambda m: None, agent="bad-pool"))
+    await asyncio.sleep(0.6)
+    t3.cancel()
+    assert "bad-pool" in hub.store.bans()
+    assert (await gw.post("/node/register", headers={"X-Node-Token": "pool", "X-Node-Agent": "good-pool"})).status_code == 200
+    # 4. max_workers caps how many workers one token may register at once
+    codes = [(await gw.post("/node/register", headers={"X-Node-Token": "small", "X-Node-Agent": f"w{i}"})).status_code for i in range(3)]
+    assert codes == [200, 200, 429], codes
 
 
 WORLD = {"npcs": [{"id": "brom", "name": "Brom", "role": "blacksmith"}, {"id": "mira", "name": "Mira", "role": "herbalist"}],
@@ -818,7 +834,7 @@ async def t_budget_and_bans_survive_restart():
 
     # volunteer ledger and bans, with a gateway restart in between
     pcfg = copy.deepcopy(CFG)
-    pcfg.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2, pull_ttl_s=5, db_path=db,
+    pcfg.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"], "shared": True}}, pull_poll_s=0.2, pull_ttl_s=5, db_path=db,
                 canaries=[{"user": "say hi", "expect": "hello"}], canary_rate=0)
     app = make_app(pcfg)
     gw = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://gw")
@@ -1026,6 +1042,29 @@ async def t_gateway_caps_requests_in_flight():
     c = httpx.AsyncClient(transport=httpx.ASGITransport(app=make_app(cfg, Router({"node-a": a, "node-b": b}))), base_url="http://gw")
     for _ in range(3):
         assert (await sse(c))[0] == 200  # audit: the slot leaked here, so the second call got 429
+
+
+async def t_one_player_cannot_take_every_slot():
+    a, b = make_node("a", latency=0.5), make_node("b", latency=0.5)
+    cfg = copy.deepcopy(CFG)
+    cfg["max_inflight_per_player"] = 2
+    gw = make_app(cfg, Router({"node-a": a, "node-b": b}))
+    c = httpx.AsyncClient(transport=httpx.ASGITransport(app=gw), base_url="http://gw")
+    other = {**H, "X-Player-Token": "dev:someone-else"}
+    rs = await asyncio.gather(*[c.post("/v1/chat/completions", json=BODY, headers=H) for _ in range(3)],
+                              c.post("/v1/chat/completions", json=BODY, headers=other))
+    codes = [r.status_code for r in rs]
+    assert sorted(codes[:3]) == [200, 200, 429] and codes[3] == 200, codes  # the third is refused; another player is not
+    assert rs[[r.status_code for r in rs].index(429)].headers["retry-after"] == "1"
+    for _ in range(3):  # slots come back, from plain replies and from streams alike
+        assert (await sse(c))[0] == 200
+    rs = await asyncio.gather(*[c.post("/v1/chat/completions", json=BODY, headers=H) for _ in range(2)])
+    assert all(r.status_code == 200 for r in rs)
+    cfg["titles"]["demo"]["quest"] = {"lore": "A mining town."}  # the quest route calls handle twice: still counted once each
+    gw = make_app(cfg, Router({"node-a": a, "node-b": b}))
+    c = httpx.AsyncClient(transport=httpx.ASGITransport(app=gw), base_url="http://gw")
+    for _ in range(3):
+        assert (await c.post("/v1/quest", json={"world": WORLD}, headers=H)).status_code == 200
 
 
 async def t_steam_ticket_check():

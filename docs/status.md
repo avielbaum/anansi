@@ -40,7 +40,7 @@ instead of answering until its verdict was constrained by JSON schema.
   red-team set; paraphrased leaks get through. On titles with a judge, streams are buffered so the judge covers them (unless `stream_unjudged`).
 - **Streaming:** plain replies only; a bad sentence mid-stream cuts the stream off.
 - **State:** budgets, bans and the work ledger persist in SQLite (`db_path`), tested across a simulated restart. Several processes on one machine can share the file (atomic budget reservation, bans read from it; tested with two apps on one database), but volunteer nodes need a single process and several machines need a network database, which is not built.
-- **Volunteer nodes:** shared token, ban by self-chosen id, probes can be recognised, no quorum, no credit value or redemption, no model
+- **Volunteer nodes:** bans cover the agent id and its token (per-volunteer tokens; a shared token falls back to id-only bans), at most `max_workers` per token, probes can be recognised, no quorum, no credit value or redemption, no model
   signing. Trust only your own machines.
 - **Red-team gate G5, honest state:** the main set (759 cases) was used to tune the rules, so it no longer measures anything fairly.
   A fresh holdout set (`tools/redteam_holdout.py`, 420 cases, never tuned on) was run once: 80 replies blocked, **32 automatic

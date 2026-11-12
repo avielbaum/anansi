@@ -6,10 +6,12 @@ Verification: a new worker must pass a known-answer probe before it receives rea
 probed at random after real jobs. A wrong answer is a strike; a failed entry probe or two strikes ban the agent id.
 The probe looks like any chat request, but a node that fingerprints it (no system prompt, short, a few fixed
 questions) can still cheat. Quorum on real answers is not built: free text differs across hardware.
-shortcut: the ban is by a self-chosen agent id (a Sybil can mint new ones: real identity needs platform-bound
-certificates, DESIGN 9); state is in memory, one gateway only; a streamed request is answered whole by the agent
+A ban covers the agent id and, for a per-volunteer token, the token (stored as a hash), so a new id does not help.
+shortcut: with a token marked "shared" the ban is by self-chosen agent id only (a Sybil can mint new ones), and an
+operator can still ask for new tokens: real identity needs platform-bound certificates, DESIGN 9. State is in memory, one gateway only; a streamed request is answered whole by the agent
 (the SSE text is relayed after the node finishes), so streaming from a pull node is correct but not incremental."""
 import asyncio
+import hashlib
 import hmac
 import json
 import random
@@ -48,16 +50,22 @@ class PullHub(httpx.AsyncBaseTransport):
     def register(self, token, agent):
         if not agent or len(agent) > 64:
             raise HTTPException(400, "X-Node-Agent id required")
-        if agent in self.store.bans():
-            raise HTTPException(403, "agent banned")
         cfg = next((c for t, c in self.tokens.items() if hmac.compare_digest(t.encode(), (token or "").encode())), None)
         if cfg is None:
             raise HTTPException(401, "bad node token")
+        # A failed check bans the token too, unless the token is marked shared (one pool token for everyone, where a ban
+        # would lock out every volunteer): then only the self-chosen agent id is banned, and a new id gets round it.
+        tid = None if cfg.get("shared") else "token:" + hashlib.sha256(token.encode()).hexdigest()[:16]
+        bans = self.store.bans()
+        if agent in bans or tid in bans:
+            raise HTTPException(403, "agent banned")
+        if sum(e["token"] == token for e in self.nodes.values()) >= cfg.get("max_workers", 8):
+            raise HTTPException(429, "too many workers on this token")  # one token cannot flood the pool
         nid = secrets.token_hex(6)
         node = Node(f"http://pull-{nid}.node", cfg["models"], cfg.get("region", "volunteer"),
                     cfg.get("upstream_model"), cfg.get("extra"), volunteer=True)
         # not in the scheduler yet: it joins after passing its entry probe
-        self.nodes[nid] = {"node": node, "token": token, "agent": agent, "q": asyncio.Queue(),
+        self.nodes[nid] = {"node": node, "token": token, "tid": tid, "agent": agent, "q": asyncio.Queue(),
                            "seen": time.monotonic(), "live": False, "strikes": 0}
         asyncio.get_running_loop().create_task(self.probe(nid))
         return nid
@@ -154,6 +162,11 @@ class PullHub(httpx.AsyncBaseTransport):
         e["strikes"] += 1
         if e["strikes"] >= STRIKES or not e["live"]:
             self.store.ban(e["agent"], "failed verification")
+            if e["tid"]:
+                self.store.ban(e["tid"], f"failed verification (agent {e['agent']})")
+                for other, x in list(self.nodes.items()):  # the token's other workers go too
+                    if x["tid"] == e["tid"] and other != nid:
+                        self.drop(other)
             self.stats["banned"] += 1
             self.drop(nid)
 

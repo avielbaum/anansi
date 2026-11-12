@@ -74,6 +74,12 @@ def make_app(config=None, transport=None):
     budget = {"req": 0.0, "retry": 0.0}
     auth_fails = {}  # client address -> [failures, window start]
     active = [0]  # requests being served right now (a stream counts until its last chunk)
+    per_player = Counter()  # (title, player) -> requests in flight, so one player cannot take every slot
+
+    def player_done(pk):
+        per_player[pk] -= 1
+        if per_player[pk] <= 0:
+            del per_player[pk]
     app = FastAPI()
     if cfg.get("cors_origins"):  # browser games on another origin; empty by default, so no page may call the gateway
         app.add_middleware(CORSMiddleware, allow_origins=cfg["cors_origins"], allow_methods=["POST", "GET"],
@@ -280,6 +286,7 @@ def make_app(config=None, transport=None):
                 yield chunk
         finally:
             active[0] -= 1
+            player_done(ukey[:2])
             await inner.aclose()
             if not acct["done"]:  # cancelled mid-stream: charge what was actually sent
                 store.add_usage(*ukey, (prompt_chars + acct["chars"]) // 4 - held)
@@ -385,6 +392,9 @@ def make_app(config=None, transport=None):
         finally:
             if release:
                 active[0] -= 1
+                if getattr(req.state, "player", None):  # set by _handle once it counted this player's request
+                    player_done(req.state.player)
+            req.state.player = None  # the quest route calls handle twice with one request
 
     async def _handle(req, x_anansi_title, x_anansi_key, token, raw=None, gen=None):
         """gen (set only by the quest and storyline routes, never from a request) swaps in a designer prompt, a larger
@@ -401,6 +411,11 @@ def make_app(config=None, transport=None):
                  "leak_ngram": gen.get("leak_ngram", 8), "judge": None, "actions": None,
                  "max_reply_chars": 6000}  # the title's dialogue cap would cut the JSON off
         sid = await player_id(t, token)
+        pk = (x_anansi_title, sid)
+        if per_player[pk] >= cfg.get("max_inflight_per_player", 4):
+            return JSONResponse({"error": "too many requests at once for this player"}, 429, {"Retry-After": "1"})
+        per_player[pk] += 1
+        req.state.player = pk  # handle() or the stream releases it
         raw = await req.body() if raw is None else raw
         if len(raw) > MAX_BODY:
             raise HTTPException(413, "request too large")

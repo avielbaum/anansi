@@ -38,6 +38,7 @@ JSON file named by `ANANSI_CONFIG`.
 | `auth_fail_limit` | Failed logins (bad title key or ticket) one client address may make per minute before it gets `429` for the rest of that minute; default 30. Behind a proxy, list it in `trusted_proxies`, or every player shares the proxy's address and one bot locks them all out |
 | `trusted_proxies` | Addresses of your own reverse proxies or load balancers. A request from one of them is counted under the right-most `X-Forwarded-For` entry that is not a listed proxy (entries further left are written by the client). Empty by default: the header is ignored |
 | `max_inflight` | Requests the gateway serves at once (default 256; a stream counts until it ends). Past it, new requests get `429` with `Retry-After: 1` instead of queueing without limit. It is per gateway process |
+| `max_inflight_per_player` | Requests one player (per title) may have in flight at once (default 4), so one account cannot take every slot of `max_inflight`. Past it: `429` with `Retry-After: 1`, and the SDKs answer from their fallback. Per gateway process |
 
 Per title: `key`, `appid`, `system_prefix` (prepended to every request), `actions` (the allowed NPC actions),
 `blocklist` (regexes), `fallback_line`, `max_tokens`, `max_prompt_chars`, `max_reply_chars`, `daily_token_budget`
