@@ -1,0 +1,7 @@
+; Minimal project so the SDK can be run headless in CI: godot --headless --path sdk/godot --script res://test/run.gd
+; (Game developers copy addons/anansi into their own project; this file is not needed for that.)
+config_version=5
+
+[application]
+
+config/name="Anansi SDK test"

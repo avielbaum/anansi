@@ -28,3 +28,31 @@ jobs:
       - run: uname -m
       - run: pip install -r requirements.txt
       - run: python tests/test_gateway.py
+  godot:
+    runs-on: ubuntu-latest   # the real Godot engine, headless, against a live gateway
+    env:
+      GODOT: 4.3-stable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements.txt
+      - name: Install Godot (checksum from the release page)
+        run: |
+          base=https://github.com/godotengine/godot/releases/download/$GODOT
+          f=Godot_v${GODOT}_linux.x86_64.zip
+          curl -fsSL -O $base/$f -O $base/SHA512-SUMS.txt
+          grep " $f\$" SHA512-SUMS.txt | sha512sum -c -
+          unzip -q $f
+          mv Godot_v${GODOT}_linux.x86_64 /usr/local/bin/godot 2>/dev/null || sudo mv Godot_v${GODOT}_linux.x86_64 /usr/local/bin/godot
+      - name: Start the gateway on mock nodes
+        run: |
+          python tools/mock_node.py 9001 node-a & python tools/mock_node.py 9002 node-b &
+          ANANSI_CONFIG=config.example.json python -m uvicorn gateway.app:make_app --factory --port 8080 --log-level warning &
+          sleep 5
+      - name: Run the Godot SDK test
+        run: |
+          godot --headless --path sdk/godot --import || true
+          godot --headless --path sdk/godot --script res://test/run.gd > godot.log 2>&1 || true
+          cat godot.log
+          grep -q "0 failed" godot.log && ! grep -q "SCRIPT ERROR\|Parse Error" godot.log
