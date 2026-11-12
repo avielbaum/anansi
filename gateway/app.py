@@ -61,7 +61,7 @@ def reply_text(data):
 
 def make_app(config=None, transport=None):
     cfg = config or json.load(open(os.environ["ANANSI_CONFIG"], encoding="utf-8"))
-    sched = Scheduler(cfg["nodes"])
+    sched = Scheduler(cfg["nodes"], cfg.get("overflow_spill_at", 4))
     store = Store(cfg.get("db_path"))
     store.purge(cfg.get("retention_days", 35))
     purged = [datetime.date.today()]
@@ -179,7 +179,7 @@ def make_app(config=None, transport=None):
         sched.begin(node)
         t0, ok, verdict = time.monotonic(), False, ""
         try:
-            r = await client.post(node.url + "/v1/chat/completions", json=payload_for(req, node))
+            r = await client.post(node.url + "/v1/chat/completions", json=payload_for(req, node), headers=node.headers)
             if r.status_code == 200:
                 out = reply_text(r.json())
                 verdict = (str(json.loads(out).get("verdict", "")) if j.get("type") != "guard" else out).strip().upper()
@@ -256,7 +256,7 @@ def make_app(config=None, transport=None):
         for attempt in range(3):
             if attempt and (sent or filtered or not may_retry()):
                 break
-            node = sched.pick(up["model"], key, exclude=tried)
+            node = sched.pick(up["model"], key, exclude=tried, overflow=t.get("allow_overflow", False))
             if node is None:
                 break
             tried.append(node)
@@ -264,7 +264,7 @@ def make_app(config=None, transport=None):
             t0, ok, raw = time.monotonic(), False, ""
             try:
                 async with client.stream("POST", node.url + "/v1/chat/completions",
-                                         json={**payload_for(up, node), "stream": True}) as r:
+                                         json={**payload_for(up, node), "stream": True}, headers=node.headers) as r:
                     if r.status_code != 200:
                         raise httpx.HTTPError("bad status")
                     async for line in r.aiter_lines():
@@ -376,7 +376,7 @@ def make_app(config=None, transport=None):
         for attempt in range(3):
             if attempt and not may_retry():
                 break
-            node = sched.pick(up["model"], key, exclude=tried)
+            node = sched.pick(up["model"], key, exclude=tried, overflow=t.get("allow_overflow", False))
             if node is None:
                 break
             tried.append(node)
@@ -384,7 +384,7 @@ def make_app(config=None, transport=None):
             t0 = time.monotonic()
             ok = False
             try:
-                r = await client.post(node.url + "/v1/chat/completions", json=payload_for(up, node))
+                r = await client.post(node.url + "/v1/chat/completions", json=payload_for(up, node), headers=node.headers)
                 ok = r.status_code == 200
                 data = r.json() if ok else None
             except (httpx.HTTPError, ValueError):

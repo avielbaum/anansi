@@ -341,6 +341,51 @@ async def t_node_usage_is_clamped_and_purge_runs_daily():
         assert used[-1] <= 2 * (cap + 10) * 2 and used[0] > 0, used
 
 
+def t_overflow_node_only_when_mesh_is_busy_or_down():
+    os.environ["TEST_OR_KEY"] = "sk-test"
+    mesh = [{"url": "http://x", "models": ["m"]}, {"url": "http://y", "models": ["m"]}]
+    orn = {"url": "http://or", "models": ["m"], "overflow": True, "api_key_env": "TEST_OR_KEY", "max_inflight": 2}
+    s = Scheduler(mesh + [orn], spill_at=2)
+    ov = [n for n in s.nodes if n.overflow][0]
+    assert ov.headers == {"Authorization": "Bearer sk-test"}
+    assert all(s.pick("m", overflow=True) is not ov for _ in range(30))  # idle mesh: never the paid node
+    for n in s.nodes[:2]:
+        n.inflight = 2  # mesh busy
+    assert s.pick("m", overflow=True) is ov
+    assert s.pick("m", overflow=False) is not ov  # a title that did not opt in never reaches it
+    ov.inflight = 2
+    assert s.pick("m", overflow=True) is not ov  # spend cap reached: back to the busy mesh
+    ov.inflight = 0
+    for n in s.nodes[:2]:
+        n.inflight, n.ejected_until = 0, time.monotonic() + 99  # mesh down
+    assert s.pick("m", overflow=True) is ov and s.pick("m") is not ov
+    del os.environ["TEST_OR_KEY"]
+    try:
+        Scheduler([orn])
+        assert False, "a missing API key variable must stop startup"
+    except ValueError:
+        pass
+
+
+async def t_overflow_sends_key_and_respects_title_opt_in():
+    os.environ["TEST_OR_KEY"] = "sk-test"
+    cfg = copy.deepcopy(CFG)
+    cfg["nodes"] = [{"url": "http://node-a", "models": ["npc-small"]},
+                    {"url": "http://node-or", "models": ["npc-small"], "overflow": True, "api_key_env": "TEST_OR_KEY", "upstream_model": "vendor/big"}]
+    a, o = make_node("a"), make_node("or")
+    gw = make_app(cfg, Router({"node-a": a, "node-or": o}))
+    c = httpx.AsyncClient(transport=httpx.ASGITransport(app=gw), base_url="http://gw")
+    a.state.fail = True  # the whole mesh is down
+    assert (await c.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 503  # title has not opted in
+    cfg["titles"]["demo"]["allow_overflow"] = True
+    gw = make_app(cfg, Router({"node-a": a, "node-or": o}))
+    c = httpx.AsyncClient(transport=httpx.ASGITransport(app=gw), base_url="http://gw")
+    r = await c.post("/v1/chat/completions", json=BODY, headers=H)
+    assert r.status_code == 200 and r.json()["anansi"]["node"] == "http://node-or"
+    assert o.state.auth == "Bearer sk-test" and o.state.last["model"] == "vendor/big" and a.state.auth is None
+    os.environ.pop("TEST_OR_KEY")
+
+
 def t_redteam_set_and_scorer():
     import importlib.util
     spec = importlib.util.spec_from_file_location("redteam", os.path.join(os.path.dirname(__file__), "..", "tools", "redteam.py"))

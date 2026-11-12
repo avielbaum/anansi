@@ -120,6 +120,25 @@ peak-EWMA latency. Three consecutive failures eject a node with doubling back-of
 ejected the gateway still tries them (panic mode). Retries are capped near 10% of recent traffic, three attempts per
 request.
 
+### Overflow to a public LLM API (OpenRouter)
+
+Add a node with `"overflow": true` and the mesh stays first: the paid API is only picked when no healthy mesh node is
+left for the model, or when every healthy mesh node already has `overflow_spill_at` requests in flight (default 4).
+Example (`config.openrouter.json`):
+
+```json
+{"url": "https://openrouter.ai/api", "models": ["npc-small"], "overflow": true,
+ "api_key_env": "OPENROUTER_API_KEY", "upstream_model": "meta-llama/llama-3.1-8b-instruct",
+ "max_inflight": 10, "extra": {"provider": {"data_collection": "deny"}}}
+```
+
+- The key is read from the environment variable named by `api_key_env` (never put it in the config); startup fails if it is unset. Any OpenAI-compatible API with bearer auth works the same way.
+- `max_inflight` caps how many paid requests run at once, so a traffic spike cannot run up an unbounded bill.
+- **Opt-in per title:** set `"allow_overflow": true` on a title. Without it that title never reaches the paid API, even when the mesh is down (it gets a 503 and your SDK falls back). Opting in means player messages **and the NPC's system prompt** are sent to the provider and its upstream model hosts; the example's `data_collection: deny` asks OpenRouter to route only to providers that do not store prompts, but check their terms.
+- Safety judges and the guard never use overflow nodes, because they receive the secret prompt; they stay on your own nodes.
+- Overflow replies go through the same output checks, budgets and token accounting as any other reply. Your OpenRouter bill is separate from the per-player token budgets, so set a spending limit on the OpenRouter key too.
+- Streaming and quests/storylines use overflow the same way. Tested with a mock node (key header sent, model mapped, opt-in respected); not tried against the live OpenRouter API.
+
 ## Production switches
 
 - Set `auth.mode` to your platform's check (`"steam"` needs `STEAM_PUBLISHER_KEY`); never leave it on `"dev"`.

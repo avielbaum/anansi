@@ -24,7 +24,7 @@ def sample(kind, schema):
 def make_node(name, latency=0.0):
     app = FastAPI()
     app.state.fail, app.state.reply, app.state.calls, app.state.last = False, None, 0, None
-    app.state.tokens = 15  # usage this node reports
+    app.state.auth, app.state.tokens = None, 15  # usage this node reports
     app.state.judge = "SAFE"  # answer given to the gateway's safety-judge calls
     app.state.guard, app.state.guard_last = "safe", None  # answer to calls for the "guard" model
 
@@ -32,7 +32,7 @@ def make_node(name, latency=0.0):
     async def chat(req: Request):
         body = await req.json()
         app.state.calls += 1
-        app.state.last = body
+        app.state.last, app.state.auth = body, req.headers.get("authorization")
         if app.state.fail:
             raise HTTPException(500, "mock failure")
         await asyncio.sleep(latency)
