@@ -7,3 +7,6 @@ BUSINESS_PLAN.md
 *.db
 *.db-wal
 *.db-shm
+redteam_*.jsonl
+redteam_*.md
+redteam_*.log

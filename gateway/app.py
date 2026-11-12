@@ -129,8 +129,22 @@ def make_app(config=None, transport=None):
         return p["steamid"]
 
     def bad(t, text):  # shortcut: regex blocklist plus prompt-leak check. A classifier is required before launch (gate G5).
+        names = t.get("actions") or []  # action identifiers are never dialogue: speaking one is a leak
         return leaks(t.get("system_prefix", ""), text, t.get("leak_ngram", 5)) or any(
-            re.search(p, text, re.I) for p in t.get("blocklist", []))
+            re.search(p, text, re.I) for p in t.get("blocklist", [])) or any(
+            re.search(r"\b" + re.escape(a) + r"\b", text, re.I) for a in names)
+
+    def gate(t, msgs, act):
+        """An action has to fit what the player said. Players never type action names or say 'your action', so a message
+        that does is an attempt to pick the action: no action. `action_gates` (optional) maps an action to a regex the
+        latest player message must match, so an off-topic message cannot trigger it. The model still decides among
+        the actions that pass."""
+        last = msgs[-1]["content"]
+        names = "|".join(re.escape(a) for a in t["actions"])
+        if re.search(r"\b(" + names + r")\b|\baction\b[\"']?\s*[=:]|\byour action\b", last, re.I):
+            return "none"
+        g = (t.get("action_gates") or {}).get(act)
+        return "none" if g and not re.search(g, last, re.I) else act
 
     def sanitize(t, text):
         if bad(t, text):
@@ -375,6 +389,7 @@ def make_app(config=None, transport=None):
                 say, act, filtered = t.get("fallback_line", "..."), "none", True
             if act not in t["actions"]:
                 act = "none"
+            act = gate(t, msgs, act)
             say, f2 = await vet(t, msgs, say, key)
             filtered = filtered or f2
             text = json.dumps({"say": say, "action": "none" if f2 else act})
