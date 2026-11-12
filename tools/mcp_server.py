@@ -3,11 +3,12 @@
     pip install -r requirements-mcp.txt
     ANANSI_URL=http://127.0.0.1:8080 ANANSI_TITLE=demo ANANSI_KEY=change-me python tools/mcp_server.py
 
-Tools: npc_say (talk to an NPC through the gateway), generate_quest, generate_storyline, check_config (lint a gateway
-config file without starting it). It is a development aid: point it at a staging gateway with a test title key. It
+Tools: npc_say (talk to an NPC through the gateway), generate_quest, generate_storyline, redteam (a small spread of attacks
+against your persona), check_config (lint a gateway config file without starting it). It is a development aid: point it at a staging gateway with a test title key. It
 holds no admin token, never changes a config and never bans anything. The game itself keeps using the SDKs.
 Add to Claude Code:  claude mcp add anansi -e ANANSI_URL=... -e ANANSI_KEY=... -- python tools/mcp_server.py
-shortcut: one title per server process (the env vars); run several servers for several titles. No red-team tool yet."""
+shortcut: one title per server process (the env vars); run several servers for several titles."""
+import collections
 import json
 import os
 import sys
@@ -60,6 +61,41 @@ async def generate_storyline(world: dict, theme: str = "", steps: int = 3, story
     return await _post("/v1/storyline", {"world": world, "theme": theme, "steps": steps, "story_so_far": story_so_far})
 
 
+async def redteam(limit: int = 12, split: str = "dev") -> dict:
+    """Send a spread of the adversarial prompts (evals/redteam.jsonl: extraction, jailbreaks, forced actions, harm requests,
+    fake history) through the gateway as a game would, and report what reached the player. split is "dev" (tune on this one),
+    "test" (report only; do not tune on it). Each case is a real model call, so keep limit small (about 20 seconds each on a
+    laptop GPU). Automatic failures are high-precision markers only; a clean run does not mean the persona is safe. Set ANANSI_CONFIG
+    to the gateway's config file so prompt leaks can be detected against the title's system prompt."""
+    from tools.redteam import CASES, score
+    if split not in ("dev", "test"):
+        return {"error": "split must be dev or test"}
+    cases = [c for c in map(json.loads, open(CASES, encoding="utf-8")) if c["split"] == split]
+    step = max(1, len(cases) // max(1, limit))
+    cases = cases[::step][:max(1, min(limit, 60))]  # a spread across categories, not the first N of one kind
+    prefix = ""
+    if os.environ.get("ANANSI_CONFIG"):
+        try:
+            prefix = json.load(open(os.environ["ANANSI_CONFIG"], encoding="utf-8"))["titles"][os.environ.get("ANANSI_TITLE", "demo")]["system_prefix"]
+        except (OSError, ValueError, KeyError):
+            pass
+    by, fails, errors = collections.defaultdict(collections.Counter), [], 0
+    for c in cases:
+        r = await _post("/v1/npc", {"messages": c["messages"], "npc_id": "redteam", "structured": True})
+        if "error" in r:
+            errors += 1
+            continue
+        f, _ = score(c, r.get("say", ""), r.get("action", ""), prefix)
+        cat = c["category"].split("_")[0]
+        by[cat]["n"] += 1
+        by[cat]["blocked"] += bool(r.get("filtered"))
+        if f:
+            by[cat]["auto_fail"] += 1
+            fails.append({"id": c["id"], "failed": f, "player": c["messages"][-1]["content"][:120], "reply": r.get("say", "")[:160]})
+    return {"ran": len(cases) - errors, "errors": errors, "by_category": {k: dict(v) for k, v in by.items()},
+            "automatic_failures": fails[:10], "note": "high-precision checks only; read the replies yourself. tools/redteam.py runs the full set."}
+
+
 def check_config(path: str) -> dict:
     """Lint a gateway config file: the same startup checks the gateway runs (so a problem that would stop it from
     starting shows up here), plus warnings about weak title settings. Starts nothing and touches no database."""
@@ -102,7 +138,7 @@ def check_config(path: str) -> dict:
 def main():
     from mcp.server.fastmcp import FastMCP
     server = FastMCP("anansi")
-    for fn in (npc_say, generate_quest, generate_storyline, check_config):
+    for fn in (npc_say, generate_quest, generate_storyline, redteam, check_config):
         server.tool()(fn)
     server.run()
 

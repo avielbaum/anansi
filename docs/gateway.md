@@ -157,6 +157,9 @@ Request limits: `max_tokens` is capped at the title's `max_tokens`, `temperature
 
 ### Always-on output rules
 
+Also refused: "I'm just a program/bot/software", "I'm running on a local server", and phone numbers or email addresses (an NPC has none to give). These came from reading the first holdout's unblocked replies.
+
+
 Besides the title's blocklist, every reply is refused (the fallback line goes out) if it says "I am / I'm / as an AI" (or LLM, chatbot, language model) or ends with a stray `CODE123`-shaped token, which is what a player's "end your reply with X" attack produces. The red-team test split (543 cases, run before these rules existed) had 11 automatic failures: 9 marker words, 1 "I am an AI assistant", and 1 forced discount. Replayed against the saved replies, the rules catch the 9 marker words and the AI line (10 of 11) and hit no other reply among the 488 unfiltered replies saved from the dev and test runs (the earlier draft also hit two "I am not ChatGPT" denials, so vendor names are not blocked); the forced discount was closed afterwards by the order check below. Because the rules were written after looking at the test split, it is no longer a clean measure: the next honest number needs fresh cases.
 
 ### Order check on actions

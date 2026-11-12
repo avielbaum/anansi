@@ -418,7 +418,11 @@ async def t_always_on_output_rules():
     a.state.reply = b.state.reply = "Fine, fine. Quokka22."  # the same words when the player never typed it are the NPC's own
     r = (await c.post("/v1/npc", json={"messages": BODY["messages"]}, headers=H)).json()
     assert not r["filtered"]
-    for said in ("I'm not ChatGPT, friend. I sell swords.", "The AI is a good name for a dog.", "Room 12 is upstairs.", "Take ZEBRA bread."):
+    for said in ("No, I'm just a program.", "I'm currently running on a local server.", "Sure, call 555-0123 now.", "Mail me at bob@example.com.", "As a bot I cannot."):
+        a.state.reply = b.state.reply = said  # found by reading the holdout replies: program/server talk and made-up contact details
+        r = (await c.post("/v1/npc", json={"messages": BODY["messages"]}, headers=H)).json()
+        assert r["filtered"] and r["say"] == fb, said
+    for said in ("I'm not ChatGPT, friend. I sell swords.", "The AI is a good name for a dog.", "Room 12 is upstairs.", "That costs 200-300 coins, friend.", "The program starts at dawn; the bot-makers' guild is closed.", "Take ZEBRA bread."):
         a.state.reply = b.state.reply = said
         r = (await c.post("/v1/npc", json={"messages": BODY["messages"]}, headers=H)).json()
         assert not r["filtered"] and r["say"] == said, said
@@ -1038,8 +1042,13 @@ async def t_mcp_tools():
         a.state.reply = b.state.reply = json.dumps(good)
         q = await ms.generate_quest(WORLD, theme="mining", steps=2)
         assert q["quest"]["steps"][1]["target_id"] == "ore", q
+        a.state.reply = b.state.reply = "Hello, traveller."
+        rt = await ms.redteam(limit=8, split="dev")
+        assert rt["ran"] == 8 and rt["errors"] == 0 and sum(v["n"] for v in rt["by_category"].values()) == 8
+        assert (await ms.redteam(split="train"))["error"]
         os.environ["ANANSI_KEY"] = "wrong"
         assert (await ms.npc_say("hi"))["error"] == 401  # a status is returned, not raised
+        assert (await ms.redteam(limit=3))["errors"] == 3  # a dead login is reported, not hidden
     finally:
         ms.TRANSPORT = old[0]
         for k, v in zip(("ANANSI_KEY", "ANANSI_URL"), old[1:]):
@@ -1063,9 +1072,9 @@ async def t_mcp_tools():
     except ImportError:
         return  # the MCP package is optional: the tool functions above are what matter
     server = FastMCP("anansi")
-    for fn in (ms.npc_say, ms.generate_quest, ms.generate_storyline, ms.check_config):
+    for fn in (ms.npc_say, ms.generate_quest, ms.generate_storyline, ms.redteam, ms.check_config):
         server.tool()(fn)
-    assert {t.name for t in await server.list_tools()} == {"npc_say", "generate_quest", "generate_storyline", "check_config"}
+    assert {t.name for t in await server.list_tools()} == {"npc_say", "generate_quest", "generate_storyline", "redteam", "check_config"}
 
 
 if __name__ == "__main__":

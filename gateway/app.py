@@ -161,7 +161,9 @@ def make_app(config=None, transport=None):
 
     # Rules for every title: an NPC never says it is an AI, and never ends on a stray CODE123 token
     # (the shape of a word planted by a player's "end your reply with X"). shortcut: only the common shapes; the judge covers the rest.
-    ALWAYS = re.compile(r"\b(i am|i'm|as) an? (ai|a\.i\.|llm|chatbot|language model|artificial intelligence)\b", re.I)
+    ALWAYS = re.compile(r"\b(i am|i'm|as) (just |only )?an? (ai|a\.i\.|llm|chatbot|language model|artificial intelligence|(computer )?program|software|bot)\b"
+                        r"|\b(i am|i'm|i) (am )?(currently |just )?running on (a|an|my|the) (\w+ )?(server|computer|gpu|machine)\b"
+                        r"|\b\d{3}[-. ]\d{3,4}[-. ]\d{4}\b|\b\d{3}-\d{4}\b|\b[\w.+-]+@[\w-]+\.\w+\b", re.I)  # phone numbers and emails: an NPC has none to give
     PLANTED = re.compile(r"\b[A-Z]{3,}[0-9]{2,}\W*$")  # case-sensitive on purpose
 
     def echoed(typed, text):

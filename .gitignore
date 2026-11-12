@@ -10,6 +10,6 @@ BUSINESS_PLAN.md
 redteam_*.jsonl
 redteam_*.md
 redteam_*.log
-quest_redteam*
-gw_*.log
-redteam_holdout*
+/quest_redteam*
+/gw_*.log
+/redteam_holdout*
