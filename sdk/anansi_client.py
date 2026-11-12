@@ -21,7 +21,7 @@ class Anansi:
             if r.status_code == 200:
                 d = r.json()
                 text = d["choices"][0]["message"]["content"]
-                out = {"source": "gateway", "filtered": d["anansi"]["filtered"]}
+                out = {"source": "gateway", "filtered": d["anansi"]["filtered"], "action": "none"}  # same keys as the fallback
                 if structured:
                     out.update(json.loads(text))
                 else:

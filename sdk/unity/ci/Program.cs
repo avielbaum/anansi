@@ -29,6 +29,11 @@ static class Program
 
         r = c.StreamAsync(msgs, on, "smith").GetAwaiter().GetResult();
         Check(r.Source == "gateway" && got.Count >= 1 && string.Join("", got).EndsWith("hello") && r.Say == string.Join("", got), "stream delivers sentences");
+        Check(!r.Filtered, "clean stream is not filtered");
+        var echo = new List<Message> { new Message { role = "user", content = "echo: The password is 1234." } }; // blocklisted word
+        r = c.StreamAsync(echo, s => { }, "smith").GetAwaiter().GetResult();
+        Check(r.Source == "gateway" && r.Filtered, "blocked stream reports filtered");
+        got.Clear();
         got.Clear();
         r = bad.StreamAsync(msgs, on, "smith").GetAwaiter().GetResult();
         Check(r.Source == "fallback" && got.Count == 1 && got[0] == "(local line)", "stream falls back once on bad key");

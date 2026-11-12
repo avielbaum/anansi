@@ -78,6 +78,7 @@ struct FStreamState
 	FString Said;
 	int32 Consumed = 0;
 	bool bGot = false;
+	bool bFiltered = false; // the gateway replaced unsafe text (it says so in the first or last chunk)
 	bool bStop = false;
 	bool bFinished = false;
 	FTSTicker::FDelegateHandle Timer;
@@ -98,6 +99,10 @@ void Pump(const TSharedRef<FStreamState>& S, const FString& Body)
 		if (!Line.StartsWith(TEXT("data: {"))) continue;
 		if (Line.StartsWith(TEXT("data: {\"error\""))) { S->bStop = true; break; } // the gateway could not serve the stream
 		const FObj J = FromJson(Line.Mid(6));
+		const TSharedPtr<FJsonObject>* Meta = nullptr;
+		bool bF = false;
+		if (J.IsValid() && J->TryGetObjectField(TEXT("anansi"), Meta) && (*Meta)->TryGetBoolField(TEXT("filtered"), bF) && bF)
+			S->bFiltered = true;
 		const TArray<TSharedPtr<FJsonValue>>* Choices = nullptr;
 		if (!J.IsValid() || !J->TryGetArrayField(TEXT("choices"), Choices) || Choices->Num() == 0) continue;
 		const TSharedPtr<FJsonObject>* Choice = nullptr;
@@ -219,6 +224,7 @@ void UAnansiClient::ChatStream(const TArray<FAnansiMessage>& Messages, const FSt
 		if (S->bGot)
 		{
 			R.Say = S->Said;
+			R.bFiltered = S->bFiltered;
 			R.Source = TEXT("gateway");
 		}
 		else

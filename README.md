@@ -89,7 +89,7 @@ Measured on one Windows PC with no GPU, running Qwen3-1.7B and 4B through Ollama
 | Quest and storyline generation (`/v1/quest`, `/v1/storyline`) with Python and C# SDK methods | working: constrained to your game's own ids; 6 of 6 structurally valid with Qwen3-1.7B (33 s) and Qwen3-4B (65 s, more varied rewards and richer text) on CPU; writing quality unrated |
 | Real model end to end (Ollama, Qwen3-1.7B on CPU) | working: 21 of 21 requests, action accuracy 83% on 18 self-written cases |
 | Safety judge (second model call) | working with Qwen3-4B: blocked 3 of 8 leak attacks, no false positives; doubles latency |
-| Volunteer node agent, entry probe, spot checks, bans; one-step `join` setup | working in tests and with Ollama; no idle detection yet |
+| Volunteer node agent, entry probe, spot checks, bans; one-step `join` setup | working in tests and with Ollama; pauses while the owner is busy (NVIDIA GPUs and CPU only) |
 | Layered output safety: overlap guard, Llama Guard classifier, judge model | working; on 23 self-written pairs the combination caught all violations with no false positives, about 7.5 s extra on CPU |
 | Python and C# SDKs with sentence streaming and local fallback | working (C# as plain .NET; Unity untested) |
 | JavaScript / TypeScript SDK (browsers, Node, Electron, Deno, Bun) | working: 11 checks against a live gateway in CI; for browsers on another origin list them in `cors_origins` |

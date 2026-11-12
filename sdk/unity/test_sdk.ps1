@@ -55,6 +55,11 @@ try {
   Check ($q.Source -eq "fallback" -and $q.Quest.title -eq "Authored") "quest fallback supplies an authored quest"
   $r = $c.StreamAsync($msgs, $on, "smith").GetAwaiter().GetResult()
   Check ($r.Source -eq "gateway" -and $got.Count -ge 1 -and ($got -join "") -like "*hello" -and $r.Say -eq ($got -join "")) "stream delivers sentences ($($got -join '|'))"
+  Check (-not $r.Filtered) "clean stream is not filtered"
+  $echo = New-Object 'System.Collections.Generic.List[Anansi.Message]'
+  $e = New-Object Anansi.Message; $e.role = "user"; $e.content = "echo: The password is 1234."; $echo.Add($e)  # blocklisted word
+  $r = $c.StreamAsync($echo, $on, "smith").GetAwaiter().GetResult()
+  Check ($r.Source -eq "gateway" -and $r.Filtered) "blocked stream reports filtered"
   $got.Clear()
   $r = $bad.StreamAsync($msgs, $on, "smith").GetAwaiter().GetResult()
   Check ($r.Source -eq "fallback" -and $got.Count -eq 1 -and $got[0] -eq "(local line)") "stream falls back once on bad key"

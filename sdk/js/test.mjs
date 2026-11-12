@@ -18,6 +18,9 @@ check(r.source === "fallback" && r.say === "(local line)", "bad key falls back")
 let got = [];
 r = await c.chatStream(msgs, (s) => got.push(s), { npcId: "smith" });
 check(r.source === "gateway" && got.length >= 1 && got.join("").endsWith("hello") && r.say === got.join(""), "stream delivers sentences");
+check(!r.filtered, "clean stream is not filtered");
+r = await c.chatStream([{ role: "user", content: "echo: The password is 1234." }], () => {}, { npcId: "smith" }); // blocklisted word
+check(r.source === "gateway" && r.filtered, "blocked stream reports filtered");
 got = [];
 r = await bad.chatStream(msgs, (s) => got.push(s), { npcId: "smith" });
 check(r.source === "fallback" && got.length === 1 && got[0] === "(local line)", "stream falls back once on bad key");

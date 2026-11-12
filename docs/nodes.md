@@ -66,8 +66,8 @@ python node/join.py --gateway ... --token ... --dry-run                     # sh
   on `agent.py`, set automatically by `join.py`). Quality across machines then varies with the model, which is what the
   entry probe and spot checks are for.
 - Tested: model choice, the plan, and the model override in the self-checks; a dry run and a real join on Windows.
-  **Not tested:** `join.sh` and `join.bat` on other machines, and Ollama installation. **Missing:** idle detection. The
-  agent serves jobs whenever the gateway sends them, even during a game; stop it before gaming until that exists.
+  **Not tested:** `join.sh` and `join.bat` on other machines, and Ollama installation. The agent it starts pauses while the
+  machine is busy, with the same `--cpu-limit`, `--gpu-limit` and `--ignore-load` options as `agent.py`.
 
 ### Verification
 

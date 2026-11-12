@@ -6,8 +6,7 @@ node agent. Works on Windows, Linux and macOS (Apple Silicon uses Metal through 
 
 It never installs software by itself: if Ollama is missing it tells you where to get it. It downloads one model, only
 after saying how big it is and checking the disk. The gateway's token and URL come from whoever runs the pool.
-shortcut: no idle detection yet. The agent serves jobs whenever the gateway sends them, even while you play a game
-(DESIGN.md section 21 calls for idle-only); until that exists, stop the agent before gaming."""
+The agent pauses while you use the machine (CPU or NVIDIA GPU above 60 percent; --cpu-limit, --gpu-limit, --ignore-load)."""
 import argparse
 import asyncio
 import ctypes
@@ -20,7 +19,7 @@ import sys
 import httpx
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from node.agent import serve  # noqa: E402
+from node.agent import add_load_args, idle_limits, serve  # noqa: E402
 
 OLLAMA = "http://127.0.0.1:11434"
 # (minimum total RAM in GB, model, approximate download in GB). Sizes follow DESIGN.md section 21: the 1 to 2 GB budget
@@ -94,7 +93,7 @@ def plan(a, ram, have):
     return steps, model
 
 
-def main():
+def parser():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--gateway", required=True)
     ap.add_argument("--token", required=True)
@@ -102,7 +101,12 @@ def main():
     ap.add_argument("--slots", type=int, default=1)
     ap.add_argument("--local", default=OLLAMA)
     ap.add_argument("--dry-run", action="store_true", help="show the plan and stop")
-    a = ap.parse_args()
+    add_load_args(ap)
+    return ap
+
+
+def main():
+    a = parser().parse_args()
     print(f"Anansi volunteer setup on {platform.system()} {platform.machine()}")
     steps, model = plan(a, ram_gb(), installed_models(a.local))
     for ok, text in steps:
@@ -124,7 +128,7 @@ def main():
 
     async def run():
         async with httpx.AsyncClient(base_url=a.gateway) as gw, httpx.AsyncClient(base_url=a.local) as local:
-            await serve(gw, local, a.token, a.slots, model=model)
+            await serve(gw, local, a.token, a.slots, model=model, idle=idle_limits(a))
     try:
         asyncio.run(run())
     except KeyboardInterrupt:

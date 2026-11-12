@@ -43,6 +43,9 @@ def make_node(name, latency=0.0):
             return {"choices": [{"message": {"content": json.dumps({"verdict": app.state.judge})}}]}
         rf = (body.get("response_format") or {}).get("json_schema") or {}
         text = app.state.reply
+        last = str((body.get("messages") or [{}])[-1].get("content", ""))
+        if text is None and last.startswith("echo:"):  # SDK tests over HTTP script a reply this way: "echo: <reply>"
+            text = last[5:].strip()
         if text is None:  # a quest or storyline request with no scripted reply gets a valid one built from its schema
             text = json.dumps(sample(rf["name"], rf["schema"])) if rf.get("name") in ("quest", "storyline") else f"[{name}] hello"
         if body.get("stream"):  # SSE in 7-character pieces, like a real server emitting tokens

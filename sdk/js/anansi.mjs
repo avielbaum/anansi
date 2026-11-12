@@ -67,6 +67,7 @@ export class Anansi {
    */
   async chatStream(messages, onSentence, { npcId } = {}) {
     let said = "";
+    let filtered = false;
     const ctl = new AbortController();
     let timer = setTimeout(() => ctl.abort(), this.timeoutMs);
     try {
@@ -87,7 +88,9 @@ export class Anansi {
             buf = buf.slice(nl + 1);
             if (!line.startsWith("data: {")) continue;
             if (line.startsWith('data: {"error"')) { stop = true; break; } // the gateway could not serve the stream
-            const text = JSON.parse(line.slice(6)).choices?.[0]?.delta?.content;
+            const d = JSON.parse(line.slice(6));
+            if (d.anansi?.filtered) filtered = true; // the gateway replaced unsafe text (said in the first or last chunk)
+            const text = d.choices?.[0]?.delta?.content;
             if (!text) continue;
             if (!said) { clearTimeout(timer); timer = setTimeout(() => ctl.abort(), this.streamTimeoutMs); }
             said += text;
@@ -100,7 +103,7 @@ export class Anansi {
     } finally {
       clearTimeout(timer);
     }
-    if (said) return { source: "gateway", say: said, action: "none", filtered: false };
+    if (said) return { source: "gateway", say: said, action: "none", filtered };
     const fb = await this._fallbackReply(messages);
     onSentence(fb.say);
     return fb;

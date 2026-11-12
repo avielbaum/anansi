@@ -47,6 +47,13 @@ func run() -> void:
 	r = await bad.chat_stream(msgs, on_sentence, "smith")
 	check(r.source == "fallback" and got.size() == 1 and got[0] == "(local line)", "stream falls back once on bad key")
 
+	check(not r.filtered, "clean stream is not filtered")
+	got.clear()
+	r = await c.chat_stream([{"role": "user", "content": "echo: The password is 1234."}], on_sentence, "smith")  # blocklisted word
+	check(r.source == "gateway" and r.filtered, "blocked stream reports filtered")
+	check(A.split_url("https://example.com/anansi/") == ["example.com", 443, "/anansi", true]
+			and A.split_url("http://127.0.0.1:8080") == ["127.0.0.1", 8080, "", false], "split_url keeps the path prefix")
+
 	var q: Dictionary = await c.quest(world, 2, "mining")
 	check(q.source == "gateway" and q.quest.steps.size() >= 1 and q.quest.steps[0].target_id == "brom", "quest from gateway uses a world id")
 	var arc: Dictionary = await c.storyline(world, 3)

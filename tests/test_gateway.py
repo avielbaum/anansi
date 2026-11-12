@@ -236,6 +236,9 @@ def t_sdk_stream():
     assert list(make('data: {"error": "no node available"}\n\n').chat_stream(msgs)) == ["LOCAL"]
     assert list(make("", 503).chat_stream(msgs)) == ["LOCAL"]
     assert list(make(ev("One. ") + 'data: {"error": "x"}\n\n').chat_stream(msgs)) == ["One. "]  # no fallback after text
+    plain = {"choices": [{"message": {"content": "Hi."}}], "anansi": {"filtered": False}}
+    c = Anansi("http://gw", "demo", "k", "dev:1", transport=httpx.MockTransport(lambda req: httpx.Response(200, json=plain)))
+    assert c.chat(msgs)["action"] == "none"  # audit: a plain gateway reply had no action key, the fallback did
 
 
 async def t_judge():
@@ -884,6 +887,11 @@ def t_join_plan():
     ev = lambda code, body: httpx.MockTransport(lambda req: httpx.Response(code, json=body))
     assert join.installed_models(transport=ev(200, {"models": [{"name": "qwen3:4b"}]})) == {"qwen3:4b"}
     assert join.installed_models(transport=ev(500, {})) is None
+    from node.agent import idle_limits  # audit: join started the agent without the busy-machine pause
+    assert idle_limits(join.parser().parse_args(["--gateway", "g", "--token", "t"])) == (60, 60)
+    assert idle_limits(join.parser().parse_args(["--gateway", "g", "--token", "t", "--gpu-limit", "30"])) == (60, 30)
+    assert idle_limits(join.parser().parse_args(["--gateway", "g", "--token", "t", "--ignore-load"])) is None
+    assert "idle=idle_limits(a)" in open(join.__file__, encoding="utf-8").read()
 
 
 async def t_agent_runs_its_own_model():

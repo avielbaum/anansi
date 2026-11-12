@@ -56,6 +56,7 @@ func chat(messages: Array, npc_id := "", structured := false) -> Dictionary:
 func chat_stream(messages: Array, on_sentence: Callable, npc_id := "") -> Dictionary:
 	var body := {"stream": true, "anansi": {"npc_id": npc_id}, "messages": messages}
 	var said := ""
+	var filtered := false
 	var client := HTTPClient.new()
 	var started := Time.get_ticks_msec()
 	if await _open_stream(client, body, started):
@@ -82,7 +83,10 @@ func chat_stream(messages: Array, on_sentence: Callable, npc_id := "") -> Dictio
 				if line.begins_with("data: {\"error\""):  # the gateway could not serve the stream
 					done = true
 					break
-				var text := _sentence_of(line.substr(6))
+				var j = JSON.parse_string(line.substr(6))
+				if j is Dictionary and j.get("anansi") is Dictionary and j["anansi"].get("filtered", false):
+					filtered = true  # the gateway replaced unsafe text (it says so in the first or last chunk)
+				var text := _sentence_of(j)
 				if text == "":
 					continue
 				if said == "":
@@ -91,7 +95,7 @@ func chat_stream(messages: Array, on_sentence: Callable, npc_id := "") -> Dictio
 				on_sentence.call(text)
 	client.close()
 	if said != "":
-		return {"source": "gateway", "say": said, "action": "none", "filtered": false}
+		return {"source": "gateway", "say": said, "action": "none", "filtered": filtered}
 	var fb := await _fallback_reply(messages)
 	on_sentence.call(fb.say)
 	return fb
@@ -150,11 +154,9 @@ func _post(path: String, body: Dictionary, timeout: float) -> Variant:
 
 ## Connects, sends the request and waits for the response headers. True if a 200 stream is ready to read.
 func _open_stream(client: HTTPClient, body: Dictionary, started: int) -> bool:
-	var tls := _base.begins_with("https://")
-	var rest := _base.trim_prefix("https://").trim_prefix("http://")
-	var host := rest.get_slice(":", 0)
-	var port := int(rest.get_slice(":", 1)) if ":" in rest else (443 if tls else 80)
-	if client.connect_to_host(host, port, TLSOptions.client() if tls else null) != OK:
+	var u := split_url(_base)
+	var tls: bool = u[3]
+	if client.connect_to_host(u[0], u[1], TLSOptions.client() if tls else null) != OK:
 		return false
 	for state in [HTTPClient.STATUS_RESOLVING, HTTPClient.STATUS_CONNECTING]:
 		while client.get_status() == state:
@@ -164,7 +166,7 @@ func _open_stream(client: HTTPClient, body: Dictionary, started: int) -> bool:
 			await get_tree().process_frame
 	if client.get_status() != HTTPClient.STATUS_CONNECTED:
 		return false
-	if client.request(HTTPClient.METHOD_POST, "/v1/chat/completions", _headers(), JSON.stringify(body)) != OK:
+	if client.request(HTTPClient.METHOD_POST, u[2] + "/v1/chat/completions", _headers(), JSON.stringify(body)) != OK:
 		return false
 	while client.get_status() == HTTPClient.STATUS_REQUESTING:
 		client.poll()
@@ -174,9 +176,20 @@ func _open_stream(client: HTTPClient, body: Dictionary, started: int) -> bool:
 	return client.has_response() and client.get_response_code() == 200
 
 
-## The text of one streamed chunk ("data: {...}" without the prefix), or "".
-func _sentence_of(json_text: String) -> String:
-	var j = JSON.parse_string(json_text)
+## [host, port, path prefix, tls] of a base URL. The prefix matters when the gateway sits under a path such as
+## https://example.com/anansi; HTTPRequest takes whole URLs, but the streaming HTTPClient needs the parts.
+static func split_url(base: String) -> Array:
+	var tls := base.begins_with("https://")
+	var rest := base.trim_prefix("https://").trim_prefix("http://")
+	var slash := rest.find("/")
+	var hostport := rest if slash < 0 else rest.substr(0, slash)
+	var prefix := "" if slash < 0 else rest.substr(slash).rstrip("/")
+	var port := hostport.get_slice(":", 1).to_int() if ":" in hostport else (443 if tls else 80)
+	return [hostport.get_slice(":", 0), port, prefix, tls]
+
+
+## The text of one parsed streamed chunk, or "".
+func _sentence_of(j: Variant) -> String:
 	if j is Dictionary and j.get("choices") is Array and j["choices"].size() > 0:
 		var delta = j["choices"][0].get("delta")
 		if delta is Dictionary:

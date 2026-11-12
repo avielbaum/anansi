@@ -26,7 +26,12 @@ namespace Anansi
     // [OptionalField]: the .NET serializer treats fields of [Serializable] types as required, and chunks omit some of them.
     [Serializable] public class Delta { [System.Runtime.Serialization.OptionalField] public string content; }
     [Serializable] public class Choice { [System.Runtime.Serialization.OptionalField] public Delta delta; }
-    [Serializable] public class Chunk { [System.Runtime.Serialization.OptionalField] public List<Choice> choices; }
+    [Serializable] public class ChunkMeta { [System.Runtime.Serialization.OptionalField] public bool filtered; }
+    [Serializable] public class Chunk
+    {
+        [System.Runtime.Serialization.OptionalField] public List<Choice> choices;
+        [System.Runtime.Serialization.OptionalField] public ChunkMeta anansi; // in the first or last chunk: did the gateway replace unsafe text
+    }
 
     // Quest and storyline generation (POST /v1/quest, /v1/storyline). Send the world your game already has.
     [Serializable] public class Entity { public string id; public string name; public string role; }
@@ -57,14 +62,16 @@ namespace Anansi
         public Func<World, Task<Storyline>> StorylineFallback;
         readonly string url, chatUrl, baseUrlTrimmed, title, key;
         readonly Func<string> playerToken;
+        readonly TimeSpan streamTimeout;
         readonly Func<List<Message>, Task<string>> fallback;
 
         // playerToken: return the player's proof of identity from your platform (on Steam, the hex web-API auth ticket).
         // fallback: answer locally, for example from a bundled llama.cpp server. Default is a neutral line.
         public Client(string baseUrl, string titleId, string titleKey, Func<string> playerToken,
                       Func<List<Message>, Task<string>> fallback = null, double timeoutSeconds = 3,
-                      double generationTimeoutSeconds = 60)
+                      double generationTimeoutSeconds = 60, double streamTimeoutSeconds = 30)
         {
+            streamTimeout = TimeSpan.FromSeconds(streamTimeoutSeconds); // a whole streamed reply once it has started
             http = new HttpClient { Timeout = TimeSpan.FromSeconds(timeoutSeconds) };
             genHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(generationTimeoutSeconds) }; // generation is slow: tens of seconds on a small GPU
             url = baseUrl.TrimEnd('/') + "/v1/npc";
@@ -80,8 +87,9 @@ namespace Anansi
         public async Task<Reply> StreamAsync(List<Message> messages, Action<string> onSentence, string npcId = null)
         {
             var said = new StringBuilder();
+            var filtered = false;
             var cts = new CancellationTokenSource();
-            cts.CancelAfter(http.Timeout); // covers the wait for the first sentence; lifted once one arrives
+            cts.CancelAfter(http.Timeout); // covers the wait for the first sentence; then streamTimeout covers the rest
             try
             {
                 var body = new StreamRequest { stream = true, anansi = new Meta { npc_id = npcId }, messages = messages };
@@ -105,10 +113,11 @@ namespace Anansi
                                 if (!line.StartsWith("data: {")) continue;
                                 if (line.StartsWith("data: {\"error\"")) break; // gateway could not serve the stream
                                 var c = Json.From<Chunk>(line.Substring(6));
+                                if (c.anansi != null && c.anansi.filtered) filtered = true;
                                 if (c.choices == null || c.choices.Count == 0 || c.choices[0].delta == null) continue;
                                 var text = c.choices[0].delta.content;
                                 if (string.IsNullOrEmpty(text)) continue;
-                                if (said.Length == 0) cts.CancelAfter(Timeout.InfiniteTimeSpan);
+                                if (said.Length == 0) cts.CancelAfter(streamTimeout); // a dropped connection cannot hang the NPC
                                 said.Append(text);
                                 onSentence(text);
                             }
@@ -118,7 +127,7 @@ namespace Anansi
             }
             catch (Exception) { } // timeout, dropped connection, bad JSON
             cts.Dispose();
-            if (said.Length > 0) return new Reply { Say = said.ToString(), Action = "none", Filtered = false, Source = "gateway" };
+            if (said.Length > 0) return new Reply { Say = said.ToString(), Action = "none", Filtered = filtered, Source = "gateway" };
             var say = fallback != null ? await fallback(messages) : "...";
             onSentence(say);
             return new Reply { Say = say, Action = "none", Filtered = false, Source = "fallback" };

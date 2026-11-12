@@ -129,6 +129,17 @@ async def worker(gw, local, token, agent, log=print, model=None, idle=None, chec
             backoff = min(backoff * 2, 30)
 
 
+def add_load_args(ap):
+    """The busy-machine options, shared with node/join.py so both start the agent the same way."""
+    ap.add_argument("--cpu-limit", type=float, default=60, help="pause while CPU use is above this percent (default 60)")
+    ap.add_argument("--gpu-limit", type=float, default=60, help="pause while NVIDIA GPU use is above this percent (default 60)")
+    ap.add_argument("--ignore-load", action="store_true", help="serve jobs even when the machine is busy")
+
+
+def idle_limits(a):
+    return None if a.ignore_load else (a.cpu_limit, a.gpu_limit)
+
+
 async def serve(gw, local, token, slots=1, log=print, agent=None, model=None, idle=None):
     agent = agent or agent_id()
     await asyncio.gather(*[worker(gw, local, token, agent, log, model, idle) for _ in range(slots)])
@@ -141,14 +152,12 @@ if __name__ == "__main__":
     ap.add_argument("--local", default="http://127.0.0.1:11434")
     ap.add_argument("--slots", type=int, default=1)
     ap.add_argument("--model", help="local model name to run every job on (default: the name the gateway sends)")
-    ap.add_argument("--cpu-limit", type=float, default=60, help="pause while CPU use is above this percent (default 60)")
-    ap.add_argument("--gpu-limit", type=float, default=60, help="pause while NVIDIA GPU use is above this percent (default 60)")
-    ap.add_argument("--ignore-load", action="store_true", help="serve jobs even when the machine is busy")
+    add_load_args(ap)
     a = ap.parse_args()
 
     async def main():
         async with httpx.AsyncClient(base_url=a.gateway) as gw, httpx.AsyncClient(base_url=a.local) as local:
-            await serve(gw, local, a.token, a.slots, model=a.model, idle=None if a.ignore_load else (a.cpu_limit, a.gpu_limit))
+            await serve(gw, local, a.token, a.slots, model=a.model, idle=idle_limits(a))
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
