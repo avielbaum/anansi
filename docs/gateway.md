@@ -27,7 +27,7 @@ JSON file named by `ANANSI_CONFIG`.
 |---|---|
 | `default_model` | Logical model name when a request names none |
 | `upstream_timeout_s` | Per-attempt timeout to a node (default 20) |
-| `auth.mode` | How player tokens are checked. `"dev"` accepts `dev:<player id>` (never in production); `"steam"` checks the Steam Web API with `STEAM_PUBLISHER_KEY`. Other platforms (Epic, GOG, itch.io, consoles, mobile, your own launcher) need a check added in `player_id()` in `gateway/app.py`; an unknown mode stops startup. The old key `steam` still works |
+| `auth.mode` | How player tokens are checked. `"dev"` accepts `dev:<player id>` (never in production); `"steam"` checks the Steam Web API with `STEAM_PUBLISHER_KEY`. Other platforms (Epic, GOG, itch.io, consoles, mobile, your own launcher) need a check added in `player_id()` in `gateway/app.py`; an unknown mode, or no `auth` block at all, stops startup (there is no default). The old key `steam` still works |
 | `nodes[]` | Static nodes: `url`, `models` (logical names), `region`, `upstream_model` (the server's own name), `extra` (merged into every request, e.g. to switch thinking off) |
 | `titles.<id>` | One entry per game, see below |
 | `db_path` | SQLite file for daily budgets, agent bans and the volunteer work ledger. Unset means in memory (nothing survives a restart) |
@@ -126,3 +126,5 @@ request.
 - Change every `titles.*.key`; set `ANANSI_ADMIN_TOKEN`.
 - Put the gateway behind TLS (reverse proxy or load balancer).
 - Set `db_path` so budgets, bans and the ledger survive restarts. The token cache and node registry are still in memory, and SQLite means one gateway process; move to a shared database before running two.
+
+Request limits: `max_tokens` is capped at the title's `max_tokens`, `temperature` is clamped to 0-2 and `top_p` to 0-1, non-numeric values get a 400, and `model` must be listed in the title's `models` (default: only `default_model`), otherwise `default_model` is used. The daily budget is reserved before the model call (prompt size plus `max_tokens`) and settled afterwards, so parallel requests cannot all pass the check; a failed request gives its reservation back.

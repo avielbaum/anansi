@@ -293,6 +293,35 @@ async def t_cors_only_for_listed_origins():
     assert r.headers["access-control-allow-origin"] == "https://game.example"
 
 
+async def t_input_validation_and_model_choice():
+    a, b, _, c = setup(copy.deepcopy(CFG))
+    for bad in ({"max_tokens": "abc"}, {"temperature": "hot"}, {"max_tokens": [1]}, {"top_p": {}}):
+        assert (await c.post("/v1/chat/completions", json={**BODY, **bad}, headers=H)).status_code == 400, bad  # was a 500
+    r = await c.post("/v1/chat/completions", json={**BODY, "model": "no-such-model", "temperature": 99, "max_tokens": -5}, headers=H)
+    assert r.status_code == 200 and r.json()["model"] == CFG["default_model"]  # a made-up model cannot reach the scheduler
+    sent = [n.state.last for n in (a, b) if n.state.last]
+    assert sent and sent[-1]["temperature"] == 2 and sent[-1]["max_tokens"] == 1
+
+
+async def t_budget_is_reserved_before_the_call():
+    cfg = copy.deepcopy(CFG)
+    cfg["titles"]["demo"]["daily_token_budget"] = 300  # one reservation is about 200 (the title's max_tokens) plus the prompt
+    _, _, _, c = setup(cfg)
+    rs = await asyncio.gather(*[c.post("/v1/chat/completions", json=BODY, headers=H) for _ in range(6)])
+    ok = sum(r.status_code == 200 for r in rs)
+    assert ok < 6, "parallel requests must not all pass the budget check"
+
+
+def t_auth_must_be_chosen():
+    cfg = copy.deepcopy(CFG)
+    del cfg["auth"]
+    try:
+        make_app(cfg)
+        assert False, "no auth config must stop startup"
+    except ValueError:
+        pass
+
+
 def t_redteam_set_and_scorer():
     import importlib.util
     spec = importlib.util.spec_from_file_location("redteam", os.path.join(os.path.dirname(__file__), "..", "tools", "redteam.py"))

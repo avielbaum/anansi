@@ -103,7 +103,9 @@ def make_app(config=None, transport=None):
             raise HTTPException(401, "bad title credentials")
         return t
 
-    auth = cfg.get("auth") or cfg.get("steam") or {"mode": "dev"}  # "steam" is the old key name
+    auth = cfg.get("auth") or cfg.get("steam")  # "steam" is the old key name
+    if not auth:  # no silent default: dev mode accepts any "dev:<id>" token, so it must be chosen on purpose
+        raise ValueError('config needs "auth": {"mode": "dev" | "steam" | "web"}')
     if auth["mode"] not in ("dev", "steam", "web"):  # shortcut: "steam" is the only real platform check so far; add one per platform
         raise ValueError(f"unknown auth mode {auth['mode']!r}: use dev or steam")
 
@@ -214,7 +216,7 @@ def make_app(config=None, transport=None):
             p["model"] = node.upstream_model
         return p
 
-    async def stream_reply(t, up, key, ukey, prompt_chars):
+    async def stream_reply(t, up, key, ukey, prompt_chars, held):
         """SSE reply sent one finished sentence at a time, each checked before it leaves. Failover only while
         nothing has been sent. shortcut: sentences already sent cannot be recalled, so a leak or blocked word that
         shows up mid-reply cuts the stream off there instead of replacing the whole reply."""
@@ -289,9 +291,10 @@ def make_app(config=None, transport=None):
         if sent or filtered:
             stats["lat_ms"].append(ttft * 1000)
             stats["filtered"] += filtered
-            store.add_usage(*ukey, (prompt_chars + len(sent)) // 4)
+            store.add_usage(*ukey, (prompt_chars + len(sent)) // 4 - held)  # swap the reservation for the real cost
             yield sse({}, "stop", node=node.url, filtered=filtered)
         else:
+            store.add_usage(*ukey, -held)
             stats["stream_errors"] += 1
             yield 'data: {"error": "no node available"}\n\n'
         yield "data: [DONE]\n\n"
@@ -330,8 +333,16 @@ def make_app(config=None, transport=None):
 
         meta = body.get("anansi") if isinstance(body.get("anansi"), dict) else {}
         up = {k: body[k] for k in FORWARD if k in body}
-        up["model"] = body.get("model") or cfg["default_model"]
-        up["max_tokens"] = min(int(body.get("max_tokens") or 10**9), t.get("max_tokens", 200))
+        want = body.get("model")  # only the title's allowed models: a made-up name would match no node and eject healthy ones
+        up["model"] = want if want in (t.get("models") or [cfg["default_model"]]) else cfg["default_model"]
+        cap = t.get("max_tokens", 200)
+        try:
+            up["max_tokens"] = max(1, min(int(body.get("max_tokens") or cap), cap))
+            for k, lo, hi in (("temperature", 0, 2), ("top_p", 0, 1)):
+                if k in up:
+                    up[k] = min(max(float(up[k]), lo), hi)
+        except (TypeError, ValueError, OverflowError):
+            raise HTTPException(400, "bad request body")
         if t.get("system_prefix"):
             up["messages"] = [{"role": "system", "content": t["system_prefix"]}] + msgs
         structured = bool(meta.get("structured")) and bool(t.get("actions"))
@@ -348,11 +359,13 @@ def make_app(config=None, transport=None):
             raise HTTPException(400, "streaming is only for plain replies, not structured actions")
         npc = meta.get("npc_id")
         key = f"{x_anansi_title}:{npc}" if npc else None
+        held = sum(len(m["content"]) for m in msgs) // 4 + up["max_tokens"]  # reserve the worst case now so parallel requests cannot all pass the check
+        store.add_usage(*ukey, held)
         stats["requests"] += 1
         budget["req"] = budget["req"] * DECAY + 1  # decayed counts: an old outage must not starve retries after recovery
         budget["retry"] *= DECAY
         if stream:
-            return StreamingResponse(stream_reply(t, up, key, ukey, sum(len(m["content"]) for m in msgs)),
+            return StreamingResponse(stream_reply(t, up, key, ukey, sum(len(m["content"]) for m in msgs), held),
                                      media_type="text/event-stream")
         tried, data, node = [], None, None
         for attempt in range(3):
@@ -377,6 +390,7 @@ def make_app(config=None, transport=None):
             if data:
                 break
         if not data:
+            store.add_usage(*ukey, -held)
             raise HTTPException(503, "no node available")
 
         text = reply_text(data)
@@ -397,7 +411,7 @@ def make_app(config=None, transport=None):
             text, filtered = await vet(t, msgs, text, key)
 
         used = (data.get("usage") or {}).get("total_tokens") or (sum(len(m["content"]) for m in msgs) + len(text)) // 4
-        store.add_usage(*ukey, int(used))
+        store.add_usage(*ukey, int(used) - held)
         stats["filtered"] += filtered
         return {"id": data.get("id", "anansi"), "object": "chat.completion", "model": up["model"],
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
