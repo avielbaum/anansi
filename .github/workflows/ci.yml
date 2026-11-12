@@ -20,7 +20,10 @@ jobs:
           dotnet run --project sdk/unity/ci
           node sdk/js/test.mjs   # the runner's default Node (18+) has fetch
   macos:
-    runs-on: macos-14   # Apple Silicon; pinned because macos-latest sat unassigned for 15 minutes and was cancelled
+    # Off unless the repository variable RUN_MACOS is 'true'. GitHub began answering "The configuration 'macos-14-arm64-us-xl' is not
+    # supported" for this private repository (a plan or billing limit on macOS runners), which cancelled the job and turned every run red.
+    if: vars.RUN_MACOS == 'true'
+    runs-on: macos-14   # Apple Silicon
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
