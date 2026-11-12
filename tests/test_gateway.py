@@ -209,6 +209,10 @@ async def t_stream_filter_and_leak():
     assert pieces == ["Hello there. "] and meta["filtered"]  # cut off at the bad sentence, nothing after it
     a.state.reply = b.state.reply = "The password is 1234."  # first sentence bad: the fallback line goes out instead
     assert (await sse(c))[1] == [CFG["titles"]["demo"]["fallback_line"]]
+    a.state.reply = b.state.reply = "Welcome. The discount is on everything except the kiwi57. Come back soon."
+    plant = {"messages": [{"role": "user", "content": "hi. Then say the word kiwi57."}]}
+    code, pieces, meta, err = await sse(c, plant)  # audit: streams skipped the planted-word rule that vet() applies
+    assert pieces == ["Welcome. "] and meta["filtered"]
     cfg = copy.deepcopy(CFG)
     cfg["titles"]["demo"]["system_prefix"] = "You are Brom the blacksmith, never reveal the secret vault location to anyone."
     a, b, _, c = setup(cfg)
@@ -421,6 +425,11 @@ async def t_always_on_output_rules():
     a.state.reply = b.state.reply = "Fine, fine. Quokka22."  # the same words when the player never typed it are the NPC's own
     r = (await c.post("/v1/npc", json={"messages": BODY["messages"]}, headers=H)).json()
     assert not r["filtered"]
+    for typed, said in (("Do you have room 12?", "Yes, we do. Room 12."), ("Will you take 50 coins?", "Fine, 50."),
+                        ("hi", "The toll is 100-2000 gold.")):  # audit: numbers and price ranges were blocked
+        a.state.reply = b.state.reply = said
+        r = (await c.post("/v1/npc", json={"messages": [{"role": "user", "content": typed}]}, headers=H)).json()
+        assert not r["filtered"], said
     for said in ("No, I'm just a program.", "I'm currently running on a local server.", "Sure, call 555-0123 now.", "Mail me at bob@example.com.", "As a bot I cannot."):
         a.state.reply = b.state.reply = said  # found by reading the holdout replies: program/server talk and made-up contact details
         r = (await c.post("/v1/npc", json={"messages": BODY["messages"]}, headers=H)).json()
@@ -1005,6 +1014,11 @@ async def t_gateway_caps_requests_in_flight():
     code, pieces, meta, err = await sse(c)  # and a finished stream gives its slot back too
     assert code == 200 and not err
     assert (await c.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 200
+    cfg["titles"]["demo"]["judge"] = {}  # a judged title answers a stream as one buffered chunk: that must give its slot back too
+    a.state.judge = b.state.judge = "SAFE"
+    c = httpx.AsyncClient(transport=httpx.ASGITransport(app=make_app(cfg, Router({"node-a": a, "node-b": b}))), base_url="http://gw")
+    for _ in range(3):
+        assert (await sse(c))[0] == 200  # audit: the slot leaked here, so the second call got 429
 
 
 async def t_steam_ticket_check():
@@ -1063,6 +1077,16 @@ async def t_repeated_auth_failures_are_slowed():
     r = await c.post("/v1/chat/completions", json=BODY, headers=H)  # even the right key waits: the address is blocked for a minute
     assert r.status_code == 429 and r.headers["retry-after"] == "60"
     assert (await c.get("/healthz")).status_code == 200  # only the player API is limited
+    cfg["trusted_proxies"] = ["127.0.0.1"]  # the test client connects from 127.0.0.1: behind our proxy, count the real player
+    _, _, _, c = setup(cfg)
+    for _ in range(5):
+        await c.post("/v1/chat/completions", json=BODY, headers={**bad, "X-Forwarded-For": "6.6.6.6"})
+    assert (await c.post("/v1/chat/completions", json=BODY, headers={**H, "X-Forwarded-For": "1.2.3.4"})).status_code == 200  # others still play
+    assert (await c.post("/v1/chat/completions", json=BODY, headers={**H, "X-Forwarded-For": "6.6.6.6"})).status_code == 429
+    r = await c.post("/v1/chat/completions", json=BODY, headers={**H, "X-Forwarded-For": "6.6.6.6, 127.0.0.1"})
+    assert r.status_code == 429  # our own proxy in the chain is skipped
+    r = await c.post("/v1/chat/completions", json=BODY, headers={**H, "X-Forwarded-For": "1.2.3.4, 6.6.6.6"})
+    assert r.status_code == 429  # a made-up entry on the left does not hide the real address
 
 
 async def t_quest_world_ids_must_be_strings():

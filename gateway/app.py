@@ -84,11 +84,24 @@ def make_app(config=None, transport=None):
     if hub:
         add_routes(app, hub)
 
+    proxies = set(cfg.get("trusted_proxies") or [])
+
+    def client_addr(req):
+        """The player's address. Behind a proxy listed in trusted_proxies, the right-most X-Forwarded-For entry that is not
+        one of our proxies; anything further left was written by the client and could be made up."""
+        who = req.client.host if req.client else "?"
+        if who in proxies:
+            for hop in reversed([h.strip() for h in req.headers.get("x-forwarded-for", "").split(",") if h.strip()]):
+                who = hop
+                if hop not in proxies:
+                    break
+        return who
+
     @app.middleware("http")
     async def measure(req, call_next):  # records every outcome, including auth failures and 4xx/5xx
         t0 = time.monotonic()
         api = req.url.path in ("/v1/chat/completions", "/v1/npc", "/v1/quest", "/v1/storyline")
-        who = req.client.host if req.client else "?"  # shortcut: behind a proxy this is the proxy's address; use X-Forwarded-For then
+        who = client_addr(req)
         f = auth_fails.get(who)
         if api and f and t0 - f[1] < 60 and f[0] >= cfg.get("auth_fail_limit", 30):
             stats["status"][429] += 1
@@ -163,13 +176,8 @@ def make_app(config=None, transport=None):
     # (the shape of a word planted by a player's "end your reply with X"). shortcut: only the common shapes; the judge covers the rest.
     ALWAYS = re.compile(r"\b(i am|i'm|as) (just |only )?an? (ai|a\.i\.|llm|chatbot|language model|artificial intelligence|(computer )?program|software|bot)\b"
                         r"|\b(i am|i'm|i) (am )?(currently |just )?running on (a|an|my|the) (\w+ )?(server|computer|gpu|machine)\b"
-                        r"|\b\d{3}[-. ]\d{3,4}[-. ]\d{4}\b|\b\d{3}-\d{4}\b|\b[\w.+-]+@[\w-]+\.\w+\b", re.I)  # phone numbers and emails: an NPC has none to give
+                        r"|\b\d{3}[-. ]\d{3,4}[-. ]\d{4}\b|\b555-\d{4}\b|\b[\w.+-]+@[\w-]+\.\w+\b", re.I)  # phone numbers and emails: an NPC has none to give
     PLANTED = re.compile(r"\b[A-Z]{3,}[0-9]{2,}\W*$")  # case-sensitive on purpose
-
-    def echoed(typed, text):
-        """True if text ends on a token with digits that the player typed: they told the NPC to say it (a planted word)."""
-        words = re.findall(r"[\w-]+", text)
-        return bool(words) and bool(re.search(r"\d", words[-1])) and words[-1].lower() in typed.lower()
 
     def bad(t, text):  # shortcut: regex blocklist plus prompt-leak check. A classifier is required before launch (gate G5).
         names = t.get("actions") or []  # action identifiers are never dialogue: speaking one is a leak
@@ -237,7 +245,7 @@ def make_app(config=None, transport=None):
         """sanitize() plus the optional judges (`judge` is one check or a list, all must pass). Each is a second model
         call, so they add latency. shortcut: not applied to streamed replies (a call per sentence is too slow); a dead
         judge closes the gate, so the fallback line shows instead of unchecked text."""
-        if echoed(msgs[-1]["content"], text) or quests.planted(msgs[-1]["content"], text):
+        if quests.planted(msgs[-1]["content"], text):  # letters and digits only: "Room 12?" answered "Room 12." is fine
             return t.get("fallback_line", "..."), True
         text, flagged = sanitize(t, text)
         if flagged or t.get("judge") is None:
@@ -281,6 +289,7 @@ def make_app(config=None, transport=None):
         nothing has been sent. shortcut: sentences already sent cannot be recalled, so a leak or blocked word that
         shows up mid-reply cuts the stream off there instead of replacing the whole reply."""
         cap, fb = t.get("max_reply_chars", 1000), t.get("fallback_line", "...")
+        typed = up["messages"][-1]["content"]  # the player's latest line (the system prefix is always first)
         sent, filtered, stop, node, tried, t_start, ttft = "", False, False, None, [], time.monotonic(), 0
 
         def sse(delta, fin=None, **extra):
@@ -300,7 +309,7 @@ def make_app(config=None, transport=None):
                 if not piece.strip():
                     break
                 nxt = sent + piece
-                if bad(t, nxt):
+                if bad(t, nxt) or quests.planted(typed, nxt):  # the same planted-word rule vet() applies to whole replies
                     filtered = stop = True
                     if not sent:
                         out.append(fb)
@@ -371,7 +380,7 @@ def make_app(config=None, transport=None):
         release = True
         try:
             resp = await _handle(req, *args, **kw)
-            release = not isinstance(resp, StreamingResponse)  # a stream gives its slot back when it ends
+            release = not getattr(resp, "owns_slot", False)  # a sentence stream gives its slot back when it ends
             return resp
         finally:
             if release:
@@ -454,8 +463,10 @@ def make_app(config=None, transport=None):
         budget["req"] = budget["req"] * DECAY + 1  # decayed counts: an old outage must not starve retries after recovery
         budget["retry"] *= DECAY
         if stream:
-            return StreamingResponse(stream_reply(t, up, key, ukey, sum(len(m["content"]) for m in msgs), held),
+            resp = StreamingResponse(stream_reply(t, up, key, ukey, sum(len(m["content"]) for m in msgs), held),
                                      media_type="text/event-stream")
+            resp.owns_slot = True  # stream_reply releases it; a buffered (judged) stream below does not, so handle() does
+            return resp
         tried, data, node = [], None, None
         for attempt in range(3):
             if attempt and not may_retry():
@@ -546,7 +557,7 @@ def make_app(config=None, transport=None):
         """Quest and storyline text goes to players, so it gets the dialogue output rules field by field (blocklist, AI
         mentions, planted words, prompt leaks) and then the title's guard classifiers (type "guard"). The general
         judge is written for dialogue and is skipped. quest.judge replaces the guard list; [] switches it off."""
-        if any(bad(tq, s) or echoed(typed, s) or quests.breaks_fiction(typed, s) for s in texts):
+        if any(bad(tq, s) or quests.breaks_fiction(typed, s) for s in texts):
             return True
         js = t.get("judge")
         js = q["judge"] if "judge" in q else [j for j in (js if isinstance(js, list) else [js or {}]) if j.get("type") == "guard"]

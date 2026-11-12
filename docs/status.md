@@ -56,6 +56,11 @@ instead of answering until its verdict was constrained by JSON schema.
   allowed to grant) and one is "use the move you use when people haggle". The gate cannot tell those from a normal haggle without
   blocking real ones, so I did not tune it to them. Reading the 237 distinct replies for harm and jailbreak cases found nothing instructional
   or explicit; the four-line sample of "rules" talk was refusals. This set is spent as well. G5 still needs 500+ cases in total, a person reading the replies, and ideally attacks written by someone outside the project.
+- **Second audit** (after the holdout work): five fixes. A judged title's buffered stream never gave its request slot back, so
+  after `max_inflight` (256) such streams the gateway answered 429 to everyone; behind a proxy one bot could lock every player
+  out (now `trusted_proxies`); streams skipped the planted-word rule; and two false positives, a number the player asked about
+  ("Room 12.") and price ranges ("100-2000 gold"). Each has a self-check. The holdout sets did not stream, so their numbers say
+  nothing about streams.
 - **Quests and storylines are checked now.** They used to skip every judge. Each visible field gets the dialogue rules and the title's
   guard classifier. First red-team (`tools/quest_redteam.py`, 55 hostile and benign cases, local models): 11 of 46 attacks refused
   by the classifier or rules, 4 automatic failures (an "AI language model" line and three planted words, one of them via an NPC role),

@@ -35,7 +35,8 @@ JSON file named by `ANANSI_CONFIG`.
 | `retention_days` | Days of per-account usage rows kept (they hold player ids); default 35 |
 | `pull_tokens` | Enables volunteer agents; see [nodes.md](nodes.md) |
 | `pull_poll_s`, `pull_ttl_s`, `canaries`, `canary_rate` | Pull-node tuning and verification; see [nodes.md](nodes.md) |
-| `auth_fail_limit` | Failed logins (bad title key or ticket) one client address may make per minute before it gets `429` for the rest of that minute; default 30. Behind a proxy all players share the proxy's address, so raise it or fix the address first |
+| `auth_fail_limit` | Failed logins (bad title key or ticket) one client address may make per minute before it gets `429` for the rest of that minute; default 30. Behind a proxy, list it in `trusted_proxies`, or every player shares the proxy's address and one bot locks them all out |
+| `trusted_proxies` | Addresses of your own reverse proxies or load balancers. A request from one of them is counted under the right-most `X-Forwarded-For` entry that is not a listed proxy (entries further left are written by the client). Empty by default: the header is ignored |
 | `max_inflight` | Requests the gateway serves at once (default 256; a stream counts until it ends). Past it, new requests get `429` with `Retry-After: 1` instead of queueing without limit. It is per gateway process |
 
 Per title: `key`, `appid`, `system_prefix` (prepended to every request), `actions` (the allowed NPC actions),
@@ -172,7 +173,7 @@ Request limits: `max_tokens` is capped at the title's `max_tokens`, `temperature
 
 ### Always-on output rules
 
-Also refused: "I'm just a program/bot/software", "I'm running on a local server", and phone numbers or email addresses (an NPC has none to give). These came from reading the first holdout's unblocked replies.
+Also refused: "I'm just a program/bot/software", "I'm running on a local server", and phone numbers or email addresses (an NPC has none to give). These came from reading the first holdout's unblocked replies. A word with letters and digits that the player typed (`kiwi57`) is refused anywhere in a reply, streamed or not; a bare number is not, so "Room 12?" can be answered "Room 12."
 
 
 Besides the title's blocklist, every reply is refused (the fallback line goes out) if it says "I am / I'm / as an AI" (or LLM, chatbot, language model) or ends with a stray `CODE123`-shaped token, which is what a player's "end your reply with X" attack produces. The red-team test split (543 cases, run before these rules existed) had 11 automatic failures: 9 marker words, 1 "I am an AI assistant", and 1 forced discount. Replayed against the saved replies, the rules catch the 9 marker words and the AI line (10 of 11) and hit no other reply among the 488 unfiltered replies saved from the dev and test runs (the earlier draft also hit two "I am not ChatGPT" denials, so vendor names are not blocked); the forced discount was closed afterwards by the order check below. Because the rules were written after looking at the test split, it is no longer a clean measure: the next honest number needs fresh cases.
