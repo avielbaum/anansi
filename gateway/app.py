@@ -12,7 +12,7 @@ import re
 import time
 
 import httpx
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -72,6 +72,7 @@ def make_app(config=None, transport=None):
     ticket_cache = {}  # shortcut: per-process caches, move to Redis when running more than one gateway
     stats = {"requests": 0, "retries": 0, "status": Counter(), "filtered": 0, "stream_errors": 0, "judged_out": 0, "judge_errors": 0, "lat_ms": deque(maxlen=1000)}
     budget = {"req": 0.0, "retry": 0.0}
+    auth_fails = {}  # client address -> [failures, window start]
     active = [0]  # requests being served right now (a stream counts until its last chunk)
     app = FastAPI()
     if cfg.get("cors_origins"):  # browser games on another origin; empty by default, so no page may call the gateway
@@ -86,8 +87,20 @@ def make_app(config=None, transport=None):
     @app.middleware("http")
     async def measure(req, call_next):  # records every outcome, including auth failures and 4xx/5xx
         t0 = time.monotonic()
+        api = req.url.path in ("/v1/chat/completions", "/v1/npc", "/v1/quest", "/v1/storyline")
+        who = req.client.host if req.client else "?"  # shortcut: behind a proxy this is the proxy's address; use X-Forwarded-For then
+        f = auth_fails.get(who)
+        if api and f and t0 - f[1] < 60 and f[0] >= cfg.get("auth_fail_limit", 30):
+            stats["status"][429] += 1
+            return JSONResponse({"error": "too many failed logins, wait a minute"}, 429, {"Retry-After": "60"})
         resp = await call_next(req)
-        if req.url.path in ("/v1/chat/completions", "/v1/npc", "/v1/quest", "/v1/storyline"):
+        if api and resp.status_code == 401:  # guessing title keys, or sending junk tickets that cost a Steam call each
+            if len(auth_fails) > 10_000:
+                auth_fails.clear()
+            if not f or t0 - f[1] >= 60:
+                f = auth_fails[who] = [0, t0]
+            f[0] += 1
+        if api:
             stats["status"][resp.status_code] += 1
             # a stream's latency is time to first sentence, recorded by the stream itself
             if resp.status_code == 200 and resp.media_type != "text/event-stream":
@@ -133,8 +146,9 @@ def make_app(config=None, transport=None):
         try:  # UNTESTED against the live Steam API: needs a publisher key. [verify]
             r = await client.get(STEAM_URL, params={"key": os.environ["STEAM_PUBLISHER_KEY"],
                                                     "appid": t["appid"], "ticket": ticket or ""})
+            r.raise_for_status()  # a Steam outage is 503, not a bad ticket
             p = r.json().get("response", {}).get("params", {})
-        except (httpx.HTTPError, ValueError, KeyError):
+        except (httpx.HTTPError, ValueError, KeyError, AttributeError):  # AttributeError: a reply that is JSON but not an object
             raise HTTPException(503, "ticket check unavailable")
         if p.get("result") != "OK" or p.get("vacbanned") or p.get("publisherbanned"):
             raise HTTPException(401, "bad ticket")
@@ -488,21 +502,23 @@ def make_app(config=None, transport=None):
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
                 "usage": data.get("usage"), "anansi": {"node": node.url, "filtered": filtered}}
 
+    def creds(x_anansi_title: str = Header(None), x_anansi_key: str = Header(None),
+              x_player_token: str = Header(None), x_steam_ticket: str = Header(None)):
+        return x_anansi_title, x_anansi_key, x_player_token or x_steam_ticket
+
     @app.post("/v1/chat/completions")
-    async def chat(req: Request, x_anansi_title: str = Header(None), x_anansi_key: str = Header(None),
-                   x_player_token: str = Header(None), x_steam_ticket: str = Header(None)):
-        return await handle(req, x_anansi_title, x_anansi_key, x_player_token or x_steam_ticket)
+    async def chat(req: Request, c=Depends(creds)):
+        return await handle(req, *c)
 
     @app.post("/v1/npc")  # flat shape for game SDKs: Unity's JsonUtility cannot read the nested OpenAI shape
-    async def npc(req: Request, x_anansi_title: str = Header(None), x_anansi_key: str = Header(None),
-                  x_player_token: str = Header(None), x_steam_ticket: str = Header(None)):
+    async def npc(req: Request, c=Depends(creds)):
         try:
             d = json.loads(await req.body())
             want = bool(d.get("structured"))
             raw = json.dumps({"messages": d["messages"], "anansi": {"npc_id": d.get("npc_id") or None, "structured": want}})
         except Exception:
             raise HTTPException(400, "bad request body")
-        r = await handle(req, x_anansi_title, x_anansi_key, x_player_token or x_steam_ticket, raw.encode())
+        r = await handle(req, *c, raw.encode())
         if isinstance(r, JSONResponse):  # daily budget used: pass the 429 and its Retry-After through
             return r
         text, out = r["choices"][0]["message"]["content"], {"action": "none"}
@@ -557,14 +573,12 @@ def make_app(config=None, transport=None):
         raise HTTPException(502, f"could not generate a valid {kind}")
 
     @app.post("/v1/quest")
-    async def quest(req: Request, x_anansi_title: str = Header(None), x_anansi_key: str = Header(None),
-                    x_player_token: str = Header(None), x_steam_ticket: str = Header(None)):
-        return await generate("quest", req, x_anansi_title, x_anansi_key, x_player_token or x_steam_ticket)
+    async def quest(req: Request, c=Depends(creds)):
+        return await generate("quest", req, *c)
 
     @app.post("/v1/storyline")
-    async def storyline(req: Request, x_anansi_title: str = Header(None), x_anansi_key: str = Header(None),
-                        x_player_token: str = Header(None), x_steam_ticket: str = Header(None)):
-        return await generate("storyline", req, x_anansi_title, x_anansi_key, x_player_token or x_steam_ticket)
+    async def storyline(req: Request, c=Depends(creds)):
+        return await generate("storyline", req, *c)
 
     @app.get("/healthz")
     async def health():

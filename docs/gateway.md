@@ -35,6 +35,7 @@ JSON file named by `ANANSI_CONFIG`.
 | `retention_days` | Days of per-account usage rows kept (they hold player ids); default 35 |
 | `pull_tokens` | Enables volunteer agents; see [nodes.md](nodes.md) |
 | `pull_poll_s`, `pull_ttl_s`, `canaries`, `canary_rate` | Pull-node tuning and verification; see [nodes.md](nodes.md) |
+| `auth_fail_limit` | Failed logins (bad title key or ticket) one client address may make per minute before it gets `429` for the rest of that minute; default 30. Behind a proxy all players share the proxy's address, so raise it or fix the address first |
 | `max_inflight` | Requests the gateway serves at once (default 256; a stream counts until it ends). Past it, new requests get `429` with `Retry-After: 1` instead of queueing without limit. It is per gateway process |
 
 Per title: `key`, `appid`, `system_prefix` (prepended to every request), `actions` (the allowed NPC actions),

@@ -41,7 +41,7 @@ def parse_world(w):
             raise ValueError(f"{kind}: a list of at most {MAX_PER_KIND}")
         d = {}
         for e in entries:
-            if not isinstance(e, dict) or not _ID.match(str(e.get("id", ""))):
+            if not isinstance(e, dict) or not isinstance(e.get("id"), str) or not _ID.match(e["id"]):  # a number would pass the pattern but not match the schema's string ids
                 raise ValueError(f"{kind}: every entry needs an id of letters, digits, _ . - (max 40)")
             name, role = clean(e.get("name") or e["id"], 60), clean(e.get("role") or "", 60)
             d[e["id"]] = f"{name} ({role})" if role else name

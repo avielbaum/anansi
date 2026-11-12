@@ -903,6 +903,74 @@ async def t_gateway_caps_requests_in_flight():
     assert (await c.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 200
 
 
+async def t_steam_ticket_check():
+    import datetime
+    from fastapi import FastAPI, HTTPException
+    steam = FastAPI()
+    steam.state.reply, steam.state.calls, steam.state.q = {"response": {"params": {"result": "OK", "steamid": "765"}}}, 0, None
+
+    @steam.get("/ISteamUserAuth/AuthenticateUserTicket/v1/")
+    async def check(key: str, appid: str, ticket: str):
+        steam.state.calls += 1
+        steam.state.q = (key, appid, ticket)
+        r = steam.state.reply
+        if r is None:
+            raise HTTPException(500, "steam is down")
+        return r
+    cfg = copy.deepcopy(CFG)
+    cfg["auth"] = {"mode": "steam"}
+    old = os.environ.get("STEAM_PUBLISHER_KEY")
+    os.environ["STEAM_PUBLISHER_KEY"] = "pubkey"
+    try:
+        a, b = make_node("a"), make_node("b")
+        gw = make_app(cfg, Router({"node-a": a, "node-b": b, "partner.steam-api.com": steam}))
+    finally:
+        os.environ.pop("STEAM_PUBLISHER_KEY")
+        if old is not None:
+            os.environ["STEAM_PUBLISHER_KEY"] = old
+    os.environ["STEAM_PUBLISHER_KEY"] = "pubkey"  # read again on every ticket check
+    try:
+        c = httpx.AsyncClient(transport=httpx.ASGITransport(app=gw), base_url="http://gw")
+        h = {**H, "X-Player-Token": "ticket1"}
+        assert (await c.post("/v1/chat/completions", json=BODY, headers=h)).status_code == 200
+        assert steam.state.q == ("pubkey", "480", "ticket1")  # our key and the title's appid went to Steam
+        assert gw.state.store.usage("demo", "765", datetime.datetime.now(datetime.timezone.utc).date().isoformat()) > 0  # billed to the steam id
+        assert (await c.post("/v1/chat/completions", json=BODY, headers=h)).status_code == 200 and steam.state.calls == 1  # cached for a while
+        h2 = {**H, "X-Player-Token": "ticket2"}
+        for reply, code in (({"response": {"params": {"result": "Invalid Ticket"}}}, 401),
+                            ({"response": {"params": {"result": "OK", "steamid": "765", "vacbanned": True}}}, 401),
+                            ({"response": {"params": {"result": "OK"}}}, 401),  # OK but no steam id
+                            ({"response": {}}, 401), ({"unexpected": 1}, 401), ([1], 503), (None, 503)):
+            steam.state.reply = reply
+            assert (await c.post("/v1/chat/completions", json=BODY, headers=h2)).status_code == code, reply
+    finally:
+        os.environ.pop("STEAM_PUBLISHER_KEY")
+        if old is not None:
+            os.environ["STEAM_PUBLISHER_KEY"] = old
+
+
+async def t_repeated_auth_failures_are_slowed():
+    cfg = copy.deepcopy(CFG)
+    cfg["auth_fail_limit"] = 5
+    _, _, _, c = setup(cfg)
+    bad = {**H, "X-Anansi-Key": "guess"}
+    codes = [(await c.post("/v1/chat/completions", json=BODY, headers=bad)).status_code for _ in range(5)]
+    assert codes == [401] * 5
+    r = await c.post("/v1/chat/completions", json=BODY, headers=H)  # even the right key waits: the address is blocked for a minute
+    assert r.status_code == 429 and r.headers["retry-after"] == "60"
+    assert (await c.get("/healthz")).status_code == 200  # only the player API is limited
+
+
+async def t_quest_world_ids_must_be_strings():
+    cfg = copy.deepcopy(CFG)
+    cfg["titles"]["demo"]["quest"] = {"lore": "A mining town."}
+    _, _, _, c = setup(cfg)
+    for bad in (5, ["x"], None, {"a": 1}):
+        w = {"npcs": [{"id": bad, "name": "Brom"}], "locations": [], "items": []}
+        r = await c.post("/v1/quest", json={"world": w}, headers=H)
+        assert r.status_code == 400, (bad, r.status_code)
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("t_"):
