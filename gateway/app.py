@@ -237,7 +237,7 @@ def make_app(config=None, transport=None):
         """sanitize() plus the optional judges (`judge` is one check or a list, all must pass). Each is a second model
         call, so they add latency. shortcut: not applied to streamed replies (a call per sentence is too slow); a dead
         judge closes the gate, so the fallback line shows instead of unchecked text."""
-        if echoed(msgs[-1]["content"], text):
+        if echoed(msgs[-1]["content"], text) or quests.planted(msgs[-1]["content"], text):
             return t.get("fallback_line", "..."), True
         text, flagged = sanitize(t, text)
         if flagged or t.get("judge") is None:

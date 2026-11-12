@@ -32,8 +32,11 @@ _AI =re.compile(r"\b(AI|A\.I\.|LLM)\b|(?i:\b(chatbot|language model|artificial i
 def breaks_fiction(typed, text):
     """True if quest text says it comes from an AI, or repeats a word with digits that the player typed anywhere in it
     (a planted word such as kiwi-42). Fantasy quests have no use for either. typed = the player-controlled text."""
-    if _AI.search(text):
-        return True
+    return bool(_AI.search(text)) or planted(typed, text)
+
+
+def planted(typed, text):
+    """True if text repeats, anywhere, a word with letters and digits (at least 4 characters) that the player typed: kiwi-42."""
     low = typed.lower()
     return any(len(w) >= 4 and re.search(r"[A-Za-z]", w) and w.lower() in low for w in re.findall(r"[\w-]*\d[\w-]*", text))
 

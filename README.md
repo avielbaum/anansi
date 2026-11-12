@@ -93,7 +93,7 @@ Measured on one Windows PC with no GPU, running Qwen3-1.7B and 4B through Ollama
 | Layered output safety: overlap guard, Llama Guard classifier, judge model | working; on 23 self-written pairs the combination caught all violations with no false positives, about 7.5 s extra on CPU |
 | Python and C# SDKs with sentence streaming and local fallback | working (C# as plain .NET; Unity untested) |
 | JavaScript / TypeScript SDK (browsers, Node, Electron, Deno, Bun) | working: 11 checks against a live gateway in CI; for browsers on another origin list them in `cors_origins` |
-| Red-team set for gate G5 (759 prompts, dev/test split, runner) | built; untuned holdout run (420 fresh cases): 32 automatic failures, two causes fixed afterwards; **G5 not passed** |
+| Red-team set for gate G5 (759 prompts, dev/test split, runner) | built; untuned holdout run (420 fresh cases): 32 automatic failures; a second untuned set: 6 (5 arguable); **G5 not passed** |
 | Godot 4 addon (GDScript) | working: 10 checks in the real Godot 4.3 engine, headless, against a live gateway in CI (not tried in an exported game or on a console) |
 | Unreal Engine 5 plugin (C++, Blueprint-callable) | **written, never compiled or run: no Unreal install was available** |
 | Linux | gateway and C# SDK tested in CI on Ubuntu; Docker, vLLM and systemd files written but never run |
