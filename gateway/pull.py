@@ -55,7 +55,7 @@ class PullHub(httpx.AsyncBaseTransport):
             raise HTTPException(401, "bad node token")
         nid = secrets.token_hex(6)
         node = Node(f"http://pull-{nid}.node", cfg["models"], cfg.get("region", "volunteer"),
-                    cfg.get("upstream_model"), cfg.get("extra"))
+                    cfg.get("upstream_model"), cfg.get("extra"), volunteer=True)
         # not in the scheduler yet: it joins after passing its entry probe
         self.nodes[nid] = {"node": node, "token": token, "agent": agent, "q": asyncio.Queue(),
                            "seen": time.monotonic(), "live": False, "strikes": 0}

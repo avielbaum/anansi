@@ -13,7 +13,7 @@ LOAD_FACTOR = 1.25     # bounded-load cap over the mean in-flight
 
 
 class Node:
-    def __init__(self, url, models, region="default", upstream_model=None, extra=None, headers=None, overflow=False, max_inflight=20):
+    def __init__(self, url, models, region="default", upstream_model=None, extra=None, headers=None, overflow=False, max_inflight=20, volunteer=False):
         self.url, self.models, self.region = url.rstrip("/"), set(models), region
         # models are our logical names; upstream_model is what this server calls it. extra is trusted
         # per-node config merged into every request (for example to switch off a model's thinking mode).
@@ -21,6 +21,7 @@ class Node:
         # overflow nodes are a paid public API (for example OpenRouter): used only when the mesh is down or busy, and only
         # for titles that opt in. headers carry its API key; max_inflight caps the spend rate.
         self.headers, self.overflow, self.max_inflight = headers or {}, overflow, max_inflight
+        self.volunteer = volunteer  # a pull node run by someone else: it sees every prompt it is sent
         self.inflight = 0
         self.ewma_ms = 0.0
         self.consecutive = 0
@@ -52,9 +53,10 @@ class Scheduler:
         self.nodes = [Node(n["url"], n["models"], n.get("region", "default"), n.get("upstream_model"), n.get("extra"),
                            _auth(n), bool(n.get("overflow")), n.get("max_inflight", 20)) for n in nodes]
 
-    def pick(self, model, key=None, exclude=(), overflow=False):
+    def pick(self, model, key=None, exclude=(), overflow=False, volunteers=False):
         now = time.monotonic()
-        cands = [n for n in self.nodes if model in n.models and n not in exclude and not n.overflow]
+        cands = [n for n in self.nodes if model in n.models and n not in exclude and not n.overflow
+                 and (volunteers or not n.volunteer)]
         healthy = [n for n in cands if n.ejected_until <= now]
         if overflow and (not healthy or min(n.inflight for n in healthy) >= self.spill_at):
             spill = [n for n in self.nodes if n.overflow and model in n.models and n not in exclude

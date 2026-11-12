@@ -19,6 +19,7 @@
       ],
       "fallback_line": "Hm, let us talk of something else.",
       "max_tokens": 120,
+      "allow_volunteers": true,
       "max_prompt_chars": 8000,
       "max_reply_chars": 600,
       "daily_token_budget": 50000,

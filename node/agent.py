@@ -56,8 +56,9 @@ async def worker(gw, local, token, agent, log=print, model=None):
                 except httpx.HTTPError:
                     res["status"] = 502
             await gw.post("/node/result", json={"node_id": nid, "job": job["job"], **res}, headers=H)
-        except httpx.HTTPError as e:
-            log(f"gateway unreachable ({e.__class__.__name__}), retrying in {backoff}s")
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:  # also a reply that is not the JSON we expect
+            nid = None if not isinstance(e, httpx.HTTPError) else nid
+            log(f"gateway unreachable or sent junk ({e.__class__.__name__}), retrying in {backoff}s")
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 30)
 

@@ -33,6 +33,8 @@ On the volunteer machine:
 python node/agent.py --gateway https://gateway.example --token change-me-node-token --local http://127.0.0.1:11434 --slots 2
 ```
 
+**A volunteer sees every prompt it is sent, including the NPC's secret system prompt and the player's text, and nothing here stops it logging them.** So a title only uses volunteers if you set `"allow_volunteers": true` on it; without that flag it is served by your own nodes (and the paid overflow, if allowed) and the volunteers sit idle. Safety-judge calls, which carry the secret prompt, never go to volunteers.
+
 To the scheduler a registered worker is an ordinary node, so routing, failover, ejection and the retry budget apply.
 A worker that stops polling is forgotten after `pull_ttl_s`. A streamed request is answered correctly but relayed
 whole after the node finishes.

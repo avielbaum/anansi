@@ -72,6 +72,7 @@ def make_app(config=None, transport=None):
     ticket_cache = {}  # shortcut: per-process caches, move to Redis when running more than one gateway
     stats = {"requests": 0, "retries": 0, "status": Counter(), "filtered": 0, "stream_errors": 0, "judged_out": 0, "judge_errors": 0, "lat_ms": deque(maxlen=1000)}
     budget = {"req": 0.0, "retry": 0.0}
+    active = [0]  # requests being served right now (a stream counts until its last chunk)
     app = FastAPI()
     if cfg.get("cors_origins"):  # browser games on another origin; empty by default, so no page may call the gateway
         app.add_middleware(CORSMiddleware, allow_origins=cfg["cors_origins"], allow_methods=["POST", "GET"],
@@ -247,6 +248,7 @@ def make_app(config=None, transport=None):
             async for chunk in inner:
                 yield chunk
         finally:
+            active[0] -= 1
             await inner.aclose()
             if not acct["done"]:  # cancelled mid-stream: charge what was actually sent
                 store.add_usage(*ukey, (prompt_chars + acct["chars"]) // 4 - held)
@@ -291,7 +293,8 @@ def make_app(config=None, transport=None):
         for attempt in range(3):
             if attempt and (sent or filtered or not may_retry()):
                 break
-            node = sched.pick(up["model"], key, exclude=tried, overflow=t.get("allow_overflow", False))
+            node = sched.pick(up["model"], key, exclude=tried, overflow=t.get("allow_overflow", False),
+                              volunteers=t.get("allow_volunteers", False))
             if node is None:
                 break
             tried.append(node)
@@ -337,7 +340,21 @@ def make_app(config=None, transport=None):
             yield 'data: {"error": "no node available"}\n\n'
         yield "data: [DONE]\n\n"
 
-    async def handle(req, x_anansi_title, x_anansi_key, token, raw=None, gen=None):
+    async def handle(req, *args, **kw):
+        """Global cap on requests in flight: past it the gateway answers 429 at once instead of queueing without limit."""
+        if active[0] >= cfg.get("max_inflight", 256):
+            return JSONResponse({"error": "gateway busy, retry shortly"}, 429, {"Retry-After": "1"})
+        active[0] += 1
+        release = True
+        try:
+            resp = await _handle(req, *args, **kw)
+            release = not isinstance(resp, StreamingResponse)  # a stream gives its slot back when it ends
+            return resp
+        finally:
+            if release:
+                active[0] -= 1
+
+    async def _handle(req, x_anansi_title, x_anansi_key, token, raw=None, gen=None):
         """gen (set only by the quest and storyline routes, never from a request) swaps in a designer prompt, a larger
         token cap and a JSON schema for the reply; the judge is skipped because it is written for NPC dialogue."""
         if hub:
@@ -416,7 +433,8 @@ def make_app(config=None, transport=None):
         for attempt in range(3):
             if attempt and not may_retry():
                 break
-            node = sched.pick(up["model"], key, exclude=tried, overflow=t.get("allow_overflow", False))
+            node = sched.pick(up["model"], key, exclude=tried, overflow=t.get("allow_overflow", False),
+                              volunteers=t.get("allow_volunteers", False))
             if node is None:
                 break
             tried.append(node)

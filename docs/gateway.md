@@ -35,10 +35,12 @@ JSON file named by `ANANSI_CONFIG`.
 | `retention_days` | Days of per-account usage rows kept (they hold player ids); default 35 |
 | `pull_tokens` | Enables volunteer agents; see [nodes.md](nodes.md) |
 | `pull_poll_s`, `pull_ttl_s`, `canaries`, `canary_rate` | Pull-node tuning and verification; see [nodes.md](nodes.md) |
+| `max_inflight` | Requests the gateway serves at once (default 256; a stream counts until it ends). Past it, new requests get `429` with `Retry-After: 1` instead of queueing without limit. It is per gateway process |
 
 Per title: `key`, `appid`, `system_prefix` (prepended to every request), `actions` (the allowed NPC actions),
 `blocklist` (regexes), `fallback_line`, `max_tokens`, `max_prompt_chars`, `max_reply_chars`, `daily_token_budget`
-(per player, per UTC day; exceeded gives `429` with `Retry-After`), `leak_ngram` (default 5), `judge`.
+(per player, per UTC day; exceeded gives `429` with `Retry-After`), `leak_ngram` (default 5), `judge`,
+`allow_volunteers` (default `false`: volunteer pull nodes never serve this title, because they see every prompt, including the secret system prompt; safety-judge calls never use them either), `allow_overflow`.
 
 Qwen3 thinks by default and can return an empty reply. Turn thinking off in the node's `extra` (Ollama:
 `{"reasoning_effort": "none"}`; vLLM: `{"chat_template_kwargs": {"enable_thinking": false}}`, unverified). An empty

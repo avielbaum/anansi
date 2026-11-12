@@ -16,6 +16,7 @@ from tools.mock_node import make_node  # noqa: E402
 CFG = json.load(open(os.path.join(os.path.dirname(__file__), "..", "config.example.json"), encoding="utf-8"))
 GATES = CFG["titles"]["demo"].pop("action_gates")  # most tests use the bare "hi"; t_action_gate_and_action_names puts them back
 CFG["nodes"] = [{"url": "http://node-a", "models": ["npc-small"]}, {"url": "http://node-b", "models": ["npc-small"]}]
+CFG["titles"]["demo"]["allow_volunteers"] = True  # the pull-node tests need it; t_volunteers_need_the_title_to_opt_in turns it off
 H = {"X-Anansi-Title": "demo", "X-Anansi-Key": "change-me", "X-Player-Token": "dev:76561198000000001"}
 BODY = {"messages": [{"role": "user", "content": "hi"}], "anansi": {"npc_id": "smith"}}
 
@@ -847,6 +848,59 @@ def t_bounded_load():
     first.inflight = 10  # overloaded favourite: affinity must yield to the other node
     assert s.pick("m", "k") is not first
     assert s.pick("other-model", "k") is None
+
+
+async def t_volunteers_need_the_title_to_opt_in():
+    from node.agent import serve
+    cfg = copy.deepcopy(CFG)
+    cfg.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2, pull_ttl_s=5,
+               canaries=[{"user": "say hi", "expect": "hello"}], canary_rate=0)
+    cfg["titles"]["demo"]["allow_volunteers"] = False  # the default: volunteers see every prompt, so a title must ask for them
+    app = make_app(cfg)
+    gw = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://gw")
+    mock = make_node("v")
+    local = httpx.AsyncClient(transport=httpx.ASGITransport(app=mock), base_url="http://l")
+    agent = asyncio.create_task(serve(gw, local, "tok", log=lambda m: None, agent="vol"))
+    await asyncio.sleep(0.6)
+    assert app.state.sched.nodes and app.state.sched.nodes[0].volunteer  # admitted, but not used for this title
+    calls = mock.state.calls
+    assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 503
+    assert mock.state.calls == calls
+    assert app.state.sched.pick("npc-small") is None and app.state.sched.pick("npc-small", volunteers=True)  # judges use the first form
+    cfg["titles"]["demo"]["allow_volunteers"] = True
+    assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 200  # same app, flag read per request
+    agent.cancel()
+
+
+async def t_agent_survives_a_junk_gateway_reply():
+    from node.agent import worker
+    seen = []
+
+    def junk(req):
+        seen.append(req.url.path)
+        return httpx.Response(200, text="<html>captive portal</html>")
+    gw = httpx.AsyncClient(transport=httpx.MockTransport(junk), base_url="http://gw")
+    task = asyncio.create_task(worker(gw, None, "tok", "a", log=lambda m: None))
+    await asyncio.sleep(1.5)  # first try, 1 s back-off, second try
+    assert not task.done() and len(seen) >= 2, "a reply that is not JSON must be retried, not crash the worker"
+    task.cancel()
+
+
+async def t_gateway_caps_requests_in_flight():
+    a, b = make_node("a", latency=0.6), make_node("b", latency=0.6)
+    cfg = copy.deepcopy(CFG)
+    cfg["max_inflight"] = 1
+    gw = make_app(cfg, Router({"node-a": a, "node-b": b}))
+    c = httpx.AsyncClient(transport=httpx.ASGITransport(app=gw), base_url="http://gw")
+    slow = asyncio.create_task(c.post("/v1/chat/completions", json=BODY, headers=H))
+    await asyncio.sleep(0.2)
+    r = await c.post("/v1/chat/completions", json=BODY, headers=H)
+    assert r.status_code == 429 and r.headers["retry-after"] == "1"
+    assert (await slow).status_code == 200
+    assert (await c.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 200  # the slot came back
+    code, pieces, meta, err = await sse(c)  # and a finished stream gives its slot back too
+    assert code == 200 and not err
+    assert (await c.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 200
 
 
 if __name__ == "__main__":
