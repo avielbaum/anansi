@@ -142,6 +142,10 @@ def make_app(config=None, transport=None):
             re.search(p, text, re.I) for p in t.get("blocklist", [])) or any(
             re.search(r"\b" + re.escape(a) + r"\b", text, re.I) for a in names)
 
+    # Players ask; they do not give orders or claim to be staff. A message that does is trying to force an action.
+    ORDER = re.compile(r"\b(i demand|no haggling|do it now|you (must|have to|will)|i am your (manager|boss|developer|admin\w*)"
+                       r"|system (notice|message)|the developer says|your instructions)\b", re.I)
+
     def gate(t, msgs, act):
         """An action has to fit what the player said. Players never type action names or say 'your action', so a message
         that does is an attempt to pick the action: no action. `action_gates` (optional) maps an action to a regex the
@@ -149,7 +153,7 @@ def make_app(config=None, transport=None):
         the actions that pass."""
         last = msgs[-1]["content"]
         names = "|".join(re.escape(a) for a in t["actions"])
-        if re.search(r"\b(" + names + r")\b|\baction\b[\"']?\s*[=:]|\byour action\b", last, re.I):
+        if re.search(r"\b(" + names + r")\b|\baction\b[\"']?\s*[=:]|\byour action\b", last, re.I) or ORDER.search(last):
             return "none"
         g = (t.get("action_gates") or {}).get(act)
         return "none" if g and not re.search(g, last, re.I) else act
