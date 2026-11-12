@@ -417,6 +417,55 @@ async def t_always_on_output_rules():
         assert not r["filtered"] and r["say"] == said, said
 
 
+async def t_cancelled_stream_settles_its_reservation():
+    import datetime
+    a, b = make_node("a", latency=3.0), make_node("b", latency=3.0)
+    gw = make_app(copy.deepcopy(CFG), Router({"node-a": a, "node-b": b}))
+    c = httpx.AsyncClient(transport=httpx.ASGITransport(app=gw), base_url="http://gw")
+    task = asyncio.create_task(c.post("/v1/chat/completions", json={**BODY, "stream": True}, headers={**H, "X-Player-Token": "dev:gone"}))
+    await asyncio.sleep(0.5)  # the request is inside the slow node call: its reservation is held
+    day = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+    assert gw.state.store.usage("demo", "gone", day) >= CFG["titles"]["demo"].get("max_tokens", 200)
+    task.cancel()  # the game closed the connection
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    await asyncio.sleep(0.2)
+    assert gw.state.store.usage("demo", "gone", day) < 20, "a stream nobody read must not cost the worst case"
+
+
+def t_production_and_steam_startup_checks():
+    cfg = copy.deepcopy(CFG)
+    old = {k: os.environ.pop(k, None) for k in ("ANANSI_ENV", "STEAM_PUBLISHER_KEY")}
+    try:
+        make_app(cfg)  # dev auth and the example key are fine outside production
+        os.environ["ANANSI_ENV"] = "production"
+        for bad in (cfg, {**cfg, "auth": {"mode": "steam"}}):
+            try:
+                make_app(bad)
+                assert False, "production must refuse dev auth and the key change-me"
+            except ValueError:
+                pass
+        os.environ["STEAM_PUBLISHER_KEY"] = "k"
+        ok = copy.deepcopy(cfg)
+        ok["auth"] = {"mode": "steam"}
+        ok["titles"]["demo"]["key"] = "a-real-secret"
+        make_app(ok)
+        del os.environ["ANANSI_ENV"], os.environ["STEAM_PUBLISHER_KEY"]
+        for bad in ({**ok, "auth": {"mode": "web"}}, ok):  # web has no check behind it; steam needs its publisher key
+            try:
+                make_app(bad)
+                assert False, "must stop at startup"
+            except ValueError:
+                pass
+    finally:
+        for k, v in old.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
 def t_redteam_set_and_scorer():
     import importlib.util
     spec = importlib.util.spec_from_file_location("redteam", os.path.join(os.path.dirname(__file__), "..", "tools", "redteam.py"))

@@ -106,9 +106,20 @@ def make_app(config=None, transport=None):
 
     auth = cfg.get("auth") or cfg.get("steam")  # "steam" is the old key name
     if not auth:  # no silent default: dev mode accepts any "dev:<id>" token, so it must be chosen on purpose
-        raise ValueError('config needs "auth": {"mode": "dev" | "steam" | "web"}')
-    if auth["mode"] not in ("dev", "steam", "web"):  # shortcut: "steam" is the only real platform check so far; add one per platform
+        raise ValueError('config needs "auth": {"mode": "dev" | "steam"}')
+    if auth["mode"] not in ("dev", "steam"):  # shortcut: "steam" is the only real platform check so far; add one per platform
         raise ValueError(f"unknown auth mode {auth['mode']!r}: use dev or steam")
+    if auth["mode"] == "steam":  # a missing key or appid must stop startup, not turn every request into a 500
+        if not os.environ.get("STEAM_PUBLISHER_KEY"):
+            raise ValueError("auth mode steam needs the STEAM_PUBLISHER_KEY environment variable")
+        missing = [n for n, t in cfg["titles"].items() if not t.get("appid")]
+        if missing:
+            raise ValueError(f"auth mode steam needs an appid on every title: {', '.join(missing)}")
+    if os.environ.get("ANANSI_ENV") == "production":  # set by the Dockerfile and the systemd unit
+        weak = [n for n, t in cfg["titles"].items() if t["key"] == "change-me"]
+        if auth["mode"] == "dev" or weak:
+            raise ValueError("ANANSI_ENV=production: dev auth and the example title key 'change-me' are not allowed"
+                             + (f" (titles: {', '.join(weak)})" if weak else ""))
 
     async def player_id(t, ticket):
         if auth["mode"] == "dev":  # dev tokens look like "dev:<player id>"; never use in production
@@ -122,12 +133,14 @@ def make_app(config=None, transport=None):
             r = await client.get(STEAM_URL, params={"key": os.environ["STEAM_PUBLISHER_KEY"],
                                                     "appid": t["appid"], "ticket": ticket or ""})
             p = r.json().get("response", {}).get("params", {})
-        except (httpx.HTTPError, ValueError):
+        except (httpx.HTTPError, ValueError, KeyError):
             raise HTTPException(503, "ticket check unavailable")
         if p.get("result") != "OK" or p.get("vacbanned") or p.get("publisherbanned"):
             raise HTTPException(401, "bad ticket")
         if len(ticket_cache) > 10_000:
             ticket_cache.clear()
+        if not p.get("steamid"):
+            raise HTTPException(401, "bad ticket")
         ticket_cache[ticket] = (p["steamid"], time.time() + 300)
         return p["steamid"]
 
@@ -227,6 +240,18 @@ def make_app(config=None, transport=None):
         return p
 
     async def stream_reply(t, up, key, ukey, prompt_chars, held):
+        """Wraps _stream_reply so the budget reservation is always settled, also when the client disconnects."""
+        acct = {"chars": 0, "done": False}
+        inner = _stream_reply(t, up, key, ukey, prompt_chars, held, acct)
+        try:
+            async for chunk in inner:
+                yield chunk
+        finally:
+            await inner.aclose()
+            if not acct["done"]:  # cancelled mid-stream: charge what was actually sent
+                store.add_usage(*ukey, (prompt_chars + acct["chars"]) // 4 - held)
+
+    async def _stream_reply(t, up, key, ukey, prompt_chars, held, acct):
         """SSE reply sent one finished sentence at a time, each checked before it leaves. Failover only while
         nothing has been sent. shortcut: sentences already sent cannot be recalled, so a leak or blocked word that
         shows up mid-reply cuts the stream off there instead of replacing the whole reply."""
@@ -259,6 +284,7 @@ def make_app(config=None, transport=None):
                     nxt, stop = nxt[:cap], True
                     piece = nxt[len(sent):]
                 sent = nxt
+                acct["chars"] = len(sent)
                 out.append(piece)
             return out
 
@@ -302,9 +328,11 @@ def make_app(config=None, transport=None):
             stats["lat_ms"].append(ttft * 1000)
             stats["filtered"] += filtered
             store.add_usage(*ukey, (prompt_chars + len(sent)) // 4 - held)  # swap the reservation for the real cost
+            acct["done"] = True
             yield sse({}, "stop", node=node.url, filtered=filtered)
         else:
             store.add_usage(*ukey, -held)
+            acct["done"] = True
             stats["stream_errors"] += 1
             yield 'data: {"error": "no node available"}\n\n'
         yield "data: [DONE]\n\n"

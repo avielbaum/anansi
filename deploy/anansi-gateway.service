@@ -9,6 +9,7 @@ After=network-online.target
 User=anansi
 WorkingDirectory=/opt/anansi
 Environment=ANANSI_CONFIG=/etc/anansi/config.json
+Environment=ANANSI_ENV=production
 EnvironmentFile=/etc/anansi/env
 ExecStart=/opt/anansi/.venv/bin/python -m uvicorn gateway.app:make_app --factory --host 127.0.0.1 --port 8080
 Restart=on-failure

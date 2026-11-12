@@ -13,10 +13,12 @@ services:
   gateway:
     build: {context: .., dockerfile: deploy/Dockerfile}
     ports: ["8080:8080"]
-    volumes: ["../config.vllm.json:/etc/anansi/config.json:ro"]
+    volumes: ["../config.vllm.json:/etc/anansi/config.json:ro", "anansi-data:/data"]
     environment:
+      ANANSI_ENV: ${ANANSI_ENV:-production}   # production refuses dev auth and the key 'change-me'; set ANANSI_ENV=dev for a local try-out
       ANANSI_ADMIN_TOKEN: ${ANANSI_ADMIN_TOKEN:-}
       STEAM_PUBLISHER_KEY: ${STEAM_PUBLISHER_KEY:-}
     depends_on: [vllm]
 volumes:
   hf-cache:
+  anansi-data:
