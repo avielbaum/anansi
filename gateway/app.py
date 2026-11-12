@@ -408,10 +408,13 @@ def make_app(config=None, transport=None):
 
         day = datetime.datetime.now(datetime.timezone.utc)
         ukey = (x_anansi_title, sid, day.date().isoformat())
-        if store.usage(*ukey) >= t.get("daily_token_budget", 50_000):
+        limit = t.get("daily_token_budget", 50_000)
+
+        def over_budget():
             reset = (day + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-            return JSONResponse({"error": "daily token budget used"}, 429,
-                                {"Retry-After": str(int((reset - day).total_seconds()))})
+            return JSONResponse({"error": "daily token budget used"}, 429, {"Retry-After": str(int((reset - day).total_seconds()))})
+        if store.usage(*ukey) >= limit:
+            return over_budget()
 
         meta = body.get("anansi") if isinstance(body.get("anansi"), dict) else {}
         up = {k: body[k] for k in FORWARD if k in body}
@@ -445,7 +448,8 @@ def make_app(config=None, transport=None):
         npc = meta.get("npc_id")
         key = f"{x_anansi_title}:{npc}" if npc else None
         held = sum(len(m["content"]) for m in msgs) // 4 + up["max_tokens"]  # reserve the worst case now so parallel requests cannot all pass the check
-        store.add_usage(*ukey, held)
+        if not store.reserve(*ukey, held, limit):  # atomic: another process may have used the last tokens since the check above
+            return over_budget()
         stats["requests"] += 1
         budget["req"] = budget["req"] * DECAY + 1  # decayed counts: an old outage must not starve retries after recovery
         budget["retry"] *= DECAY

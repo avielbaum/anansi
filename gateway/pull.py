@@ -48,7 +48,7 @@ class PullHub(httpx.AsyncBaseTransport):
     def register(self, token, agent):
         if not agent or len(agent) > 64:
             raise HTTPException(400, "X-Node-Agent id required")
-        if agent in self.banned:
+        if agent in self.banned or (self.store and agent in self.store.bans()):  # the file knows bans made by other processes
             raise HTTPException(403, "agent banned")
         cfg = next((c for t, c in self.tokens.items() if hmac.compare_digest(t.encode(), (token or "").encode())), None)
         if cfg is None:

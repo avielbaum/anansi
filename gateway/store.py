@@ -3,8 +3,8 @@ One file, standard library only. Set `db_path` in the gateway config; unset mean
 persists (fine for tests and demos).
 The ledger records raw work, neutrally: jobs and tokens served by an agent per UTC day, and how many probes it passed
 or failed. What a credit is worth or can be redeemed for is a separate, undecided question.
-shortcut: synchronous writes on the request path (each is one small local transaction), one process only. Use a real
-database when running more than one gateway. Usage rows hold player ids; purge() drops old days (retention_days)."""
+shortcut: synchronous writes on the request path (each is one small local transaction). Several gateway processes on ONE
+machine may share the file (WAL, atomic reserve, bans read from the file); gateways on several machines need a network database. Usage rows hold player ids; purge() drops old days (retention_days)."""
 import datetime
 import sqlite3
 
@@ -32,6 +32,15 @@ class Store:
         row = self.db.execute("SELECT tokens FROM usage WHERE title=? AND player=? AND day=?",
                               (title, player, str(day))).fetchone()
         return row[0] if row else 0
+
+    def reserve(self, title, player, day, tokens, limit):
+        """Add tokens to a player's day unless it is already at the limit. One statement, so several gateway processes sharing
+        the file cannot both pass the check. False means over budget and nothing was added."""
+        with self.db:
+            cur = self.db.execute("INSERT INTO usage VALUES(?,?,?,?) ON CONFLICT(title, player, day) "
+                                  "DO UPDATE SET tokens = tokens + excluded.tokens WHERE tokens < ?",
+                                  (title, player, str(day), int(tokens), int(limit)))
+        return cur.rowcount > 0
 
     def add_usage(self, title, player, day, tokens):
         with self.db:

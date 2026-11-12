@@ -704,6 +704,29 @@ async def t_quest_text_is_vetted():
     assert (await ask(good)).status_code == 200
 
 
+async def t_two_processes_share_budgets_and_bans():
+    import tempfile
+    db = os.path.join(tempfile.mkdtemp(), "shared.db")
+    cfg = copy.deepcopy(CFG)
+    cfg.update(db_path=db, pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2)
+    cfg["titles"]["demo"]["daily_token_budget"] = 150
+    one, two = setup(copy.deepcopy(cfg))[3], setup(copy.deepcopy(cfg))[3]  # two gateway processes, one database file
+    codes = []
+    for _ in range(12):  # alternate processes; a served request costs about 15 tokens, so 150 is 10 requests
+        for c in (one, two):
+            codes.append((await c.post("/v1/chat/completions", json=BODY, headers=H)).status_code)
+    assert codes.count(200) <= 12 and 429 in codes, codes  # one budget between them: about 10 requests in total, not 10 each (all 24 would pass)
+    # a ban made through one process is seen by the other at once
+    one_app, two_app = one._transport.app, two._transport.app
+    one_app.state.hub.banned.add("evil")
+    one_app.state.store.ban("evil", "test")
+    r = await two.post("/node/register", headers={"X-Node-Token": "tok", "X-Node-Agent": "evil"})
+    assert r.status_code == 403
+    store = one_app.state.store
+    assert store.reserve("t", "p", "2026-01-01", 10, 5) is True and store.reserve("t", "p", "2026-01-01", 10, 5) is False  # at the limit: refused
+    assert store.usage("t", "p", "2026-01-01") == 10
+
+
 async def t_budget_429_on_npc_route():
     cfg = copy.deepcopy(CFG)
     cfg["titles"]["demo"]["daily_token_budget"] = 1

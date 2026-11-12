@@ -26,7 +26,7 @@ instead of answering until its verdict was constrained by JSON schema.
 
 | Area | Windows (this PC) | Ubuntu (CI) | macOS arm64 (CI) |
 |---|---|---|---|
-| Gateway and agent self-checks (52) | yes | yes | yes |
+| Gateway and agent self-checks (53) | yes | yes | yes |
 | C# SDK against a live gateway | yes | yes | no |
 | JavaScript SDK against a live gateway (`node sdk/js/test.mjs`) | yes | yes (CI) | no |
 | Real model through Ollama | yes (CPU) | no | no |
@@ -39,7 +39,7 @@ instead of answering until its verdict was constrained by JSON schema.
 - **Safety is partial.** Regex blocklist, word-overlap leak guard and an optional judge. No trained classifier, no
   red-team set; paraphrased leaks get through. On titles with a judge, streams are buffered so the judge covers them (unless `stream_unjudged`).
 - **Streaming:** plain replies only; a bad sentence mid-stream cuts the stream off.
-- **State:** budgets, bans and the work ledger persist in SQLite (`db_path`), tested across a simulated restart. The token cache and node registry are in memory, and SQLite means one gateway process.
+- **State:** budgets, bans and the work ledger persist in SQLite (`db_path`), tested across a simulated restart. Several processes on one machine can share the file (atomic budget reservation, bans read from it; tested with two apps on one database), but volunteer nodes need a single process and several machines need a network database, which is not built.
 - **Volunteer nodes:** shared token, ban by self-chosen id, probes can be recognised, no quorum, no credit value or redemption, no model
   signing. Trust only your own machines.
 - **Red-team gate G5, honest state:** the main set (759 cases) was used to tune the rules, so it no longer measures anything fairly.

@@ -146,6 +146,21 @@ Example (`config.openrouter.json`):
 - Overflow replies go through the same output checks, budgets and token accounting as any other reply. Your OpenRouter bill is separate from the per-player token budgets, so set a spending limit on the OpenRouter key too.
 - Streaming and quests/storylines use overflow the same way. Tested with a mock node (key header sent, model mapped, opt-in respected); not tried against the live OpenRouter API.
 
+## Running more than one gateway process
+
+Several processes on **one machine** can share the `db_path` file (for example `uvicorn --workers 4`, or two services behind
+a proxy). Daily budgets are one pool: the reservation is a single atomic statement, so two processes cannot both spend the last
+tokens. A ban made by one process is seen by the others at their next registration. What stays per process: `/healthz` and
+`/admin` statistics, node health and ejection, the Steam ticket cache, the failed-login counter and `max_inflight` (so each
+limit is multiplied by the process count).
+
+Two limits to plan around:
+- **Volunteer (pull) nodes need a single process.** An agent registers with one process and polls it by node id; if the next poll
+  lands on another process the agent gets `404`, registers again and churns. Run volunteers against a dedicated single-process
+  gateway, or route `/node/*` to one process.
+- **Gateways on several machines** cannot share SQLite. That needs the `Store` methods (usage, reserve, bans, ledger) moved to a
+  network database; it is not built.
+
 ## Production switches
 
 - Set `auth.mode` to your platform's check (`"steam"` needs `STEAM_PUBLISHER_KEY`); never leave it on `"dev"`. With `ANANSI_ENV=production` (set by the Dockerfile, the compose file and the systemd unit) the gateway refuses to start on dev auth or while a title key is still `change-me`; for a local try-out of the compose setup run it with `ANANSI_ENV=dev`. `steam` mode also needs `STEAM_PUBLISHER_KEY` and an `appid` on every title, checked at startup. The compose setup keeps budgets in `/data/anansi.db` on a volume.
