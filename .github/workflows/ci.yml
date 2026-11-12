@@ -20,7 +20,7 @@ jobs:
           dotnet run --project sdk/unity/ci
           node sdk/js/test.mjs   # the runner's default Node (18+) has fetch
   macos:
-    runs-on: macos-latest   # Apple Silicon
+    runs-on: macos-14   # Apple Silicon; pinned because macos-latest sat unassigned for 15 minutes and was cancelled
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
