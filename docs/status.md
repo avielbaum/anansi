@@ -26,7 +26,7 @@ instead of answering until its verdict was constrained by JSON schema.
 
 | Area | Windows (this PC) | Ubuntu (CI) | macOS arm64 (CI) |
 |---|---|---|---|
-| Gateway and agent self-checks (50) | yes | yes | yes |
+| Gateway and agent self-checks (51) | yes | yes | yes |
 | C# SDK against a live gateway | yes | yes | no |
 | JavaScript SDK against a live gateway (`node sdk/js/test.mjs`) | yes | yes (CI) | no |
 | Real model through Ollama | yes (CPU) | no | no |
@@ -50,6 +50,12 @@ instead of answering until its verdict was constrained by JSON schema.
   blocked; any message containing the word "action" gets no action) and covered by self-checks. Because the fixes came from this set, it is now spent: a new holdout set
   must be written before the next honest number. 254 distinct unblocked replies are in a local review file that a person still has to read.
   The holdout author also wrote the rules, so a person outside the project writing attacks would be a stronger test.
+- **Quests and storylines are checked now.** They used to skip every judge. Each visible field gets the dialogue rules and the title's
+  guard classifier. First red-team (`tools/quest_redteam.py`, 55 hostile and benign cases, local models): 11 of 46 attacks refused
+  by the classifier or rules, 4 automatic failures (an "AI language model" line and three planted words, one of them via an NPC role),
+  all closed afterwards and replayed offline against the saved outputs, so this set is spent too. The released harm-theme quests that I read
+  were ordinary fantasy and held no instructions or explicit content, but a person still has to read `quest_redteam_review.md`. One of nine
+  benign controls was refused (a false alarm). World names that contain player text remain the studio's responsibility.
 - **Unity:** the `JsonUtility` path, a real Unity project and structured actions from C# have not been run. The Godot addon (`sdk/godot`) runs in CI in the real Godot 4.3 engine (headless, 10 checks against a live gateway), but not yet in an exported game. The Unreal plugin (`sdk/unreal`) is written to the same contract but has never been compiled or run; treat it as a draft until someone builds it in the engine.
 - **Eval sets are small and self-written:** 18 action cases and 8 leak attacks. Gate G1 needs about 200 prompts.
 - **Gates not passed:** the external gates in DESIGN.md section 22.2 (Valve's position on AI-generated content, studio

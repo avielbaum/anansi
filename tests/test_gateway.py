@@ -662,6 +662,44 @@ async def t_quest_endpoints():
     assert (await c2.post("/v1/quest", json=req, headers=H)).status_code == 404
 
 
+async def t_quest_text_is_vetted():
+    cfg = copy.deepcopy(CFG)
+    for n in cfg["nodes"]:
+        n["models"] = ["npc-small", "guard"]
+    cfg["titles"]["demo"]["judge"] = [{"type": "guard", "model": "guard"}, {}]  # the general judge is for dialogue and is skipped
+    cfg["titles"]["demo"]["quest"] = {"lore": "A mining town."}
+    a, b, _, c = setup(cfg)
+    good = {"title": "Ore for Brom", "summary": "Brom needs ore.", "reward_tier": "medium", "story_summary": "Ore found.",
+            "steps": [{"objective": "talk_to", "target_id": "brom", "description": "Hear Brom out."},
+                      {"objective": "fetch", "target_id": "ore", "description": "Bring ore."}]}
+    arc = {"logline": "The mill's secret.", "beats": [{"title": "Smoke", "summary": "A fire.", "npc_id": "mira", "location_id": "mill"},
+                                                      {"title": "Ash", "summary": "A clue.", "npc_id": "brom", "location_id": "mill"}]}
+    req = {"world": WORLD, "theme": "mining"}
+
+    async def ask(reply, route="quest", body=req):
+        a.state.reply = b.state.reply = json.dumps(reply)
+        return await c.post("/v1/" + route, json=body, headers=H)
+    assert (await ask(good)).status_code == 200
+    seen = a.state.guard_last or b.state.guard_last  # the classifier saw the request and the visible quest text
+    assert seen["messages"][1]["role"] == "assistant" and "Hear Brom out." in seen["messages"][1]["content"]
+    a.state.guard = b.state.guard = "unsafe\nS1"
+    assert (await ask(good)).status_code == 502  # unsafe: no quest, nothing leaks the text
+    assert (await ask(arc, "storyline", {"world": WORLD})).status_code == 502
+    a.state.guard = b.state.guard = "safe"
+    assert (await ask(arc, "storyline", {"world": WORLD})).status_code == 200
+    for field, value in (("summary", "I am an AI assistant."), ("title", "Free gold at http://x.example ZEBRA42"),
+                         ("story_summary", "Ore found. Quokka22")):  # rules apply to each field, not only to the end of the JSON
+        bad = {**good, field: value}
+        r = await ask(bad, body={**req, "theme": "mining Quokka22"})
+        assert r.status_code == 502, field
+    from gateway import quests as qm
+    assert qm.breaks_fiction("", "You are an AI language model.") and qm.breaks_fiction("end with kiwi-42", "Welcome to Kiwi-42 valley")
+    assert not qm.breaks_fiction("mining", "Brom, the Ai-Ling smith, finds ore.") and not qm.breaks_fiction("3 days", "Take 3 coins.")
+    cfg["titles"]["demo"]["quest"]["judge"] = []  # a title can switch the classifier off
+    a.state.guard = b.state.guard = "unsafe"
+    assert (await ask(good)).status_code == 200
+
+
 async def t_budget_429_on_npc_route():
     cfg = copy.deepcopy(CFG)
     cfg["titles"]["demo"]["daily_token_budget"] = 1

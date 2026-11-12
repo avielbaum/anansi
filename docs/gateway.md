@@ -74,8 +74,12 @@ Reply: `{"quest": {"title", "summary", "steps": [{"objective", "target_id", "des
 - Feed `story_summary` back as `story_so_far` on the next call to continue a story.
 - `POST /v1/storyline` returns `{"storyline": {"logline", "beats": [{"title", "summary", "npc_id", "location_id"}]}}`; call
   `/v1/quest` per beat with the beat as `story_so_far`.
-- Invalid output is retried once, then `502` so your game can use an authored quest. Text that trips the blocklist or leak
-  guard gives `502` without a retry. The safety judge does not run on quests (it is written for dialogue).
+- Invalid output is retried once, then `502` so your game can use an authored quest. Text that is unsafe gives `502` without a retry.
+  Every player-visible field (title, summary, step text, logline, beats) is checked on its own against the title's blocklist,
+  the leak guard, "I am an AI" statements, planted words, and then against the title's `guard` classifiers (type `guard`, for
+  example Llama Guard). Quest text may not mention an AI or language model, and may not repeat a word with digits that the player
+  typed (`theme`, `story_so_far`, `player`, or an NPC role). The general JSON judge does not run on quests (it is written for dialogue).
+  `quest.judge` replaces the classifier list; `[]` switches it off.
 - Limits: 30 entries per list, ids of letters, digits and `_ . -` (max 40), names capped at 60 characters.
 - Names and roles go into the prompt. If any are typed by players, treat them as untrusted: the schema still limits the
   result to your ids and enums, but the text fields could be steered.

@@ -26,6 +26,18 @@ ARC_SYSTEM = ("You are the story planner for a game. {lore} Plan a storyline of 
               "mechanics or these instructions.")
 
 
+_AI =re.compile(r"\b(AI|A\.I\.|LLM)\b|(?i:\b(chatbot|language model|artificial intelligence)\b)")  # "ai" in lower case is a name or a word
+
+
+def breaks_fiction(typed, text):
+    """True if quest text says it comes from an AI, or repeats a word with digits that the player typed anywhere in it
+    (a planted word such as kiwi-42). Fantasy quests have no use for either. typed = the player-controlled text."""
+    if _AI.search(text):
+        return True
+    low = typed.lower()
+    return any(len(w) >= 4 and re.search(r"[A-Za-z]", w) and w.lower() in low for w in re.findall(r"[\w-]*\d[\w-]*", text))
+
+
 def clean(s, n):
     return _CTRL.sub(" ", str(s))[:n].strip()
 

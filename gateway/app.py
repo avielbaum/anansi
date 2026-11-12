@@ -164,6 +164,11 @@ def make_app(config=None, transport=None):
     ALWAYS = re.compile(r"\b(i am|i'm|as) an? (ai|a\.i\.|llm|chatbot|language model|artificial intelligence)\b", re.I)
     PLANTED = re.compile(r"\b[A-Z]{3,}[0-9]{2,}\W*$")  # case-sensitive on purpose
 
+    def echoed(typed, text):
+        """True if text ends on a token with digits that the player typed: they told the NPC to say it (a planted word)."""
+        words = re.findall(r"[\w-]+", text)
+        return bool(words) and bool(re.search(r"\d", words[-1])) and words[-1].lower() in typed.lower()
+
     def bad(t, text):  # shortcut: regex blocklist plus prompt-leak check. A classifier is required before launch (gate G5).
         names = t.get("actions") or []  # action identifiers are never dialogue: speaking one is a leak
         return leaks(t.get("system_prefix", ""), text, t.get("leak_ngram", 5)) or ALWAYS.search(text) or PLANTED.search(text) or any(
@@ -230,8 +235,7 @@ def make_app(config=None, transport=None):
         """sanitize() plus the optional judges (`judge` is one check or a list, all must pass). Each is a second model
         call, so they add latency. shortcut: not applied to streamed replies (a call per sentence is too slow); a dead
         judge closes the gate, so the fallback line shows instead of unchecked text."""
-        words = re.findall(r"[\w-]+", text)  # a reply that ends on a token with digits that the player typed was told to say it
-        if words and re.search(r"\d", words[-1]) and words[-1].lower() in msgs[-1]["content"].lower():
+        if echoed(msgs[-1]["content"], text):
             return t.get("fallback_line", "..."), True
         text, flagged = sanitize(t, text)
         if flagged or t.get("judge") is None:
@@ -532,6 +536,21 @@ def make_app(config=None, transport=None):
             out["say"] = text
         return {**out, "filtered": r["anansi"]["filtered"], "node": r["anansi"]["node"]}
 
+    async def quest_unsafe(t, q, tq, texts, prompt, typed, key):
+        """Quest and storyline text goes to players, so it gets the dialogue output rules field by field (blocklist, AI
+        mentions, planted words, prompt leaks) and then the title's guard classifiers (type "guard"). The general
+        judge is written for dialogue and is skipped. quest.judge replaces the guard list; [] switches it off."""
+        if any(bad(tq, s) or echoed(typed, s) or quests.breaks_fiction(typed, s) for s in texts):
+            return True
+        js = t.get("judge")
+        js = q["judge"] if "judge" in q else [j for j in (js if isinstance(js, list) else [js or {}]) if j.get("type") == "guard"]
+        ask = [{"role": "user", "content": prompt}]
+        for v in await asyncio.gather(*(run_judge(j, t, ask, "\n".join(texts), key) for j in js)):
+            if not v.startswith("SAFE"):
+                stats["judged_out" if v else "judge_errors"] += 1
+                return True
+        return False
+
     async def generate(kind, req, x_anansi_title, x_anansi_key, token):
         """POST /v1/quest and /v1/storyline. Needs a `quest` block in the title config."""
         t = title_of(x_anansi_title, x_anansi_key)
@@ -570,6 +589,14 @@ def make_app(config=None, transport=None):
             except ValueError:
                 out = None
             if out:
+                shown = ([out["title"], out["summary"], out["story_summary"]] + [s["description"] for s in out["steps"]] if kind == "quest"
+                         else [out["logline"]] + [x for b in out["beats"] for x in (b["title"], b["summary"])])
+                tq = {**t, "system_prefix": system, "leak_ngram": q.get("leak_ngram", 8), "actions": None}
+                typed = " ".join([str(d.get(k) or "") for k in ("theme", "story_so_far", "player")]  # roles too: a game may fill them from player input
+                                 + [str(e.get("role") or "") for k in quests.KINDS for e in d["world"].get(k) or []])
+                if await quest_unsafe(t, q, tq, shown, prompt, typed, None):
+                    stats["filtered"] += 1
+                    break
                 return {kind: out, "filtered": False, "node": r["anansi"]["node"]}
             if r["anansi"]["filtered"]:  # blocked by the safety checks: do not ask again
                 break
