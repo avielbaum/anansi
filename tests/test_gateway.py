@@ -472,6 +472,8 @@ async def t_pull_nodes():
     nid = next(iter(gw._transport.app.state.hub.nodes))  # a worker cannot post results with the wrong token
     bad = await gw.post("/node/result", json={"node_id": nid, "job": "x", "status": 200, "body": ""}, headers={"X-Node-Token": "nope"})
     assert bad.status_code == 401
+    big = await gw.post("/node/result", json={"node_id": nid, "job": "x", "status": 200, "body": "x" * 600_000}, headers={"X-Node-Token": "tok"})
+    assert big.status_code == 413  # a volunteer cannot make the gateway hold an unbounded reply
     agent.cancel()
     await asyncio.sleep(1.0)  # workers stopped polling: swept, so the pool is empty again
     assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 503

@@ -29,6 +29,7 @@ CANARIES = [  # known answers a working model gets right at temperature 0; match
     {"user": "What is the capital of France? Answer in one word.", "expect": r"Paris"},
 ]
 STRIKES = 2
+MAX_RESULT = 512_000  # bytes a volunteer may send back for one job
 
 
 class PullHub(httpx.AsyncBaseTransport):
@@ -164,14 +165,15 @@ class PullHub(httpx.AsyncBaseTransport):
         if not (host.startswith("pull-") and host.endswith(".node")):
             return await self.inner.handle_async_request(request)
         nid = host[len("pull-"):-len(".node")]
-        status, body, ctype = await self.dispatch(nid, request.url.path, (await request.aread()).decode())
+        sent = (await request.aread()).decode()
+        status, body, ctype = await self.dispatch(nid, request.url.path, sent)
         e = self.nodes.get(nid)
         if self.store and status == 200 and e:  # credit the worker for a real job (probe traffic never comes through here)
             try:
                 tokens = int(json.loads(body)["usage"]["total_tokens"])
             except (ValueError, KeyError, TypeError):
                 tokens = len(body) // 4  # a streamed reply has no usage block: estimate from its size
-            self.store.credit(e["agent"], tokens)
+            self.store.credit(e["agent"], min(tokens, (len(sent) + len(body)) // 2))  # a volunteer cannot claim more than the text could hold
         if random.random() < self.canary_rate and nid in self.nodes:  # spot-check the node that just served real traffic
             asyncio.get_running_loop().create_task(self.probe(nid))
         return httpx.Response(status, content=body.encode(), headers={"content-type": ctype})
@@ -190,8 +192,11 @@ def add_routes(app, hub):
 
     @app.post("/node/result")
     async def result(req: Request, x_node_token: str = Header(None)):
+        raw = await req.body()
+        if len(raw) > MAX_RESULT:
+            raise HTTPException(413, "result too large")
         try:
-            d = await req.json()
+            d = json.loads(raw)
             args = (str(d["node_id"]), x_node_token, str(d["job"]), int(d["status"]), str(d["body"]),
                     str(d.get("content_type") or "application/json"))
         except Exception:
