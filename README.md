@@ -85,7 +85,7 @@ Measured on one Windows PC with no GPU, running Qwen3-1.7B and 4B through Ollama
 
 | | |
 |---|---|
-| Gateway: auth, budgets, constrained actions, filter, leak guard, failover, streaming | working, 49 self-checks |
+| Gateway: auth, budgets, constrained actions, filter, leak guard, failover, streaming | working, 50 self-checks |
 | Quest and storyline generation (`/v1/quest`, `/v1/storyline`) with Python and C# SDK methods | working: constrained to your game's own ids; 6 of 6 structurally valid with Qwen3-1.7B (33 s) and Qwen3-4B (65 s, more varied rewards and richer text) on CPU; writing quality unrated |
 | Real model end to end (Ollama, Qwen3-1.7B on CPU) | working: 21 of 21 requests, action accuracy 83% on 18 self-written cases |
 | Safety judge (second model call) | working with Qwen3-4B: blocked 3 of 8 leak attacks, no false positives; doubles latency |
@@ -110,7 +110,7 @@ Needs Python 3.10 or newer. For a real model, install [Ollama](https://ollama.co
 git clone https://github.com/avielbaum/anansi
 cd anansi
 pip install -r requirements.txt
-python tests/test_gateway.py          # 49 self-checks, no GPU or network needed
+python tests/test_gateway.py          # 50 self-checks, no GPU or network needed
 ```
 
 Run the gateway against a local model:
@@ -130,7 +130,7 @@ No model installed? Use the mock nodes: [docs/quickstart.md](docs/quickstart.md)
 | [Quick start](docs/quickstart.md) | Mock nodes, Ollama, Linux, macOS, running the tests |
 | [Gateway](docs/gateway.md) | Config reference, endpoints, streaming, filter, leak guard, safety judge, production switches |
 | [Nodes](docs/nodes.md) | Cloud nodes, volunteer agent, verification, Linux and macOS notes |
-| [SDKs](docs/sdk.md) | Python, C# (Unity), JavaScript/TypeScript, Unreal and Godot clients and their fallback behaviour |
+| [SDKs](docs/sdk.md) | Python, C# (Unity), JavaScript/TypeScript, Unreal and Godot clients and their fallback behaviour, plus an MCP server for your AI assistant |
 | [Status](docs/status.md) | Measured results, known limits, what is untested |
 | [DESIGN.md](DESIGN.md) | Architecture, security model, roadmap and go/no-go gates |
 

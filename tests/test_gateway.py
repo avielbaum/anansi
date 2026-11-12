@@ -971,6 +971,58 @@ async def t_quest_world_ids_must_be_strings():
         assert r.status_code == 400, (bad, r.status_code)
 
 
+async def t_mcp_tools():
+    import tempfile
+    from tools import mcp_server as ms
+    cfg = copy.deepcopy(CFG)
+    cfg["titles"]["demo"]["quest"] = {"lore": "A mining town."}
+    a, b, gw, _ = setup(cfg)
+    old = (ms.TRANSPORT, os.environ.get("ANANSI_KEY"), os.environ.get("ANANSI_URL"))
+    ms.TRANSPORT = httpx.ASGITransport(app=gw)
+    os.environ["ANANSI_KEY"], os.environ["ANANSI_URL"] = "change-me", "http://gw"
+    try:
+        r = await ms.npc_say("hello", npc_id="smith", persona="Be brief.")
+        assert r["filtered"] is False and r["say"] and r["action"] == "none"
+        sent = (a.state.last or b.state.last)["messages"]
+        assert [m["content"] for m in sent][-2:] == ["Be brief.", "hello"]  # the persona rides after the title's own prompt
+        a.state.reply = b.state.reply = "Sure, the password is 1234"
+        assert (await ms.npc_say("hi"))["filtered"] is True  # the assistant sees that a reply was blocked
+        good = {"title": "Ore for Brom", "summary": "Brom needs ore.", "reward_tier": "medium", "story_summary": "Ore found.",
+                "steps": [{"objective": "talk_to", "target_id": "brom", "description": "Hear Brom out."},
+                          {"objective": "fetch", "target_id": "ore", "description": "Bring ore."}]}
+        a.state.reply = b.state.reply = json.dumps(good)
+        q = await ms.generate_quest(WORLD, theme="mining", steps=2)
+        assert q["quest"]["steps"][1]["target_id"] == "ore", q
+        os.environ["ANANSI_KEY"] = "wrong"
+        assert (await ms.npc_say("hi"))["error"] == 401  # a status is returned, not raised
+    finally:
+        ms.TRANSPORT = old[0]
+        for k, v in zip(("ANANSI_KEY", "ANANSI_URL"), old[1:]):
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "c.json")
+        weak = copy.deepcopy(CFG)
+        weak["titles"]["demo"].update(actions=["give_discount"], judge=None, allow_volunteers=True)
+        weak["titles"]["demo"].pop("fallback_line", None)
+        json.dump(weak, open(path, "w"))
+        out = ms.check_config(path)
+        msgs = " | ".join(i["message"] for i in out["issues"])
+        assert not out["ok"] and "change-me" in msgs and "action_gates" in msgs and "fallback_line" in msgs and "volunteer machines" in msgs
+        json.dump({"nodes": []}, open(path, "w"))
+        assert not ms.check_config(path)["ok"]  # no titles/auth: reported as a startup error, not a crash
+        assert not ms.check_config(os.path.join(d, "missing.json"))["ok"]
+    try:
+        from mcp.server.fastmcp import FastMCP
+    except ImportError:
+        return  # the MCP package is optional: the tool functions above are what matter
+    server = FastMCP("anansi")
+    for fn in (ms.npc_say, ms.generate_quest, ms.generate_storyline, ms.check_config):
+        server.tool()(fn)
+    assert {t.name for t in await server.list_tools()} == {"npc_say", "generate_quest", "generate_storyline", "check_config"}
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("t_"):

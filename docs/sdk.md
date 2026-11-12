@@ -107,6 +107,26 @@ var q := await npc.quest(world, 3, "mining")                                    
 
 Streaming uses `HTTPClient` and a manual poll loop, because the `HTTPRequest` node only returns the whole body.
 
+## MCP server for your AI assistant (development only)
+
+`tools/mcp_server.py` lets Claude Code, Cursor or any MCP client try Anansi while you build, so you can ask the assistant
+to "have the blacksmith refuse a haggle" or "make a three-step quest from my world data" without writing requests by hand.
+
+```bash
+pip install -r requirements-mcp.txt
+claude mcp add anansi -e ANANSI_URL=http://127.0.0.1:8080 -e ANANSI_TITLE=demo -e ANANSI_KEY=change-me -- python tools/mcp_server.py
+```
+
+| Tool | What it does |
+|---|---|
+| `npc_say` | One player line to an NPC; returns `say`, `action`, `filtered` (true means the safety checks blocked the model and the player would see the fallback line) and the node. Optional `persona` adds a system message to try wording |
+| `generate_quest`, `generate_storyline` | Built from your own npc, location and item ids; every id in the answer is one of yours |
+| `check_config` | Lints a config file with the gateway's own startup checks plus warnings (example key, no judge, ungated actions, volunteers or overflow seeing the secret prompt). Starts nothing |
+
+Point it at a staging gateway with a test title key. It holds no admin token and changes nothing on the gateway.
+Errors such as a `429` budget or a `503` come back as `{"error": status}` so the assistant can react. One title per
+server process (the `ANANSI_TITLE` and `ANANSI_KEY` variables). There is no red-team tool yet.
+
 ## Status
 
 The C# SDK is tested as plain .NET against a live gateway (Windows PowerShell test and a `dotnet` test run in CI on

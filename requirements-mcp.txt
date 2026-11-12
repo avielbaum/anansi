@@ -1,0 +1,3 @@
+# only for tools/mcp_server.py (the developer-side MCP server); the gateway does not need it
+-r requirements.txt
+mcp==1.26.0
