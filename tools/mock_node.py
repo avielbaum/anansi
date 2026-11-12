@@ -24,6 +24,7 @@ def sample(kind, schema):
 def make_node(name, latency=0.0):
     app = FastAPI()
     app.state.fail, app.state.reply, app.state.calls, app.state.last = False, None, 0, None
+    app.state.tokens = 15  # usage this node reports
     app.state.judge = "SAFE"  # answer given to the gateway's safety-judge calls
     app.state.guard, app.state.guard_last = "safe", None  # answer to calls for the "guard" model
 
@@ -52,7 +53,7 @@ def make_node(name, latency=0.0):
             return StreamingResponse(pieces(), media_type="text/event-stream")
         return {"id": f"mock-{name}", "object": "chat.completion", "model": body.get("model"),
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
-                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}}
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": app.state.tokens}}
 
     return app
 

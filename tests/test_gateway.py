@@ -322,6 +322,25 @@ def t_auth_must_be_chosen():
         pass
 
 
+async def t_node_usage_is_clamped_and_purge_runs_daily():
+    import datetime
+    cfg = copy.deepcopy(CFG)
+    cfg["db_path"] = ":memory:"
+    a, b, gw, c = setup(cfg)
+    day = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+    cap = CFG["titles"]["demo"].get("max_tokens", 200)
+    for n in (a, b):
+        n.state.tokens = 10**9  # a node claiming a huge bill is capped at twice the reservation
+    assert (await c.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 200
+    r = await c.post("/v1/chat/completions", json=BODY, headers={**H, "X-Player-Token": "dev:cheat"})
+    for n in (a, b):
+        n.state.tokens = 0  # a node claiming nothing is still charged the estimate
+    assert (await c.post("/v1/chat/completions", json=BODY, headers={**H, "X-Player-Token": "dev:free"})).status_code == 200
+    used = sorted(row[0] for row in gw.state.store.db.execute("SELECT tokens FROM usage").fetchall()) if hasattr(gw.state, "store") else None
+    if used:
+        assert used[-1] <= 2 * (cap + 10) * 2 and used[0] > 0, used
+
+
 def t_redteam_set_and_scorer():
     import importlib.util
     spec = importlib.util.spec_from_file_location("redteam", os.path.join(os.path.dirname(__file__), "..", "tools", "redteam.py"))

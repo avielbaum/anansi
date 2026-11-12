@@ -64,6 +64,7 @@ def make_app(config=None, transport=None):
     sched = Scheduler(cfg["nodes"])
     store = Store(cfg.get("db_path"))
     store.purge(cfg.get("retention_days", 35))
+    purged = [datetime.date.today()]
     hub = PullHub(sched, cfg["pull_tokens"], transport or httpx.AsyncHTTPTransport(), cfg.get("pull_poll_s", 20),
                   cfg.get("pull_ttl_s"), cfg.get("upstream_timeout_s", 20), reply_text, cfg.get("canaries"),
                   cfg.get("canary_rate", 0.05), store) if cfg.get("pull_tokens") else None
@@ -304,6 +305,10 @@ def make_app(config=None, transport=None):
         token cap and a JSON schema for the reply; the judge is skipped because it is written for NPC dialogue."""
         if hub:
             hub.sweep()
+        today_ = datetime.date.today()
+        if purged[0] != today_:  # retention must hold on a gateway that runs for months, not only at startup
+            purged[0] = today_
+            store.purge(cfg.get("retention_days", 35))
         t = title_of(x_anansi_title, x_anansi_key)
         if gen:
             t = {**t, "system_prefix": gen["prefix"], "max_tokens": gen["max_tokens"], "max_prompt_chars": 12_000,
@@ -410,7 +415,9 @@ def make_app(config=None, transport=None):
         else:
             text, filtered = await vet(t, msgs, text, key)
 
-        used = (data.get("usage") or {}).get("total_tokens") or (sum(len(m["content"]) for m in msgs) + len(text)) // 4
+        est = (sum(len(m["content"]) for m in msgs) + len(text)) // 4
+        reported = (data.get("usage") or {}).get("total_tokens")  # a volunteer node could report 0 or a huge number
+        used = min(max(reported if isinstance(reported, int) else 0, est), 2 * held)
         store.add_usage(*ukey, int(used) - held)
         stats["filtered"] += filtered
         return {"id": data.get("id", "anansi"), "object": "chat.completion", "model": up["model"],
