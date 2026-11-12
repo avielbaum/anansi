@@ -39,6 +39,15 @@ To the scheduler a registered worker is an ordinary node, so routing, failover, 
 A worker that stops polling is forgotten after `pull_ttl_s`. A streamed request is answered correctly but relayed
 whole after the node finishes.
 
+### Staying out of the owner's way
+
+By default the agent pauses while the machine is busy: CPU above 60 percent (sampled on Windows, load per core on Linux and macOS)
+or an NVIDIA GPU above 60 percent (`nvidia-smi`). While paused it does not register or poll, so no job reaches it; the gateway
+forgets it within about `pull_ttl_s` seconds and it registers again (and passes the entry check again) when the machine is
+idle. Change the limits with `--cpu-limit` and `--gpu-limit`, or serve regardless with `--ignore-load`. Load in the 15 seconds
+after the agent's own job is ignored, and a job queued just before a pause waits for the gateway's timeout and is retried on
+another node. AMD, Intel and Apple GPUs are not measured (CPU only).
+
 ### One-step setup
 
 `node/join.py` checks the machine, picks a model that fits, makes sure Ollama has it and starts the agent:

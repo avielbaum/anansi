@@ -921,6 +921,35 @@ async def t_volunteers_need_the_title_to_opt_in():
     agent.cancel()
 
 
+async def t_agent_pauses_while_the_owner_is_busy():
+    import node.agent as ag
+    seen = []
+
+    def gateway(req):
+        seen.append(req.url.path)
+        return httpx.Response(200, json={"node_id": "n1", "poll_s": 0}) if req.url.path == "/node/register" else httpx.Response(204)
+    gw = httpx.AsyncClient(transport=httpx.MockTransport(gateway), base_url="http://gw")
+    old = ag.cpu_busy_fraction, ag.gpu_util
+    ag.cpu_busy_fraction, ag.gpu_util = (lambda: 0.9), (lambda: None)
+    try:
+        task = asyncio.create_task(ag.worker(gw, None, "tok", "a", log=lambda m: None, idle=(60, 60), check_s=0.05))
+        await asyncio.sleep(0.4)
+        assert seen == [], "a busy machine must not even register"
+        ag.cpu_busy_fraction = lambda: 0.1
+        await asyncio.sleep(0.4)
+        assert "/node/register" in seen and "/node/poll" in seen
+        task.cancel()
+        assert await ag.machine_busy(60, 60) is False
+        ag.gpu_util = lambda: 95.0
+        assert await ag.machine_busy(60, 60) is True and await ag.machine_busy(60, 99) is False
+        ag.cpu_busy_fraction, ag.gpu_util = (lambda: None), (lambda: None)
+        assert await ag.machine_busy(1, 1) is False  # cannot measure: never busy
+    finally:
+        ag.cpu_busy_fraction, ag.gpu_util = old
+    assert ag.cpu_busy_fraction() is None or 0 <= ag.cpu_busy_fraction() <= 1  # the real reader works on this machine
+    assert ag.gpu_util() is None or ag.gpu_util() >= 0
+
+
 async def t_agent_survives_a_junk_gateway_reply():
     from node.agent import worker
     seen = []
