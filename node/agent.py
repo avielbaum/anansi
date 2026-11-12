@@ -7,12 +7,15 @@ Works the same on Windows, Linux and macOS (Apple Silicon: Ollama and llama.cpp 
 shortcut: the token is a shared secret per pool, not a per-user, platform-bound certificate (DESIGN.md section 9)."""
 import argparse
 import asyncio
+import glob
 import json
 import os
 import pathlib
+import re
 import secrets
 import shutil
 import subprocess
+import sys
 import time
 
 import httpx
@@ -45,7 +48,14 @@ def cpu_busy_fraction():
 
 
 def gpu_util():
-    """Highest NVIDIA GPU utilisation in percent, or None (no nvidia-smi, or it failed)."""
+    """Highest GPU load in percent from every reader that works on this machine, or None if none does.
+    NVIDIA anywhere (nvidia-smi); any vendor on Windows (the system's GPU engine counters); AMD on Linux (amdgpu sysfs);
+    Apple Silicon and other Mac GPUs (ioreg). shortcut: Intel GPUs on Linux are not measured (no plain file to read)."""
+    vals = [v for v in (_nvidia_util(), _windows_gpu_util(), _amd_linux_util(), _mac_gpu_util()) if v is not None]
+    return max(vals) if vals else None
+
+
+def _nvidia_util():
     exe = shutil.which("nvidia-smi")
     if not exe:
         return None
@@ -54,6 +64,79 @@ def gpu_util():
                              text=True, timeout=3).stdout
         return max(float(x) for x in out.split())
     except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def busiest_engine(samples):
+    """samples = (counter instance name, percent) from Windows' "GPU Engine" counters, one per process and engine.
+    An engine's load is the sum over processes; the GPU's load is its busiest engine (3D, video, copy, compute)."""
+    per = {}
+    for name, v in samples:
+        m = re.search(r"(luid_\w+?_phys_\d+_eng_\d+)", name)
+        if m:
+            per[m.group(1)] = per.get(m.group(1), 0.0) + v
+    return min(100.0, max(per.values())) if per else None
+
+
+def _windows_gpu_util():
+    """Every GPU vendor on Windows 10 1709+, through the same counters Task Manager shows. English counter names, so
+    it works on any display language. Samples over one second."""
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class Value(ctypes.Structure):  # PDH_FMT_COUNTERVALUE: status, then a union whose double sits at offset 8
+            _fields_ = [("status", wintypes.DWORD), ("value", ctypes.c_double)]
+
+        class Item(ctypes.Structure):
+            _fields_ = [("name", wintypes.LPWSTR), ("v", Value)]
+        pdh, q, c = ctypes.WinDLL("pdh"), ctypes.c_void_p(), ctypes.c_void_p()
+        if pdh.PdhOpenQueryW(None, None, ctypes.byref(q)):
+            return None
+        try:
+            if pdh.PdhAddEnglishCounterW(q, r"\GPU Engine(*)\Utilization Percentage", None, ctypes.byref(c)):
+                return None
+            pdh.PdhCollectQueryData(q)
+            time.sleep(1.0)
+            pdh.PdhCollectQueryData(q)
+            size, n, double = wintypes.DWORD(0), wintypes.DWORD(0), 0x200  # PDH_FMT_DOUBLE
+            pdh.PdhGetFormattedCounterArrayW(c, double, ctypes.byref(size), ctypes.byref(n), None)
+            buf = (ctypes.c_byte * size.value)()
+            if pdh.PdhGetFormattedCounterArrayW(c, double, ctypes.byref(size), ctypes.byref(n), buf):
+                return None
+            items = ctypes.cast(buf, ctypes.POINTER(Item))
+            return busiest_engine((items[i].name, items[i].v.value) for i in range(n.value))
+        finally:
+            pdh.PdhCloseQuery(q)
+    except (AttributeError, OSError, ImportError):
+        return None
+
+
+def _amd_linux_util(pattern="/sys/class/drm/card*/device/gpu_busy_percent"):
+    vals = []
+    for p in glob.glob(pattern):  # written by the amdgpu driver, readable without root
+        try:
+            vals.append(float(open(p).read().strip()))
+        except (OSError, ValueError):
+            pass
+    return max(vals) if vals else None
+
+
+def mac_utilisation(ioreg_text):
+    """Highest "Device Utilization %" in `ioreg -r -d 1 -c IOAccelerator` output, or None."""
+    vals = [float(x) for x in re.findall(r'"Device Utilization %"\s*=\s*(\d+)', ioreg_text)]
+    return max(vals) if vals else None
+
+
+def _mac_gpu_util():
+    if sys.platform != "darwin":
+        return None
+    try:  # UNTESTED on a Mac. [verify] Needs no root; the key is present on Apple Silicon and recent Intel Macs.
+        out = subprocess.run(["ioreg", "-r", "-d", "1", "-c", "IOAccelerator"], capture_output=True, text=True, timeout=3).stdout
+        return mac_utilisation(out)
+    except (OSError, subprocess.SubprocessError):
         return None
 
 
@@ -132,7 +215,7 @@ async def worker(gw, local, token, agent, log=print, model=None, idle=None, chec
 def add_load_args(ap):
     """The busy-machine options, shared with node/join.py so both start the agent the same way."""
     ap.add_argument("--cpu-limit", type=float, default=60, help="pause while CPU use is above this percent (default 60)")
-    ap.add_argument("--gpu-limit", type=float, default=60, help="pause while NVIDIA GPU use is above this percent (default 60)")
+    ap.add_argument("--gpu-limit", type=float, default=60, help="pause while GPU use is above this percent (default 60)")
     ap.add_argument("--ignore-load", action="store_true", help="serve jobs even when the machine is busy")
 
 

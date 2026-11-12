@@ -42,11 +42,14 @@ whole after the node finishes.
 ### Staying out of the owner's way
 
 By default the agent pauses while the machine is busy: CPU above 60 percent (sampled on Windows, load per core on Linux and macOS)
-or an NVIDIA GPU above 60 percent (`nvidia-smi`). While paused it does not register or poll, so no job reaches it; the gateway
+or any GPU above 60 percent. GPU load comes from `nvidia-smi` for NVIDIA anywhere; on Windows, from the system's GPU engine
+counters (the ones Task Manager shows), which cover every vendor; on Linux, from the amdgpu driver for AMD; on Macs, from
+`ioreg`. The highest reading wins. While paused it does not register or poll, so no job reaches it; the gateway
 forgets it within about `pull_ttl_s` seconds and it registers again (and passes the entry check again) when the machine is
 idle. Change the limits with `--cpu-limit` and `--gpu-limit`, or serve regardless with `--ignore-load`. Load in the 15 seconds
 after the agent's own job is ignored, and a job queued just before a pause waits for the gateway's timeout and is retried on
-another node. AMD, Intel and Apple GPUs are not measured (CPU only).
+another node. Not measured: Intel GPUs on Linux (only the CPU counts there). Tested: the Windows counters on a PC with an Intel and an
+NVIDIA GPU (the Intel one rose under a WebGL load); the Linux and Mac readers only against sample output, not on real machines.
 
 ### One-step setup
 

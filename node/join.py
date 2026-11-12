@@ -6,7 +6,7 @@ node agent. Works on Windows, Linux and macOS (Apple Silicon uses Metal through 
 
 It never installs software by itself: if Ollama is missing it tells you where to get it. It downloads one model, only
 after saying how big it is and checking the disk. The gateway's token and URL come from whoever runs the pool.
-The agent pauses while you use the machine (CPU or NVIDIA GPU above 60 percent; --cpu-limit, --gpu-limit, --ignore-load)."""
+The agent pauses while you use the machine (CPU or GPU above 60 percent; --cpu-limit, --gpu-limit, --ignore-load)."""
 import argparse
 import asyncio
 import ctypes

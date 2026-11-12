@@ -1005,7 +1005,26 @@ async def t_agent_pauses_while_the_owner_is_busy():
     finally:
         ag.cpu_busy_fraction, ag.gpu_util = old
     assert ag.cpu_busy_fraction() is None or 0 <= ag.cpu_busy_fraction() <= 1  # the real reader works on this machine
-    assert ag.gpu_util() is None or ag.gpu_util() >= 0
+    assert ag.gpu_util() is None or 0 <= ag.gpu_util() <= 100
+    # every GPU vendor on Windows: engine load is summed over processes, the GPU's load is its busiest engine
+    e = "pid_{}_luid_0x00000000_0x0000C939_phys_0_eng_{}_engtype_{}"
+    assert ag.busiest_engine([(e.format(1, 0, "3D"), 40.0), (e.format(2, 0, "3D"), 35.5), (e.format(1, 6, "VideoDecode"), 20.0)]) == 75.5
+    assert ag.busiest_engine([(e.format(1, 0, "3D"), 80.0), (e.format(2, 0, "3D"), 70.0)]) == 100.0  # rounding never passes 100
+    assert ag.busiest_engine([("garbage", 50.0)]) is None and ag.busiest_engine([]) is None
+    if sys.platform == "win32":
+        assert ag._windows_gpu_util() is None or 0 <= ag._windows_gpu_util() <= 100  # the real counters read on this machine
+    # AMD on Linux: amdgpu writes the load to a file per card
+    import tempfile
+    d = tempfile.mkdtemp()
+    for i, v in enumerate(("12", "87\n", "junk")):
+        os.makedirs(os.path.join(d, f"card{i}", "device"))
+        open(os.path.join(d, f"card{i}", "device", "gpu_busy_percent"), "w").write(v)
+    assert ag._amd_linux_util(os.path.join(d, "card*", "device", "gpu_busy_percent")) == 87.0
+    assert ag._amd_linux_util(os.path.join(d, "none*", "x")) is None
+    # Macs: ioreg's PerformanceStatistics (sample shaped like Apple Silicon output)
+    sample = ('+-o AGXAcceleratorG14X  <class AGXAcceleratorG14X>\n    "PerformanceStatistics" = {"In use system memory"=123,'
+              '"Device Utilization %"=64,"Renderer Utilization %"=60,"Tiler Utilization %"=12}')
+    assert ag.mac_utilisation(sample) == 64.0 and ag.mac_utilisation("nothing here") is None
 
 
 async def t_agent_survives_a_junk_gateway_reply():
