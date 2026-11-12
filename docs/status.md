@@ -26,7 +26,7 @@ instead of answering until its verdict was constrained by JSON schema.
 
 | Area | Windows (this PC) | Ubuntu (CI) | macOS arm64 (CI) |
 |---|---|---|---|
-| Gateway and agent self-checks (39) | yes | yes | yes |
+| Gateway and agent self-checks (40) | yes | yes | yes |
 | C# SDK against a live gateway | yes | yes | no |
 | JavaScript SDK against a live gateway (`node sdk/js/test.mjs`) | yes | yes (CI) | no |
 | Real model through Ollama | yes (CPU) | no | no |
@@ -37,7 +37,7 @@ instead of answering until its verdict was constrained by JSON schema.
 - **No GPU runs.** vLLM, `llama-server` and Docker files are unrun; latency under GPU load is unknown.
 - **Live platform identity checks are untested.** Only Steam is written (it needs a publisher key and follows the documented shape); other platforms need a check added.
 - **Safety is partial.** Regex blocklist, word-overlap leak guard and an optional judge. No trained classifier, no
-  red-team set; paraphrased leaks get through. The judge does not run on streams.
+  red-team set; paraphrased leaks get through. On titles with a judge, streams are buffered so the judge covers them (unless `stream_unjudged`).
 - **Streaming:** plain replies only; a bad sentence mid-stream cuts the stream off.
 - **State:** budgets, bans and the work ledger persist in SQLite (`db_path`), tested across a simulated restart. The token cache and node registry are in memory, and SQLite means one gateway process.
 - **Volunteer nodes:** shared token, ban by self-chosen id, probes can be recognised, no quorum, no credit value or redemption, no model

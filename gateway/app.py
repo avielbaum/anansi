@@ -360,6 +360,9 @@ def make_app(config=None, transport=None):
         if gen:
             up["response_format"] = {"type": "json_schema", "json_schema": {"name": gen["name"], "schema": gen["schema"]}}
         stream = bool(body.get("stream")) and not gen
+        buffered = stream and t.get("judge") is not None and not t.get("stream_unjudged")
+        if buffered:  # judges need the whole reply, so a judged title gets it whole: vetted, then sent as one chunk
+            stream = False
         if stream and structured:  # a JSON reply cannot be checked or shown until it is complete
             raise HTTPException(400, "streaming is only for plain replies, not structured actions")
         npc = meta.get("npc_id")
@@ -420,6 +423,12 @@ def make_app(config=None, transport=None):
         used = min(max(reported if isinstance(reported, int) else 0, est), 2 * held)
         store.add_usage(*ukey, int(used) - held)
         stats["filtered"] += filtered
+        if buffered and not structured:
+            chunk = {"id": "anansi", "object": "chat.completion.chunk", "model": up["model"], "anansi": {"node": node.url, "filtered": filtered},
+                     "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}]}
+            done = {**chunk, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+            return StreamingResponse(iter([f"data: {json.dumps(chunk)}\n\n", f"data: {json.dumps(done)}\n\n", "data: [DONE]\n\n"]),
+                                     media_type="text/event-stream")
         return {"id": data.get("id", "anansi"), "object": "chat.completion", "model": up["model"],
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
                 "usage": data.get("usage"), "anansi": {"node": node.url, "filtered": filtered}}

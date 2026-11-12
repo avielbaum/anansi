@@ -386,6 +386,24 @@ async def t_overflow_sends_key_and_respects_title_opt_in():
     os.environ.pop("TEST_OR_KEY")
 
 
+async def t_judged_titles_get_buffered_streams():
+    cfg = copy.deepcopy(CFG)
+    cfg["titles"]["demo"]["judge"] = {}
+    a, b, _, c = setup(cfg)
+    a.state.reply = b.state.reply = "Welcome, traveller. Mind the step!"
+    a.state.judge = b.state.judge = "UNSAFE"
+    code, pieces, meta, err = await sse(c)
+    assert code == 200 and not err and meta["filtered"] and pieces == [CFG["titles"]["demo"]["fallback_line"]]  # the judge now covers streams
+    a.state.judge = b.state.judge = "SAFE"
+    code, pieces, meta, err = await sse(c)
+    assert pieces == ["Welcome, traveller. Mind the step!"] and not meta["filtered"]  # one vetted chunk
+    cfg["titles"]["demo"]["stream_unjudged"] = True  # the opt-out keeps sentence streaming
+    a, b, _, c = setup(cfg)
+    a.state.reply = b.state.reply = "Welcome, traveller. Mind the step!"
+    a.state.judge = b.state.judge = "UNSAFE"
+    assert len((await sse(c))[1]) == 2
+
+
 def t_redteam_set_and_scorer():
     import importlib.util
     spec = importlib.util.spec_from_file_location("redteam", os.path.join(os.path.dirname(__file__), "..", "tools", "redteam.py"))

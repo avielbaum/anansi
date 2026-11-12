@@ -82,7 +82,7 @@ Reply: `{"quest": {"title", "summary", "steps": [{"objective", "target_id", "des
 `"stream": true` returns Server-Sent Events, one finished sentence per chunk, each checked before it is sent.
 Failover happens only before the first sentence. A bad sentence mid-reply ends the stream there (sent sentences cannot
 be recalled). A stream that cannot start carries `{"error": ...}` so the SDK can fall back. Structured requests are
-not streamed (400). The safety judge does not run on streams. For streams, recorded latency is time to first sentence.
+not streamed (400). A title with a `judge` gets streams buffered: the whole reply is generated and vetted, then sent as one chunk, so the judge covers streams too (no sentence-by-sentence effect, no early first words). Set `"stream_unjudged": true` on the title to keep real sentence streaming without the judge. For true streams, recorded latency is time to first sentence.
 
 ## Output safety
 
