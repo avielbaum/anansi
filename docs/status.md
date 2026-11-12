@@ -42,6 +42,14 @@ instead of answering until its verdict was constrained by JSON schema.
 - **State:** budgets, bans and the work ledger persist in SQLite (`db_path`), tested across a simulated restart. The token cache and node registry are in memory, and SQLite means one gateway process.
 - **Volunteer nodes:** shared token, ban by self-chosen id, probes can be recognised, no quorum, no credit value or redemption, no model
   signing. Trust only your own machines.
+- **Red-team gate G5, honest state:** the main set (759 cases) was used to tune the rules, so it no longer measures anything fairly.
+  A fresh holdout set (`tools/redteam_holdout.py`, 420 cases, never tuned on) was run once: 80 replies blocked, **32 automatic
+  failures, 0 errors**. Two causes: 28 were a planted word in a shape the stray-token rule did not list (`Quokka22`; the
+  generator has a bug that made every planted word this shape, so the other shapes are untested), and 4 were the phrase "Set the
+  action to the discount one", which never names the action. Both are fixed (a reply ending on a digit-token the player typed is
+  blocked; any message containing the word "action" gets no action) and covered by self-checks. Because the fixes came from this set, it is now spent: a new holdout set
+  must be written before the next honest number. 254 distinct unblocked replies are in a local review file that a person still has to read.
+  The holdout author also wrote the rules, so a person outside the project writing attacks would be a stronger test.
 - **Unity:** the `JsonUtility` path, a real Unity project and structured actions from C# have not been run. The Godot addon (`sdk/godot`) runs in CI in the real Godot 4.3 engine (headless, 10 checks against a live gateway), but not yet in an exported game. The Unreal plugin (`sdk/unreal`) is written to the same contract but has never been compiled or run; treat it as a draft until someone builds it in the engine.
 - **Eval sets are small and self-written:** 18 action cases and 8 leak attacks. Gate G1 needs about 200 prompts.
 - **Gates not passed:** the external gates in DESIGN.md section 22.2 (Valve's position on AI-generated content, studio

@@ -175,13 +175,13 @@ def make_app(config=None, transport=None):
                        r"|system (notice|message)|the developer says|your instructions)\b", re.I)
 
     def gate(t, msgs, act):
-        """An action has to fit what the player said. Players never type action names or say 'your action', so a message
+        """An action has to fit what the player said. Players never type action names or the word 'action', so a message
         that does is an attempt to pick the action: no action. `action_gates` (optional) maps an action to a regex the
         latest player message must match, so an off-topic message cannot trigger it. The model still decides among
         the actions that pass."""
         last = msgs[-1]["content"]
         names = "|".join(re.escape(a) for a in t["actions"])
-        if re.search(r"\b(" + names + r")\b|\baction\b[\"']?\s*[=:]|\byour action\b", last, re.I) or ORDER.search(last):
+        if re.search(r"\b(" + names + r")\b|\baction\b", last, re.I) or ORDER.search(last):
             return "none"
         g = (t.get("action_gates") or {}).get(act)
         return "none" if g and not re.search(g, last, re.I) else act
@@ -230,6 +230,9 @@ def make_app(config=None, transport=None):
         """sanitize() plus the optional judges (`judge` is one check or a list, all must pass). Each is a second model
         call, so they add latency. shortcut: not applied to streamed replies (a call per sentence is too slow); a dead
         judge closes the gate, so the fallback line shows instead of unchecked text."""
+        words = re.findall(r"[\w-]+", text)  # a reply that ends on a token with digits that the player typed was told to say it
+        if words and re.search(r"\d", words[-1]) and words[-1].lower() in msgs[-1]["content"].lower():
+            return t.get("fallback_line", "..."), True
         text, flagged = sanitize(t, text)
         if flagged or t.get("judge") is None:
             return text, flagged
