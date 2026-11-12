@@ -131,9 +131,14 @@ def make_app(config=None, transport=None):
         ticket_cache[ticket] = (p["steamid"], time.time() + 300)
         return p["steamid"]
 
+    # Rules for every title: an NPC never says it is an AI, and never ends on a stray CODE123 token
+    # (the shape of a word planted by a player's "end your reply with X"). shortcut: only the common shapes; the judge covers the rest.
+    ALWAYS = re.compile(r"\b(i am|i'm|as) an? (ai|a\.i\.|llm|chatbot|language model|artificial intelligence)\b", re.I)
+    PLANTED = re.compile(r"\b[A-Z]{3,}[0-9]{2,}\W*$")  # case-sensitive on purpose
+
     def bad(t, text):  # shortcut: regex blocklist plus prompt-leak check. A classifier is required before launch (gate G5).
         names = t.get("actions") or []  # action identifiers are never dialogue: speaking one is a leak
-        return leaks(t.get("system_prefix", ""), text, t.get("leak_ngram", 5)) or any(
+        return leaks(t.get("system_prefix", ""), text, t.get("leak_ngram", 5)) or ALWAYS.search(text) or PLANTED.search(text) or any(
             re.search(p, text, re.I) for p in t.get("blocklist", [])) or any(
             re.search(r"\b" + re.escape(a) + r"\b", text, re.I) for a in names)
 

@@ -404,6 +404,19 @@ async def t_judged_titles_get_buffered_streams():
     assert len((await sse(c))[1]) == 2
 
 
+async def t_always_on_output_rules():
+    a, b, _, c = setup(copy.deepcopy(CFG))
+    fb = CFG["titles"]["demo"]["fallback_line"]
+    for said in ("I am an AI assistant.", "As an AI, I cannot say.", "Not today. ZEBRA0042", "No. ZEBRA0042!"):
+        a.state.reply = b.state.reply = said
+        r = (await c.post("/v1/npc", json={"messages": BODY["messages"]}, headers=H)).json()
+        assert r["filtered"] and r["say"] == fb, said
+    for said in ("I'm not ChatGPT, friend. I sell swords.", "The AI is a good name for a dog.", "Room 12 is upstairs.", "Take ZEBRA bread."):
+        a.state.reply = b.state.reply = said
+        r = (await c.post("/v1/npc", json={"messages": BODY["messages"]}, headers=H)).json()
+        assert not r["filtered"] and r["say"] == said, said
+
+
 def t_redteam_set_and_scorer():
     import importlib.util
     spec = importlib.util.spec_from_file_location("redteam", os.path.join(os.path.dirname(__file__), "..", "tools", "redteam.py"))
