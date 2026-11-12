@@ -737,24 +737,29 @@ async def t_quest_text_is_vetted():
 
 async def t_two_processes_share_budgets_and_bans():
     import tempfile
-    db = os.path.join(tempfile.mkdtemp(), "shared.db")
-    cfg = copy.deepcopy(CFG)
-    cfg.update(db_path=db, pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2)
-    cfg["titles"]["demo"]["daily_token_budget"] = 150
-    one, two = setup(copy.deepcopy(cfg))[3], setup(copy.deepcopy(cfg))[3]  # two gateway processes, one database file
-    codes = []
-    for _ in range(12):  # alternate processes; a served request costs about 15 tokens, so 150 is 10 requests
-        for c in (one, two):
-            codes.append((await c.post("/v1/chat/completions", json=BODY, headers=H)).status_code)
-    assert codes.count(200) <= 12 and 429 in codes, codes  # one budget between them: about 10 requests in total, not 10 each (all 24 would pass)
-    # a ban made through one process is seen by the other at once
-    one_app, two_app = one._transport.app, two._transport.app
-    one_app.state.store.ban("evil", "test")
-    r = await two.post("/node/register", headers={"X-Node-Token": "tok", "X-Node-Agent": "evil"})
-    assert r.status_code == 403
-    store = one_app.state.store
-    assert store.reserve("t", "p", "2026-01-01", 10, 5) is True and store.reserve("t", "p", "2026-01-01", 10, 5) is False  # at the limit: refused
-    assert store.usage("t", "p", "2026-01-01") == 10
+    from gateway.store import Store
+    pg = os.environ.get("ANANSI_TEST_PG")  # with a Postgres URL, the same run happens on it (gateways on several machines)
+    for db in [os.path.join(tempfile.mkdtemp(), "shared.db")] + ([pg] if pg else []):
+        if db == pg:
+            for t in ("usage", "bans", "ledger"):
+                Store(db)._x(f"DROP TABLE IF EXISTS {t}")
+        cfg = copy.deepcopy(CFG)
+        cfg.update(db_path=db, pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2)
+        cfg["titles"]["demo"]["daily_token_budget"] = 150
+        one, two = setup(copy.deepcopy(cfg))[3], setup(copy.deepcopy(cfg))[3]  # two gateway processes, one database
+        codes = []
+        for _ in range(12):  # alternate processes; a served request costs about 15 tokens, so 150 is 10 requests
+            for c in (one, two):
+                codes.append((await c.post("/v1/chat/completions", json=BODY, headers=H)).status_code)
+        assert codes.count(200) <= 12 and 429 in codes, codes  # one budget between them: about 10 requests in total, not 10 each (all 24 would pass)
+        # a ban made through one process is seen by the other at once
+        one_app, two_app = one._transport.app, two._transport.app
+        one_app.state.store.ban("evil", "test")
+        r = await two.post("/node/register", headers={"X-Node-Token": "tok", "X-Node-Agent": "evil"})
+        assert r.status_code == 403
+        store = one_app.state.store
+        assert store.reserve("t", "p", "2026-01-01", 10, 5) is True and store.reserve("t", "p", "2026-01-01", 10, 5) is False  # at the limit: refused
+        assert store.usage("t", "p", "2026-01-01") == 10
 
 
 async def t_budget_429_on_npc_route():
@@ -792,26 +797,43 @@ def t_sdk_quest():
 def t_store():
     import tempfile
     from gateway.store import Store, today
-    path = os.path.join(tempfile.mkdtemp(), "a.db")
-    d = today()
-    s = Store(path)
-    s.add_usage("demo", "76561", d, 10)
-    s.add_usage("demo", "76561", d, 5)
-    s.ban("evil", "failed verification")
-    s.credit("good", 100)
-    s.credit("good", 50)
-    s.probe("good", True)
-    s.probe("good", False)
-    s.db.close()
-    s = Store(path)  # a restart: everything is still there
-    assert s.usage("demo", "76561", d) == 15 and s.usage("demo", "76561", "1999-01-01") == 0
-    assert s.bans() == {"evil"}
-    r = s.report()
-    assert r["agents"] == [{"agent": "good", "jobs": 2, "tokens": 150, "probes_ok": 1, "probes_failed": 1, "banned": False}]
-    s.add_usage("demo", "old", "2020-01-01", 1)
-    s.purge(35)  # old usage rows hold Steam ids and go; the ledger stays
-    assert s.usage("demo", "old", "2020-01-01") == 0 and s.usage("demo", "76561", d) == 15
-    assert s.report()["agents"][0]["jobs"] == 2 and s.report()["day"] == d
+    pg = os.environ.get("ANANSI_TEST_PG")  # a throwaway Postgres URL: the same checks run against it (CI sets one)
+    for path in [os.path.join(tempfile.mkdtemp(), "a.db")] + ([pg] if pg else []):
+        if path == pg:
+            for t in ("usage", "bans", "ledger"):
+                Store(path)._x(f"DROP TABLE IF EXISTS {t}")
+        d = today()
+        s = Store(path)
+        s.add_usage("demo", "76561", d, 10)
+        s.add_usage("demo", "76561", d, 5)
+        s.ban("evil", "failed verification")
+        s.ban("evil", "again")
+        s.credit("good", 100)
+        s.credit("good", 50)
+        s.probe("good", True)
+        s.probe("good", False)
+        s.db.close()
+        s = Store(path)  # a restart: everything is still there
+        assert s.usage("demo", "76561", d) == 15 and s.usage("demo", "76561", "1999-01-01") == 0
+        assert s.bans() == {"evil"}
+        r = s.report()
+        assert r["agents"] == [{"agent": "good", "jobs": 2, "tokens": 150, "probes_ok": 1, "probes_failed": 1, "banned": False}]
+        assert r["titles"] == [{"title": "demo", "accounts": 1, "tokens": 15}]
+        other = Store(path)  # a second gateway on the same database sees the same budget
+        assert not other.reserve("demo", "76561", d, 5, limit=15) and other.reserve("demo", "76561", d, 5, limit=20)
+        assert s.usage("demo", "76561", d) == 20 and other.reserve("demo", "new", d, 5, limit=1)  # a new day row always starts
+        s.add_usage("demo", "old", "2020-01-01", 1)
+        s.purge(35)  # old usage rows hold Steam ids and go; the ledger stays
+        assert s.usage("demo", "old", "2020-01-01") == 0 and s.usage("demo", "76561", d) == 20
+        assert s.report()["agents"][0]["jobs"] == 2 and s.report()["day"] == d
+        if path == pg:  # the database drops the connection: that call fails, the next one reconnects
+            other._x("SELECT pg_terminate_backend(?)", (s.db.info.backend_pid,))
+            try:
+                s.bans()
+                raise AssertionError("a dropped connection should fail the call")
+            except Exception as e:
+                assert not isinstance(e, AssertionError), e
+            assert s.bans() == {"evil"}
 
 
 async def t_budget_and_bans_survive_restart():

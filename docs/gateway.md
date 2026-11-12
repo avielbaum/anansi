@@ -30,7 +30,7 @@ JSON file named by `ANANSI_CONFIG`.
 | `auth.mode` | How player tokens are checked. `"dev"` accepts `dev:<player id>` (never in production); `"steam"` checks the Steam Web API with `STEAM_PUBLISHER_KEY`. Other platforms (Epic, GOG, itch.io, consoles, mobile, your own launcher) need a check added in `player_id()` in `gateway/app.py`; an unknown mode, or no `auth` block at all, stops startup (there is no default). The old key `steam` still works |
 | `nodes[]` | Static nodes: `url`, `models` (logical names), `region`, `upstream_model` (the server's own name), `extra` (merged into every request, e.g. to switch thinking off) |
 | `titles.<id>` | One entry per game, see below |
-| `db_path` | SQLite file for daily budgets, agent bans and the volunteer work ledger. Unset means in memory (nothing survives a restart) |
+| `db_path` | SQLite file, or a `postgresql://` URL for gateways on several machines, holding daily budgets, agent bans and the volunteer work ledger. Unset means in memory (nothing survives a restart) |
 | `cors_origins` | Origins allowed to call the gateway from a browser, e.g. `["https://game.example"]`. Empty by default: no page on another origin can call it. Never `"*"` with a title key in the page |
 | `retention_days` | Days of per-account usage rows kept (they hold player ids); default 35 |
 | `pull_tokens` | Enables volunteer agents; see [nodes.md](nodes.md) |
@@ -150,25 +150,28 @@ Example (`config.openrouter.json`):
 
 ## Running more than one gateway process
 
-Several processes on **one machine** can share the `db_path` file (for example `uvicorn --workers 4`, or two services behind
-a proxy). Daily budgets are one pool: the reservation is a single atomic statement, so two processes cannot both spend the last
-tokens. A ban made by one process is seen by the others at their next registration. What stays per process: `/healthz` and
-`/admin` statistics, node health and ejection, the Steam ticket cache, the failed-login counter and `max_inflight` (so each
-limit is multiplied by the process count).
+Several processes on **one machine** can share a SQLite `db_path` file (for example `uvicorn --workers 4`, or two services
+behind a proxy). For gateways on **several machines**, set `db_path` to a Postgres URL (`postgresql://user:pass@host/db`, and
+`pip install "psycopg[binary]"`); the gateway creates its three tables on first start. Either way daily budgets are one pool:
+the reservation is a single atomic statement, so two gateways cannot both spend the last tokens. A ban made by one gateway is
+seen by the others at their next registration. What stays per process: `/healthz` and `/admin` statistics, node health and
+ejection, the Steam ticket cache, the failed-login counter, `max_inflight` and `max_inflight_per_player` (so each limit is
+multiplied by the process count).
 
-Two limits to plan around:
+Limits to plan around:
 - **Volunteer (pull) nodes need a single process.** An agent registers with one process and polls it by node id; if the next poll
   lands on another process the agent gets `404`, registers again and churns. Run volunteers against a dedicated single-process
   gateway, or route `/node/*` to one process.
-- **Gateways on several machines** cannot share SQLite. That needs the `Store` methods (usage, reserve, bans, ledger) moved to a
-  network database; it is not built.
+- **Postgres:** every budget check is a round trip on the request path (about a millisecond to a database in the same data
+  centre), and if the database restarts, the requests that were using the connection fail once and the next ones reconnect.
+  Tested against Postgres 16 (locally and in CI); no load test across real machines.
 
 ## Production switches
 
 - Set `auth.mode` to your platform's check (`"steam"` needs `STEAM_PUBLISHER_KEY`); never leave it on `"dev"`. With `ANANSI_ENV=production` (set by the Dockerfile, the compose file and the systemd unit) the gateway refuses to start on dev auth or while a title key is still `change-me`; for a local try-out of the compose setup run it with `ANANSI_ENV=dev`. `steam` mode also needs `STEAM_PUBLISHER_KEY` and an `appid` on every title, checked at startup. The compose setup keeps budgets in `/data/anansi.db` on a volume.
 - Change every `titles.*.key`; set `ANANSI_ADMIN_TOKEN`.
 - Put the gateway behind TLS (reverse proxy or load balancer).
-- Set `db_path` so budgets, bans and the ledger survive restarts. The token cache and node registry are still in memory, and SQLite means one gateway process; move to a shared database before running two.
+- Set `db_path` so budgets, bans and the ledger survive restarts. The token cache and node registry are still in memory. A SQLite file serves the processes of one machine; for several machines use a Postgres URL (see above).
 
 Request limits: `max_tokens` is capped at the title's `max_tokens`, `temperature` is clamped to 0-2 and `top_p` to 0-1, non-numeric values get a 400, and `model` must be listed in the title's `models` (default: only `default_model`), otherwise `default_model` is used. The daily budget is reserved before the model call (prompt size plus `max_tokens`) and settled afterwards, so parallel requests cannot all pass the check; a failed request gives its reservation back. Token usage reported by a node is clamped between the gateway's own estimate and twice the reservation, so a volunteer node cannot under- or over-bill a player. Old usage rows are purged once a day while the gateway runs, not only at startup.
 
