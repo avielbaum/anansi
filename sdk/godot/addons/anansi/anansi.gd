@@ -1,7 +1,7 @@
 ## Anansi game SDK for Godot 4.2+ (GDScript). Same contract as sdk/anansi_client.py and sdk/unity/Anansi.cs:
 ## ask the gateway, and on a timeout, a 429, an auth error or any failure answer from the fallback so the game never stalls.
 ## Every call returns a Dictionary with "source" = "gateway" or "fallback". Use it with `await`.
-## shortcut: UNTESTED. It has never been run in Godot (no engine install was available when it was written).
+## Tested headless in Godot 4.3 against a live gateway in CI (sdk/godot/test/run.gd). Not yet tried in an exported game.
 ##
 ##   var npc := Anansi.new()
 ##   add_child(npc)    # it makes HTTP requests as child nodes, so it must be in the scene tree

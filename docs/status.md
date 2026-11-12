@@ -42,7 +42,7 @@ instead of answering until its verdict was constrained by JSON schema.
 - **State:** budgets, bans and the work ledger persist in SQLite (`db_path`), tested across a simulated restart. The token cache and node registry are in memory, and SQLite means one gateway process.
 - **Volunteer nodes:** shared token, ban by self-chosen id, probes can be recognised, no quorum, no credit value or redemption, no model
   signing. Trust only your own machines.
-- **Unity:** the `JsonUtility` path, a real Unity project and structured actions from C# have not been run. The Unreal plugin (`sdk/unreal`) and the Godot addon (`sdk/godot`) are written to the same contract but have never been compiled or run; treat them as drafts until someone builds them in the engine.
+- **Unity:** the `JsonUtility` path, a real Unity project and structured actions from C# have not been run. The Godot addon (`sdk/godot`) runs in CI in the real Godot 4.3 engine (headless, 10 checks against a live gateway), but not yet in an exported game. The Unreal plugin (`sdk/unreal`) is written to the same contract but has never been compiled or run; treat it as a draft until someone builds it in the engine.
 - **Eval sets are small and self-written:** 18 action cases and 8 leak attacks. Gate G1 needs about 200 prompts.
 - **Gates not passed:** the external gates in DESIGN.md section 22.2 (Valve's position on AI-generated content, studio
   interviews, legal review) are untouched.

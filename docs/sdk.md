@@ -130,6 +130,7 @@ server process (the `ANANSI_TITLE` and `ANANSI_KEY` variables). There is no red-
 ## Status
 
 The C# SDK is tested as plain .NET against a live gateway (Windows PowerShell test and a `dotnet` test run in CI on
-Ubuntu). The Unity `JsonUtility` branch and a real Unity project have not been run. The Unreal plugin and the Godot addon are
-**untested drafts**: they follow the same contract and the same JSON shapes, but have never been compiled or run in
-their engines, and CI does not build them. Other engines can call the HTTP API directly; it is plain JSON and SSE.
+Ubuntu). The Unity `JsonUtility` branch and a real Unity project have not been run. The Godot addon runs in CI in the
+real Godot 4.3 engine, headless, against a live gateway (`sdk/godot/test/run.gd`, 10 checks: replies, streaming, quests,
+every fallback path). The Unreal plugin is an **untested draft**: it follows the same contract and JSON shapes but has
+never been compiled or run, and CI does not build it. Other engines can call the HTTP API directly; it is plain JSON and SSE.

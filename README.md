@@ -94,7 +94,8 @@ Measured on one Windows PC with no GPU, running Qwen3-1.7B and 4B through Ollama
 | Python and C# SDKs with sentence streaming and local fallback | working (C# as plain .NET; Unity untested) |
 | JavaScript / TypeScript SDK (browsers, Node, Electron, Deno, Bun) | working: 11 checks against a live gateway in CI; for browsers on another origin list them in `cors_origins` |
 | Red-team set for gate G5 (759 prompts, dev/test split, runner) | built; first dev run: 5 of 216 automatic failures after fixes; **G5 not passed** |
-| Unreal Engine 5 plugin (C++, Blueprint-callable) and Godot 4 addon (GDScript) | **written, never compiled or run: no Unreal or Godot install was available** |
+| Godot 4 addon (GDScript) | working: 10 checks in the real Godot 4.3 engine, headless, against a live gateway in CI (not tried in an exported game or on a console) |
+| Unreal Engine 5 plugin (C++, Blueprint-callable) | **written, never compiled or run: no Unreal install was available** |
 | Linux | gateway and C# SDK tested in CI on Ubuntu; Docker, vLLM and systemd files written but never run |
 | macOS Apple Silicon | gateway tests pass on a CI arm64 runner; no real Mac, no real model |
 | **GPU nodes** (vLLM, llama-server) | **not tested, no GPU available** |
