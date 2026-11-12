@@ -153,7 +153,7 @@ def make_app(config=None, transport=None):
             if ticket and ticket.startswith("dev:") and len(ticket) > 4:
                 return ticket[4:]
             raise HTTPException(401, "bad ticket")
-        hit = ticket_cache.get(ticket)
+        hit = ticket_cache.get((t["appid"], ticket))  # a ticket is checked against one game; another title must check it again
         if hit and hit[1] > time.time():
             return hit[0]
         try:  # UNTESTED against the live Steam API: needs a publisher key. [verify]
@@ -169,7 +169,7 @@ def make_app(config=None, transport=None):
             ticket_cache.clear()
         if not p.get("steamid"):
             raise HTTPException(401, "bad ticket")
-        ticket_cache[ticket] = (p["steamid"], time.time() + 300)
+        ticket_cache[(t["appid"], ticket)] = (p["steamid"], time.time() + 300)
         return p["steamid"]
 
     # Rules for every title: an NPC never says it is an AI, and never ends on a stray CODE123 token

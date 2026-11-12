@@ -24,7 +24,7 @@ instead of answering until its verdict was constrained by JSON schema.
 
 ## Tested where
 
-| Area | Windows (this PC) | Ubuntu (CI) | macOS arm64 (CI) |
+| Area | Windows | Ubuntu (CI) | macOS arm64 (CI) |
 |---|---|---|---|
 | Gateway and agent self-checks (53) | yes | yes | yes |
 | C# SDK against a live gateway | yes | yes | no |

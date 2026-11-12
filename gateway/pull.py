@@ -22,6 +22,7 @@ from fastapi import Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
 from .scheduler import Node
+from .store import Store
 
 CANARIES = [  # known answers a working model gets right at temperature 0; matched by regex, not equality
     {"user": "What is 17 plus 25? Reply with only the number.", "expect": r"\b42\b"},
@@ -39,8 +40,7 @@ class PullHub(httpx.AsyncBaseTransport):
         self.poll_s, self.job_timeout_s = poll_s, job_timeout_s
         self.ttl_s = ttl_s if ttl_s is not None else poll_s + 15  # must outlast one long poll
         self.reply_text, self.canaries, self.canary_rate = reply_text, canaries or CANARIES, canary_rate
-        self.store = store
-        self.banned = store.bans() if store else set()  # bans survive a restart
+        self.store = store or Store()  # bans live only here: they survive a restart and other processes see them
         self.stats = {"probes": 0, "probe_failures": 0, "banned": 0}
         self.nodes = {}  # id -> {"node", "token", "agent", "q", "seen", "live", "strikes"}
         self.jobs = {}   # job id -> (node id, Future)
@@ -48,7 +48,7 @@ class PullHub(httpx.AsyncBaseTransport):
     def register(self, token, agent):
         if not agent or len(agent) > 64:
             raise HTTPException(400, "X-Node-Agent id required")
-        if agent in self.banned or (self.store and agent in self.store.bans()):  # the file knows bans made by other processes
+        if agent in self.store.bans():
             raise HTTPException(403, "agent banned")
         cfg = next((c for t, c in self.tokens.items() if hmac.compare_digest(t.encode(), (token or "").encode())), None)
         if cfg is None:
@@ -143,8 +143,7 @@ class PullHub(httpx.AsyncBaseTransport):
         except ValueError:
             answer = ""
         ok = bool(re.search(c["expect"], answer))
-        if self.store:
-            self.store.probe(e["agent"], ok)
+        self.store.probe(e["agent"], ok)
         if ok:
             e["strikes"] = 0
             if not e["live"] and self.nodes.get(nid) is e:
@@ -154,9 +153,7 @@ class PullHub(httpx.AsyncBaseTransport):
         self.stats["probe_failures"] += 1
         e["strikes"] += 1
         if e["strikes"] >= STRIKES or not e["live"]:
-            self.banned.add(e["agent"])
-            if self.store:
-                self.store.ban(e["agent"], "failed verification")
+            self.store.ban(e["agent"], "failed verification")
             self.stats["banned"] += 1
             self.drop(nid)
 
@@ -168,7 +165,7 @@ class PullHub(httpx.AsyncBaseTransport):
         sent = (await request.aread()).decode()
         status, body, ctype = await self.dispatch(nid, request.url.path, sent)
         e = self.nodes.get(nid)
-        if self.store and status == 200 and e:  # credit the worker for a real job (probe traffic never comes through here)
+        if status == 200 and e:  # credit the worker for a real job (probe traffic never comes through here)
             try:
                 tokens = int(json.loads(body)["usage"]["total_tokens"])
             except (ValueError, KeyError, TypeError):

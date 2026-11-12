@@ -582,7 +582,7 @@ async def t_pull_verification():
     t1 = asyncio.create_task(serve(gw, httpx.AsyncClient(transport=httpx.ASGITransport(app=liar), base_url="http://l"),
                                    "tok", log=lambda m: None, agent="evil"))
     await asyncio.sleep(0.6)
-    assert "evil" in hub.banned and not app.state.sched.nodes
+    assert "evil" in hub.store.bans() and not app.state.sched.nodes
     assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 503
     assert (await gw.post("/node/register", headers={"X-Node-Token": "tok", "X-Node-Agent": "evil"})).status_code == 403
     assert (await gw.post("/node/register", headers={"X-Node-Token": "tok"})).status_code == 400  # agent id is required
@@ -592,12 +592,12 @@ async def t_pull_verification():
     t2 = asyncio.create_task(serve(gw, httpx.AsyncClient(transport=httpx.ASGITransport(app=mock), base_url="http://l"),
                                    "tok", log=lambda m: None, agent="drifter"))
     await asyncio.sleep(0.6)
-    assert len(app.state.sched.nodes) == 1 and "drifter" not in hub.banned
+    assert len(app.state.sched.nodes) == 1 and "drifter" not in hub.store.bans()
     mock.state.reply = "buy crypto now"
     for _ in range(2):  # the real request is served, then the spot check catches the bad answer
         assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 200
         await asyncio.sleep(0.5)
-    assert "drifter" in hub.banned and not app.state.sched.nodes and hub.stats["banned"] == 2
+    assert "drifter" in hub.store.bans() and not app.state.sched.nodes and hub.stats["banned"] == 2
     assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 503
     t2.cancel()
 
@@ -730,7 +730,6 @@ async def t_two_processes_share_budgets_and_bans():
     assert codes.count(200) <= 12 and 429 in codes, codes  # one budget between them: about 10 requests in total, not 10 each (all 24 would pass)
     # a ban made through one process is seen by the other at once
     one_app, two_app = one._transport.app, two._transport.app
-    one_app.state.hub.banned.add("evil")
     one_app.state.store.ban("evil", "test")
     r = await two.post("/node/register", headers={"X-Node-Token": "tok", "X-Node-Agent": "evil"})
     assert r.status_code == 403
@@ -1037,6 +1036,7 @@ async def t_steam_ticket_check():
         return r
     cfg = copy.deepcopy(CFG)
     cfg["auth"] = {"mode": "steam"}
+    cfg["titles"]["other"] = {**cfg["titles"]["demo"], "appid": "999", "key": "k2"}
     old = os.environ.get("STEAM_PUBLISHER_KEY")
     os.environ["STEAM_PUBLISHER_KEY"] = "pubkey"
     try:
@@ -1054,6 +1054,9 @@ async def t_steam_ticket_check():
         assert steam.state.q == ("pubkey", "480", "ticket1")  # our key and the title's appid went to Steam
         assert gw.state.store.usage("demo", "765", datetime.datetime.now(datetime.timezone.utc).date().isoformat()) > 0  # billed to the steam id
         assert (await c.post("/v1/chat/completions", json=BODY, headers=h)).status_code == 200 and steam.state.calls == 1  # cached for a while
+        other = {**h, "X-Anansi-Title": "other", "X-Anansi-Key": "k2"}  # the same ticket on another game is checked again, for that game
+        assert (await c.post("/v1/chat/completions", json=BODY, headers=other)).status_code == 200
+        assert steam.state.calls == 2 and steam.state.q[1] == "999"
         h2 = {**H, "X-Player-Token": "ticket2"}
         for reply, code in (({"response": {"params": {"result": "Invalid Ticket"}}}, 401),
                             ({"response": {"params": {"result": "OK", "steamid": "765", "vacbanned": True}}}, 401),
