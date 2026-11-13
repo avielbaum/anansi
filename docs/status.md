@@ -33,11 +33,25 @@ instead of answering until its verdict was constrained by JSON schema.
 | C# SDK against a live gateway | yes | yes | no |
 | JavaScript SDK against a live gateway (`node sdk/js/test.mjs`) | yes | yes (CI) | no |
 | Real model through Ollama | yes (CPU) | no | no |
-| Docker, vLLM, systemd files | n/a | no | n/a |
+| Docker, vLLM, systemd files | n/a | yes, on a rented NVIDIA A10 VM (Ubuntu 22.04) | n/a |
 
 ## Known limits
 
-- **No GPU runs.** vLLM, `llama-server` and Docker files are unrun; latency under GPU load is unknown.
+- **GPU runs: one rented NVIDIA A10 VM** (24 GB, Ubuntu 22.04, about 75 minutes, about $1.90). All passed after the fixes below:
+  `deploy/docker-compose.yml` (vLLM 0.33 + gateway container), the systemd unit (runs as `anansi`, state in `/var/lib/anansi`
+  survives a restart, production mode refuses the test key), `llama-server` (official CUDA image), quests, `join.sh` (picks
+  the model by RAM, installs it with Ollama, joins), and the NVIDIA busy check (0% idle, 74% under load). Qwen3-1.7B latency
+  through the gateway: vLLM p50 0.13 s alone and about 165 requests/s with p99 0.3 s at 32 in flight (above that vLLM queues;
+  Docker's published-port proxy cost another 40% at 64); `llama-server` with 8 slots p50 0.07 s alone, about 50 requests/s.
+  Quests 1.4 s, against 33 s on CPU. Bugs it found and fixed: an honest volunteer whose model thinks by default was **banned
+  on its first probe** (a reply with only unfinished reasoning now drops the node instead, and the agent backs off rather than
+  re-registering in a loop); under steady traffic the agent **never checked whether its owner was using the machine** (now a
+  forced check every minute), only one of its workers paused, and a paused agent left jobs queued for up to a minute (it now
+  calls `/node/leave`); the ORANGE probe passed on a reply that merely echoed the question. And `qwen3:4b` in Ollama is now
+  a thinking-only model: the earlier 4B numbers above were made with it. With `qwen3:4b-instruct` instead (run on the GPU,
+  through the gateway, test split): 4B NPC with the word gate 89 of 106 (was 84), 4B NPC with a 4B checker **96 of 106** (was
+  91), 1.7B NPC with a 4B checker 90 (was 84). The configs now use `qwen3:4b-instruct`. Not run: anything at production
+  scale, Postgres under load, AMD or Intel GPUs.
 - **Live platform identity checks are untested.** Only Steam is written (it needs a publisher key and follows the documented shape); other platforms need a check added.
 - **Safety is partial.** Regex blocklist, word-overlap leak guard and an optional judge. No trained classifier; the red-team
   sets below are self-written; paraphrased leaks get through. On titles with a judge, streams are buffered so the judge covers them (unless `stream_unjudged`).

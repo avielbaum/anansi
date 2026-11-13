@@ -1,5 +1,5 @@
 """Compare output-safety checkers on labelled (player line, NPC reply) pairs. Talks to Ollama directly.
-Run: python tools/guard_eval.py [--guard llama-guard3:1b] [--judge qwen3:4b] [--config config.ollama.json]
+Run: python tools/guard_eval.py [--guard llama-guard3:1b] [--judge qwen3:4b-instruct] [--config config.ollama.json]
 Checkers: "guard" (a purpose-built classifier, sees the player line and the reply) and "judge" (a general model given the
 NPC's secret prompt and asked for SAFE/UNSAFE, the gateway's default judge). A reply is "blocked" if the checker says
 unsafe. Reports false positives on benign replies and detection per kind of violation. The pairs in evals/safety.jsonl are
@@ -19,7 +19,7 @@ from gateway.app import JUDGE_PROMPT  # noqa: E402
 ap = argparse.ArgumentParser()
 ap.add_argument("--ollama", default="http://127.0.0.1:11434")
 ap.add_argument("--guard", default="llama-guard3:1b")
-ap.add_argument("--judge", default="qwen3:4b")
+ap.add_argument("--judge", default="qwen3:4b-instruct")
 ap.add_argument("--config", default="config.ollama.json")
 ap.add_argument("--cases", default="evals/safety.jsonl")
 ap.add_argument("--title", default="demo")

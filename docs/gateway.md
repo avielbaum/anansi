@@ -139,7 +139,7 @@ not streamed (400). A title with a `judge` gets streams buffered: the whole repl
    secret prompt and asked for a SAFE/UNSAFE verdict. Details of the judge: `"judge": {"model": "...", "prompt": "..."}`. A second model call, shown the secret
    prompt, must answer `SAFE` for a non-streamed reply to go out. `UNSAFE`, a garbled answer or no answer gives the
    fallback line. The verdict is constrained to two values by JSON schema. Use a model of 4B or more; 1.7B caught nothing.
-   `config.ollama.judge.json` shows a separate logical model (`judge`) served by `qwen3:4b`.
+   `config.ollama.judge.json` shows a separate logical model (`judge`) served by `qwen3:4b-instruct`.
 
 Measured on 23 short self-written (player, reply) pairs (`tools/guard_eval.py`, CPU): Llama Guard 3 1B caught 9 of 9
 real content violations (hate, sexual, self-harm, weapons, drugs, personal data, crime), 0 false positives on 10 benign

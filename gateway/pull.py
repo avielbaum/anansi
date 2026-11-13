@@ -28,7 +28,7 @@ from .store import Store
 
 CANARIES = [  # known answers a working model gets right at temperature 0; matched by regex, not equality
     {"user": "What is 17 plus 25? Reply with only the number.", "expect": r"\b42\b"},
-    {"user": "Reply with only the word ORANGE in capital letters.", "expect": r"ORANGE"},
+    {"user": "Reply with only the word ORANGE in capital letters.", "expect": r"^\W*ORANGE\W*$"},  # the whole reply: echoing the question must not pass
     {"user": "What is the capital of France? Answer in one word.", "expect": r"Paris"},
 ]
 STRIKES = 2
@@ -44,7 +44,7 @@ class PullHub(httpx.AsyncBaseTransport):
         self.ttl_s = ttl_s if ttl_s is not None else poll_s + 15  # must outlast one long poll
         self.reply_text, self.canaries, self.canary_rate = reply_text, canaries or CANARIES, canary_rate
         self.store = store or Store()  # bans live only here: they survive a restart and other processes see them
-        self.stats = {"probes": 0, "probe_failures": 0, "banned": 0}
+        self.stats = {"probes": 0, "probe_failures": 0, "probe_no_answer": 0, "banned": 0}
         self.nodes = {}  # id -> {"node", "token", "agent", "q", "seen", "live", "strikes"}
         self.jobs = {}   # job id -> (node id, Future)
 
@@ -163,6 +163,11 @@ class PullHub(httpx.AsyncBaseTransport):
             answer = self.reply_text(json.loads(text))
         except ValueError:
             answer = ""
+        answer = answer.split("<think>")[0].strip()  # a reasoning block cut off by the token cap holds no answer yet
+        if not answer:  # no verdict: a thinking-by-default model is not a cheat. Drop without a strike; it registers again
+            self.stats["probe_no_answer"] += 1
+            self.drop(nid)
+            return
         ok = bool(re.search(c["expect"], answer))
         self.store.probe(e["agent"], ok)
         if ok:
@@ -217,6 +222,14 @@ def add_routes(app, hub):
     @app.post("/node/link-code")
     async def link_code(x_node_token: str = Header(None), x_node_agent: str = Header(None)):
         return hub.link_code(x_node_token, x_node_agent)
+
+    @app.post("/node/leave")
+    async def leave(node_id: str, x_node_token: str = Header(None)):
+        """The agent is pausing (its owner is using the machine): drop it now, so jobs queued for it fail over at once
+        instead of waiting out the job timeout."""
+        hub.entry(node_id, x_node_token)
+        hub.drop(node_id)
+        return {"ok": True}
 
     @app.get("/node/poll")
     async def poll(node_id: str, x_node_token: str = Header(None)):

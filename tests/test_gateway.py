@@ -655,6 +655,24 @@ async def t_one_agent_serves_several_gateways():
     assert Store(path).report()["agents"][0]["jobs"] == 4  # both gateways' work is in the one ledger
 
 
+async def t_node_leave():
+    cfg = copy.deepcopy(CFG)
+    cfg.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2, canary_rate=0)
+    app = make_app(cfg)
+    hub = app.state.hub
+    gw = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://gw")
+    nh = {"X-Node-Token": "tok", "X-Node-Agent": "a"}
+    nid = (await gw.post("/node/register", headers=nh)).json()["node_id"]
+    await asyncio.sleep(0.05)  # its entry probe is now queued for it, unanswered
+    assert (await gw.post("/node/leave", params={"node_id": nid}, headers={**nh, "X-Node-Token": "other"})).status_code == 401
+    t0 = time.monotonic()
+    assert (await gw.post("/node/leave", params={"node_id": nid}, headers=nh)).status_code == 200
+    await asyncio.sleep(0.05)
+    assert nid not in hub.nodes and not hub.jobs and time.monotonic() - t0 < 1  # the queued job failed at once, not after 60 s
+    assert (await gw.get("/node/poll", params={"node_id": nid}, headers=nh)).status_code == 404
+    assert "a" not in hub.store.bans()  # leaving is not a failure
+
+
 async def t_pull_nodes():
     from node.agent import serve
     cfg = copy.deepcopy(CFG)
@@ -686,7 +704,8 @@ async def t_pull_verification():
     cfg = copy.deepcopy(CFG)
     cfg.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"]}, "tok2": {"models": ["npc-small"]},
                                       "pool": {"models": ["npc-small"], "shared": True},
-                                      "small": {"models": ["npc-small"], "max_workers": 2}}, pull_poll_s=0.2, pull_ttl_s=5,
+                                      "small": {"models": ["npc-small"], "max_workers": 2},
+                                      "tok3": {"models": ["npc-small"]}}, pull_poll_s=0.2, pull_ttl_s=5,
                canaries=[{"user": "say hi", "expect": "hello"}], canary_rate=1.0)  # probe after every real job
     app = make_app(cfg)
     hub = app.state.hub
@@ -719,6 +738,19 @@ async def t_pull_verification():
     assert "drifter" in hub.store.bans() and not app.state.sched.nodes and hub.stats["banned"] == 2
     assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 503
     t2.cancel()
+    # 3. a model that thinks by default runs out of tokens inside <think>: no answer is not a wrong answer (found on a
+    # real GPU, where Qwen3 on llama-server got an honest volunteer banned). Dropped, not banned; admitted once it answers
+    thinker = make_node("t")
+    thinker.state.reply = "<think>Okay, the player wants me to say"
+    t3 = asyncio.create_task(serve(gw, httpx.AsyncClient(transport=httpx.ASGITransport(app=thinker), base_url="http://l"),
+                                   "tok3", log=lambda m: None, agent="thinker"))
+    await asyncio.sleep(0.8)
+    assert "thinker" not in hub.store.bans() and not app.state.sched.nodes
+    assert 1 <= hub.stats["probe_no_answer"] <= 2  # the agent backs off: a dropped node must not be re-probed in a tight loop
+    thinker.state.reply = "<think>Easy.</think>hello"  # thinking off, or a finished thought: a real answer
+    await asyncio.sleep(1.0)
+    assert len(app.state.sched.nodes) == 1 and "thinker" not in hub.store.bans()
+    t3.cancel()
     # 3. a shared pool token: one bad agent is banned by id only, so the token keeps working for everyone else
     t3 = asyncio.create_task(serve(gw, httpx.AsyncClient(transport=httpx.ASGITransport(app=liar), base_url="http://l"),
                                    "pool", log=lambda m: None, agent="bad-pool"))
@@ -1031,7 +1063,7 @@ def t_join_plan():
     from node import join
     assert join.pick_model(4) is None and join.pick_model(5.9) is None  # too small to help
     assert join.pick_model(8)[0] == "qwen3:1.7b" and join.pick_model(15.9)[0] == "qwen3:1.7b"  # 8 GB machines: Lite only
-    assert join.pick_model(16)[0] == "qwen3:4b" and join.pick_model(64)[0] == "qwen3:4b"
+    assert join.pick_model(16)[0] == "qwen3:4b-instruct" and join.pick_model(64)[0] == "qwen3:4b-instruct"
     r = join.ram_gb()
     assert r is None or 0.5 < r < 4096  # readable on this platform
     a = argparse.Namespace(model=None, gateway="https://gw", slots=1)
@@ -1260,6 +1292,40 @@ async def t_agent_pauses_while_the_owner_is_busy():
         assert await ag.machine_busy(1, 1) is False  # cannot measure: never busy
     finally:
         ag.cpu_busy_fraction, ag.gpu_util = old
+    # nonstop traffic (found on a real GPU): a job on every poll means the machine is never idle, so the owner's game
+    # was never noticed. The forced check must still pause the agent, and once paused it takes no more jobs.
+    polls, logs, left = [], [], []
+
+    def busy_pool(req):
+        if req.url.path == "/node/register":
+            return httpx.Response(200, json={"node_id": "n1", "poll_s": 0})
+        if req.url.path == "/node/leave":
+            left.append(req.url.path)
+        if req.url.path == "/node/poll":
+            polls.append(time.monotonic())
+            return httpx.Response(200, json={"job": "j", "path": ag.ALLOWED, "body": "{}"})
+        return httpx.Response(200, json={"ok": True})
+    local = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={})), base_url="http://l")
+    saved = ag.SETTLE_S, ag.FORCE_S, ag.cpu_busy_fraction, ag.gpu_util
+    ag.SETTLE_S, ag.FORCE_S, ag.cpu_busy_fraction, ag.gpu_util = 0.1, 0.3, (lambda: 0.0), (lambda: 95.0)
+    ag.CHECK.update(due=time.monotonic() + 0.3, drain=False, paused=False)
+    ag.JOBS.update(active=0, last=time.monotonic())
+    try:
+        class Net(httpx.AsyncBaseTransport):  # a real network takes time; without it a regression spins and never yields
+            async def handle_async_request(self, req):
+                await asyncio.sleep(0.01)
+                return busy_pool(req)
+        net = httpx.AsyncClient(transport=Net(), base_url="http://gw")  # two workers, as on the GPU VM where only one paused
+        task = asyncio.gather(*(ag.worker(net, local, "tok", "a", log=logs.append, idle=(60, 60), check_s=0.05) for _ in range(2)))
+        await asyncio.sleep(1.2)
+        task.cancel()
+        assert polls and any("pausing" in m for m in logs), logs
+        assert left.count("/node/leave") == 2  # every worker tells the gateway, so no job is queued for this machine
+        assert sum("pausing" in m for m in logs) == 1  # one decision and one log line for the machine
+        assert time.monotonic() - polls[-1] > 0.5  # paused: no job taken in the last half second
+    finally:
+        ag.SETTLE_S, ag.FORCE_S, ag.cpu_busy_fraction, ag.gpu_util = saved
+        ag.CHECK.update(due=0.0, drain=False, paused=False)
     assert ag.cpu_busy_fraction() is None or 0 <= ag.cpu_busy_fraction() <= 1  # the real reader works on this machine
     assert ag.gpu_util() is None or 0 <= ag.gpu_util() <= 100
     # every GPU vendor on Windows: engine load is summed over processes, the GPU's load is its busiest engine

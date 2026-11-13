@@ -24,7 +24,7 @@ from node.agent import add_load_args, idle_limits, serve  # noqa: E402
 OLLAMA = "http://127.0.0.1:11434"
 # (minimum total RAM in GB, model, approximate download in GB). Sizes follow DESIGN.md section 21: the 1 to 2 GB budget
 # means the small model on 8 GB machines and the 4B model only from 16 GB.
-MODELS = [(16, "qwen3:4b", 2.5), (6, "qwen3:1.7b", 1.4)]
+MODELS = [(16, "qwen3:4b-instruct", 2.5), (6, "qwen3:1.7b", 1.4)]  # not "qwen3:4b": that tag is now a thinking-only model
 MIN_RAM_GB = 6
 
 

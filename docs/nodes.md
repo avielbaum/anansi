@@ -62,7 +62,11 @@ python node/join.py --gateway ... --token ... --dry-run                     # sh
 ```
 
 - **Model choice by RAM** (DESIGN.md section 21): under 6 GB it declines; 6 to 15 GB gets `qwen3:1.7b` (about 1.4 GB);
-  16 GB and up gets `qwen3:4b` (about 2.5 GB). `--model` overrides it.
+  16 GB and up gets `qwen3:4b-instruct` (about 2.5 GB). `--model` overrides it. Not the `qwen3:4b` tag: in Ollama it is now a
+  thinking-only model whose reasoning cannot be switched off, so it failed the known-answer probe and leaked reasoning into replies.
+- **Thinking off for the pool.** Set the token's `extra` for the volunteers' runtime: `{"reasoning_effort": "none"}` for Ollama
+  (what `join.sh` installs), `{"chat_template_kwargs": {"enable_thinking": false}}` for llama-server or vLLM. A probe reply that is
+  only unfinished reasoning drops the node without a ban; it registers again after a back-off.
 - **It installs nothing by itself.** If Ollama is missing or not running it says where to get it. It pulls one model, after
   checking free disk, and uses a private Python environment (`~/.anansi-venv`, httpx only) for the agent.
 - **Model names:** the gateway asks for the pool's model name; the agent runs whichever model this machine has (`--model`

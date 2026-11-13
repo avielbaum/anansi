@@ -37,8 +37,8 @@ For gate G1's blind rating, save two models' replies with `--out`, then
 seeing the key, and `python tools/blind_pack.py score rate.csv key.json` gives each model's acceptable rate.
 
 `config.ollama.json` turns Qwen3's thinking mode off for the node. Without that, Qwen3 can spend the whole token
-budget on reasoning and return an empty reply. To add the optional safety judge (a second model, `qwen3:4b`), use
-`config.ollama.judge.json` after `ollama pull qwen3:4b`.
+budget on reasoning and return an empty reply. To add the optional safety judge (a second model, `qwen3:4b-instruct`), use
+`config.ollama.judge.json` after `ollama pull qwen3:4b-instruct`. Not `qwen3:4b`: that Ollama tag is now a thinking-only model.
 
 ## Linux
 

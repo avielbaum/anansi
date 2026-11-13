@@ -23,7 +23,9 @@ import httpx
 
 ALLOWED = "/v1/chat/completions"
 JOBS = {"active": 0, "last": 0.0}  # jobs this process is running, and when the last one ended (their load is ours, not the owner's)
-SETTLE_S = 15
+SETTLE_S = 5  # our own load must fade before a reading means the owner's (GPU samples ~1 s; Linux CPU is a 1-min average)
+FORCE_S = 60  # with jobs arriving nonstop the machine is never idle long enough to check, so force a check this often
+CHECK = {"due": 0.0, "drain": False, "paused": False}  # shared by all workers: the machine pauses as one
 
 
 def cpu_busy_fraction():
@@ -157,20 +159,29 @@ def agent_id(path=pathlib.Path.home() / ".anansi-agent-id"):
 async def worker(gw, local, token, agent, log=print, model=None, idle=None, check_s=10, slot=None):
     """idle = (cpu %, gpu %) limits: while the machine is busier than that and none of our own jobs are running, this worker
     does not register or poll, so no job is sent to it (the gateway forgets it within seconds and re-checks it when it returns).
-    shortcut: load right after our own job is ignored for SETTLE_S seconds; a job queued just before the pause waits for
-    the gateway's timeout and is retried on another node."""
-    H, nid, backoff, paused = {"X-Node-Token": token, "X-Node-Agent": agent}, None, 1, False
+    Under nonstop traffic the machine is never settled, so every FORCE_S all workers stop taking jobs for about SETTLE_S
+    and the load is read then. shortcut: a job queued just before the pause waits for the gateway's timeout and is retried
+    on another node; a busy pool loses up to SETTLE_S of every FORCE_S of this machine's time."""
+    H, nid, backoff = {"X-Node-Token": token, "X-Node-Agent": agent}, None, 1
     while True:
-        if idle and JOBS["active"] == 0 and time.monotonic() - JOBS["last"] > SETTLE_S:
-            if await machine_busy(*idle):
-                if not paused:
-                    log("this machine is busy, pausing until it is idle")
-                paused = True
-                await asyncio.sleep(check_s)
+        if idle:
+            if not CHECK["paused"] and time.monotonic() >= CHECK["due"]:
+                CHECK["drain"] = True  # found on a real GPU: under steady traffic the owner's game was never noticed
+            if JOBS["active"] == 0 and time.monotonic() - JOBS["last"] > SETTLE_S:
+                busy = await machine_busy(*idle)
+                CHECK["drain"], CHECK["due"] = False, time.monotonic() + FORCE_S
+                if busy != CHECK["paused"]:  # one decision for the machine: a worker kept busy by jobs must pause too
+                    CHECK["paused"] = busy
+                    log("this machine is busy, pausing until it is idle" if busy else "this machine is idle again, resuming")
+            if CHECK["paused"] or CHECK["drain"]:
+                if CHECK["paused"] and nid is not None:  # tell the gateway, or it queues jobs for us until its timeout
+                    try:
+                        await gw.post("/node/leave", params={"node_id": nid}, headers=H)
+                    except httpx.HTTPError:
+                        pass  # the gateway forgets a silent node within its TTL anyway
+                    nid = None
+                await asyncio.sleep(check_s if CHECK["paused"] else 0.5)  # no new job while paused or draining
                 continue
-        if paused:
-            log("this machine is idle again, resuming")
-            paused = False
         try:
             if nid is None:
                 r = await gw.post("/node/register", headers=H)
@@ -181,8 +192,10 @@ async def worker(gw, local, token, agent, log=print, model=None, idle=None, chec
                 nid, poll_s = r.json()["node_id"], r.json()["poll_s"]
                 log(f"registered as {nid}")
             r = await gw.get("/node/poll", params={"node_id": nid}, headers=H, timeout=poll_s + 10)
-            if r.status_code == 404:  # the gateway forgot us (restart or idle too long)
+            if r.status_code == 404:  # the gateway forgot or dropped us (restart, idle too long, a probe with no answer)
                 nid = None
+                await asyncio.sleep(backoff)  # without it a dropped node re-registers and is re-probed in a tight loop
+                backoff = min(backoff * 2, 30)
                 continue
             r.raise_for_status()
             backoff = 1

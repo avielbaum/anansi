@@ -22,7 +22,7 @@
         "judge"
       ],
       "region": "local",
-      "upstream_model": "qwen3:4b",
+      "upstream_model": "qwen3:4b-instruct",
       "extra": {
         "reasoning_effort": "none"
       }
