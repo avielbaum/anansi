@@ -51,7 +51,7 @@ Per title: `key`, `appid`, `system_prefix` (prepended to every request), `action
 `server_key` (a second secret for your game's server only, needed to spend credits; never ship it in the game client, where `key` lives).
 
 Qwen3 thinks by default and can return an empty reply. Turn thinking off in the node's `extra` (Ollama:
-`{"reasoning_effort": "none"}`; vLLM: `{"chat_template_kwargs": {"enable_thinking": false}}`, unverified). An empty
+`{"reasoning_effort": "none"}`; vLLM and llama-server: `{"chat_template_kwargs": {"enable_thinking": false}}`, verified on vLLM 0.33 and llama-server). An empty
 reply counts as a node failure and the gateway retries elsewhere.
 
 ## Constrained actions

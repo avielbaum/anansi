@@ -80,28 +80,29 @@ spot-checked afterwards.
 
 ## What works today
 
-Measured on one Windows PC with no GPU, running Qwen3-1.7B and 4B through Ollama on the CPU. See
+Measured on one Windows PC (Qwen3 through Ollama on the CPU), on a rented Linux VM with an NVIDIA A10 GPU, and live against
+Ollama Cloud and OpenRouter. See
 [docs/status.md](docs/status.md) for numbers and caveats.
 
 | | |
 |---|---|
-| Gateway: auth, budgets, constrained actions, filter, leak guard, failover, streaming | working, 57 self-checks |
+| Gateway: auth, budgets, constrained actions, filter, leak guard, failover, streaming | working, 61 self-checks |
 | Quest and storyline generation (`/v1/quest`, `/v1/storyline`) with Python and C# SDK methods | working: constrained to your game's own ids; 6 of 6 structurally valid with Qwen3-1.7B (33 s) and Qwen3-4B (65 s, more varied rewards and richer text) on CPU; writing quality unrated |
-| Real model end to end (Ollama, Qwen3-1.7B on CPU) | working: 21 of 21 requests; action accuracy 76% on 106 held-out self-written cases (G1 set; **G1 not passed**: needs blind rating against a large model) |
+| Real model end to end (Ollama on CPU; vLLM and llama-server on GPU) | working: replies in 0.07 to 0.2 s on the A10, 2 to 5 s on CPU; action accuracy 76% on 106 held-out self-written cases (G1 set; **G1 not passed**: needs blind rating against a large model) |
 | Safety judge (second model call) | working with Qwen3-4B: blocked 3 of 8 leak attacks, no false positives; doubles latency |
-| Volunteer node agent, entry probe, spot checks, bans; one-step `join` setup | working in tests and with Ollama; pauses while the owner is busy (CPU and GPU; Linux Intel GPUs not measured) |
+| Volunteer node agent, entry probe, spot checks, bans; one-step `join` setup | working on Windows and on the Linux GPU VM (`join.sh` with Ollama); pauses while the owner is busy, even under steady traffic (CPU and GPU; Linux Intel GPUs not measured) |
 | Layered output safety: overlap guard, Llama Guard classifier, judge model | working; on 23 self-written pairs the combination caught all violations with no false positives, about 7.5 s extra on CPU |
 | Python and C# SDKs with sentence streaming and local fallback | working (C# as plain .NET; Unity untested) |
-| JavaScript / TypeScript SDK (browsers, Node, Electron, Deno, Bun) | working: 11 checks against a live gateway in CI; for browsers on another origin list them in `cors_origins` |
+| JavaScript / TypeScript SDK (browsers, Node, Electron, Deno, Bun) | working: 16 checks against a live gateway in CI; for browsers on another origin list them in `cors_origins` |
 | Red-team set for gate G5 (759 prompts, dev/test split, runner) | built; untuned holdout run (420 fresh cases): 32 automatic failures; a second untuned set: 6 (5 arguable); **G5 not passed** |
 | Godot 4 addon (GDScript) | working: 16 checks in the real Godot 4.3 engine against a live gateway in CI, in the editor and in an exported Linux release build (not tried on other export targets or consoles) |
 | Unreal Engine 5 plugin (C++, Blueprint-callable) | **written, never compiled or run: no Unreal install was available** |
-| Linux | gateway and C# SDK tested in CI on Ubuntu; Docker, vLLM and systemd files written but never run |
+| Linux | working: gateway and SDKs in CI on Ubuntu; Docker compose (vLLM + gateway), the systemd unit, llama-server and `join.sh` run on Ubuntu 22.04 with an NVIDIA A10 |
 | macOS Apple Silicon | untested: no Mac hardware |
-| **GPU nodes** (vLLM, llama-server) | **not tested, no GPU available** |
+| GPU nodes (vLLM, llama-server) | working on an NVIDIA A10 with Qwen3-1.7B: vLLM about 165 requests/s at 32 in flight (p99 0.3 s), llama-server 0.07 s per reply; AMD and Intel GPUs untested |
 | **Live platform identity check** (Steam is the only one written) | **not tested, needs a Steam publisher key** |
 | Persistence (budgets, bans) and a volunteer work ledger in SQLite, or Postgres for gateways on several machines | working, tested across a restart and on Postgres 16 |
-| Volunteer credits: link a machine to a player, earn per token, 7-day hold, games spend them on their own items | working in tests (SQLite and Postgres); no SDK methods yet, Steam Inventory not connected |
+| Volunteer credits: link a machine to a player, earn per token, 7-day hold, games spend them on their own items | working in tests (SQLite and Postgres); the Python, C#, JavaScript and Godot SDKs show the balance and link machines; Steam Inventory not connected |
 | Model signing, per-user node identity, answer quorum | not built |
 
 ## Quick start
@@ -112,7 +113,7 @@ Needs Python 3.10 or newer. For a real model, install [Ollama](https://ollama.co
 git clone https://github.com/avielbaum/anansi
 cd anansi
 pip install -r requirements.txt
-python tests/test_gateway.py          # 57 self-checks, no GPU or network needed
+python tests/test_gateway.py          # 61 self-checks, no GPU or network needed
 ```
 
 Run the gateway against a local model:

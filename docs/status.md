@@ -1,7 +1,8 @@
 # Status
 
-Phase 1 prototype. All numbers below are from one Windows PC with no GPU, running Qwen3 models through Ollama on the
-CPU. They show the system works; they are not performance claims.
+Phase 1 prototype. Most numbers below are from one Windows PC running Qwen3 through Ollama on the CPU; the GPU numbers are
+from one rented NVIDIA A10 Linux VM, and the cloud numbers from Ollama Cloud and OpenRouter. They show the system works;
+they are not production performance claims.
 
 ## Measured
 
@@ -27,13 +28,16 @@ instead of answering until its verdict was constrained by JSON schema.
 
 ## Tested where
 
-| Area | Windows | Ubuntu (CI) | macOS |
-|---|---|---|---|
-| Gateway and agent self-checks (57) | yes | yes | no (no Mac hardware; no paid CI runner) |
-| C# SDK against a live gateway | yes | yes | no |
-| JavaScript SDK against a live gateway (`node sdk/js/test.mjs`) | yes | yes (CI) | no |
-| Real model through Ollama | yes (CPU) | no | no |
-| Docker, vLLM, systemd files | n/a | yes, on a rented NVIDIA A10 VM (Ubuntu 22.04) | n/a |
+| Area | Windows | Ubuntu (CI) | Ubuntu 22.04 + NVIDIA A10 (rented VM, once) | macOS |
+|---|---|---|---|---|
+| Gateway and agent self-checks (61) | yes | yes | n/a | no (no Mac hardware; no paid CI runner) |
+| C# SDK against a live gateway | yes | yes | no | no |
+| JavaScript SDK against a live gateway (`node sdk/js/test.mjs`) | yes | yes | no | no |
+| Godot addon (editor and exported Linux build) | no | yes | no | no |
+| Real model through Ollama | yes (CPU) | no | yes (GPU, via `join.sh`) | no |
+| vLLM, llama-server | no | no | yes | no |
+| Docker compose, systemd unit | n/a | no | yes | n/a |
+| Volunteer agent with the NVIDIA busy check | yes (no NVIDIA GPU) | no | yes | no |
 
 ## Known limits
 

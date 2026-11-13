@@ -50,8 +50,9 @@ ANANSI_CONFIG=config.example.json python -m uvicorn gateway.app:make_app --facto
 ```
 
 Deployment files (`deploy/Dockerfile`, `deploy/docker-compose.yml`, `config.vllm.json`,
-`deploy/anansi-gateway.service`) were written without a Linux or GPU machine and have **not been run**. Expect to
-adjust image tags and vLLM flags.
+`deploy/anansi-gateway.service`) have been run on Ubuntu 22.04 with an NVIDIA A10 (Docker 29, vLLM 0.33, the NVIDIA
+container toolkit). The compose file uses `vllm/vllm-openai:latest`: pin the version you tested in production. Set
+`ANANSI_ENV=dev` to try it with the example key; production mode refuses it on purpose.
 
 ## macOS (Apple Silicon)
 

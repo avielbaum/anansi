@@ -72,8 +72,9 @@ python node/join.py --gateway ... --token ... --dry-run                     # sh
 - **Model names:** the gateway asks for the pool's model name; the agent runs whichever model this machine has (`--model`
   on `agent.py`, set automatically by `join.py`). Quality across machines then varies with the model, which is what the
   entry probe and spot checks are for.
-- Tested: model choice, the plan, and the model override in the self-checks; a dry run and a real join on Windows.
-  **Not tested:** `join.sh` and `join.bat` on other machines, and Ollama installation. The agent it starts pauses while the
+- Tested: model choice, the plan, and the model override in the self-checks; a dry run and a real join on Windows; a real
+  `join.sh` on Ubuntu 22.04 with an NVIDIA A10 (Ollama installed, model pulled, probes passed, requests served).
+  **Not tested:** `join.bat` on other Windows machines, and Ollama installation by `join` itself (it never installs it). The agent it starts pauses while the
   machine is busy, with the same `--cpu-limit`, `--gpu-limit` and `--ignore-load` options as `agent.py`.
 
 ### Verification
@@ -134,8 +135,10 @@ Not built: what an item costs (each studio decides), Steam Inventory grants, an 
 
 ## Linux
 
-Gateway and agent are plain Python. Docker, compose, vLLM and systemd files are in `deploy/` and `config.vllm.json`;
-they have not been run. To serve from vLLM: `vllm serve Qwen/Qwen3-1.7B` and point a node at it.
+Gateway and agent are plain Python. Docker, compose, vLLM and systemd files are in `deploy/` and `config.vllm.json`; all
+were run on Ubuntu 22.04 with an NVIDIA A10 (see [status.md](status.md)). To serve from vLLM: `vllm serve Qwen/Qwen3-1.7B` and
+point a node at it, with `{"chat_template_kwargs": {"enable_thinking": false}}` in its `extra`. `llama-server` works the same
+way (`ghcr.io/ggml-org/llama.cpp:server-cuda` with `--jinja`). The agent's busy check reads NVIDIA load with `nvidia-smi`.
 
 ## macOS (Apple Silicon)
 
