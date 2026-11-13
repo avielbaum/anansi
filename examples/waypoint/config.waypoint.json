@@ -2,7 +2,7 @@
   "default_model": "npc-small",
   "upstream_timeout_s": 120,
   "auth": { "mode": "dev" },
-  "cors_origins": ["http://localhost:8000", "http://127.0.0.1:8000"],
+  "cors_origins": ["http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:8001"],
   "nodes": [
     {
       "url": "http://127.0.0.1:11434",

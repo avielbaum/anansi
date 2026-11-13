@@ -16,7 +16,7 @@ export class Battle extends Phaser.Scene {
     this.foes = d.enemies.map((id, i) => {
       const [x, y] = FOE_SPOTS[d.enemies.length][i], e = ENEMIES[id];
       this.add.ellipse(x, y, 60, 14, 0x000000, 0.3);
-      const img = this.add.image(x, y, `enemy-${id}`).setOrigin(0.5, 1).setScale(e.boss ? 2 : 1.5);
+      const img = this.add.image(x, y, `enemy-${e.sprite || id}`).setOrigin(0.5, 1).setScale(e.scale || (e.boss ? 2 : 1.5));
       return { ...e, id, maxhp: e.hp, atb: Math.random() * 60, turns: 0, img };
     });
     // the same name twice gets letters: Rift Bat A, Rift Bat B
@@ -196,11 +196,13 @@ export class Battle extends Phaser.Scene {
     f.atb = 0; f.turns++;
     const live = this.aliveHeroes();
     if (live.length) {
-      const wave = f.boss && f.turns % 3 === 0, hex = !wave && f.magic && Math.random() < 0.5;
+      const raged = f.rage && f.hp <= f.maxhp * f.rage.at, atk = raged ? f.rage.atk : f.atk;
+      if (raged && !f.raging) { f.raging = true; await this.note(f.rage.note || "It grows furious!", 1000); }
+      const wave = f.boss && f.turns % (raged ? f.rage.waveEvery : f.waveEvery || 3) === 0, hex = !wave && f.magic && Math.random() < 0.5;
       if (wave || hex) await this.note(wave ? "Null Wave" : "Hex", 600);
       await tween(this, { targets: f.img, x: f.img.x + 28, duration: 140, yoyo: true });
       for (const b of wave ? live : [Phaser.Utils.Array.GetRandom(live)]) {
-        const dmg = wave ? damage(f.mag, b.h.def / 2, 0.9) : hex ? damage(f.mag, b.h.def / 2, 1.2) : damage(f.atk, b.h.def, 1, Math.random, b.defending);
+        const dmg = wave ? damage(f.mag, b.h.def / 2, 0.9) : hex ? damage(f.mag, b.h.def / 2, 1.2) : damage(atk, b.h.def, 1, Math.random, b.defending);
         b.h.hp = Math.max(0, b.h.hp - dmg);
         this.pop(b.s, dmg);
         b.s.setTint(0xff6060); this.time.delayedCall(150, () => b.s.clearTint());

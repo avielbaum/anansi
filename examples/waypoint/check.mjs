@@ -5,6 +5,7 @@ import { damage, gainXp, newHero, newGame, atbFill, useItem, xpToNext, ENEMIES, 
 import { upgrade } from "./src/state.js";
 import { MAPS, STAMPS, TALK, QUEST_WORLD, REGIONS, ITEM_SPOTS, PERSONAS, FALLBACK_QUESTS, SHORT_NAMES } from "./src/data.js";
 import { pages } from "./src/ui.js";
+import { newPlot, destroyRelay, objective, situation, BEATS, ENDINGS, ACTS, RELAYS_NEEDED, epilogueFallback } from "./src/story.js";
 import { genCity, walkable, LOCALS } from "./src/city.js";
 import { parseAtlas, parseClimate, cityPrompt, CLIMATES, suggest, DESTINATIONS } from "./src/atlas.js";
 
@@ -61,7 +62,8 @@ for (const [mid, M] of Object.entries(MAPS)) {
   }
   for (const n of M.npcs || []) reach(n.x, n.y, n.id);
   for (const [key, x, y, opt] of M.objects) if (opt?.chest) { reach(x, y, opt.chest); reach(x, y + 1, opt.chest); }
-  if (M.boss) reach(M.boss.x, M.boss.y, "the boss");
+  if (M.boss) { reach(M.boss.x, M.boss.y, "the boss"); assert(BEATS.bossIntro[M.boss.flag] && M.boss.name, `${mid}: the boss has no intro or name`); }
+  for (const pd of M.pads || []) reach(pd.x, pd.y, "a recovery pad");
   seens[mid] = seen;
 }
 for (const [mid, M] of Object.entries(MAPS)) for (const z of M.zones || []) if (z.go) assert(opens[z.go.map](z.go.x, z.go.y), `${mid}: arrival in ${z.go.map} at ${z.go.x},${z.go.y} is blocked`);
@@ -120,6 +122,9 @@ for (const [i, dest] of dests.entries()) {
   const { open, seen } = walkable(M);
   assert(open(...M.spawn), `${dest}: spawn is blocked`);
   assert.equal(M.npcs.length, 4); assert.equal(new Set(M.npcs.map(n => n.id)).size, 4, `${dest}: two people share a sprite`);
+  const rl = M.relay; assert(rl, `${dest}: no relay`);
+  assert([[rl.x, rl.y], [rl.x + 1, rl.y], [rl.x - 1, rl.y], [rl.x, rl.y + 1], [rl.x, rl.y - 1]].some(([a, b]) => seen.has(`${a},${b}`)), `${dest}: cannot reach the relay`);
+  assert(![...M.npcs, ...Object.values(area.itemSpots).map(([, x, y]) => ({ x, y }))].some(o => o.x === rl.x && o.y === rl.y), `${dest}: the relay shares a spot`);
   for (const n of M.npcs) {
     assert(cast[n.id], n.id); assert(area.personas[n.qid], `no persona for ${n.qid}`); assert(n.lines.length >= 3 && n.name);
     assert([[n.x, n.y], [n.x + 1, n.y], [n.x - 1, n.y], [n.x, n.y + 1], [n.x, n.y - 1]].some(([a, b]) => seen.has(`${a},${b}`)), `${dest}: cannot reach ${n.qid}`);
@@ -131,6 +136,36 @@ for (const [i, dest] of dests.entries()) {
   for (const q of area.fallbackQuests) assert(questFits(q, area.world), `${dest}: ${q.title}`);
   assert(!/\b[pli]\d\b/.test(tidyQuest({ title: "t", summary: "Ask p0 at l1 for i2", story_summary: "", steps: [] }, area.names).summary), "city ids become names");
 }
+// ---- the story: acts, objectives, every beat, and the enemies they use -------------------------------------------------------
+const plot = newPlot();
+assert.equal(plot.act, 1); assert(objective(plot).includes("Warden"));
+plot.act = 2;
+assert(objective(plot).includes(`0 of ${RELAYS_NEEDED}`));
+assert.deepEqual(destroyRelay(plot, "city:Kyoto"), { count: 1, last: false });
+assert.deepEqual(destroyRelay(plot, "city:Kyoto"), { count: 1, last: false }, "one relay per city");
+destroyRelay(plot, "city:Cairo");
+assert.deepEqual(destroyRelay(plot, "city:Oslo"), { count: 3, last: true });
+assert(situation(plot, false).includes("3 of 3") && situation(newPlot(), true).includes("Warden") && situation(newPlot(), false) === "");
+plot.act = 3; assert(objective(plot).includes("Director")); plot.ending = "burn"; assert(objective(plot).includes("finished"));
+assert.equal(ACTS.length, 4);
+const speakers = new Set(["", "LEAD", "MATE", "Agent Kessler", "The Director"]);
+const lines = [...BEATS.wardenWon, ...BEATS.spireArrive, ...BEATS.directorWon, ...BEATS.bossIntro.director, ...BEATS.relayFound("X"), ...BEATS.relayDown(1, "X"), ...BEATS.relayDown(3, "X"), ...Object.values(BEATS.endings).flat()];
+for (const l of lines) { assert(Array.isArray(l) && speakers.has(l[0]) && l[1].length > 5, JSON.stringify(l)); assert(l[1].length < 330, "a line must fit three pages of the dialogue box: " + l[1].slice(0, 30)); }
+assert(BEATS.bossIntro.warden.every(l => typeof l === "string"));
+assert.deepEqual(Object.keys(BEATS.endings).sort(), Object.keys(ENDINGS).sort(), "each ending has its words");
+assert(epilogueFallback("burn", ["Cairo", "Kyoto"]).includes("Cairo") && epilogueFallback("keep", []).length > 30);
+assert(BEATS.relayDown(3, "X").some(l => l[1].includes("bringing you")), "the third relay leads to the Spire");
+// a save from before the story: after the Warden it starts in Act II, before it in Act I
+assert.equal(upgrade({ v: 1, map: "town", flags: { warden: true } }).plot.act, 2);
+assert.equal(upgrade({ v: 1, map: "town", flags: {} }).plot.act, 1);
+assert.equal(newGame("lead_f").plot.act, 1);
+// every enemy has a picture and sane numbers; the Director has a second phase
+for (const [id, e] of Object.entries(ENEMIES)) {
+  assert(existsSync(here(`assets/enemies/${e.sprite || id}.png`)), `${id}: no picture`);
+  assert(e.hp > 0 && e.def >= 0 && e.spd > 0 && e.name && e.xp >= 0 && e.gold >= 0, id);
+}
+assert(ENEMIES.director.boss && ENEMIES.director.rage.atk > ENEMIES.director.atk && ENEMIES.director.rage.waveEvery < ENEMIES.director.waveEvery);
+assert(MAPS.spire.pads.length >= 2 && MAPS.spire.boss.enemy === "director" && MAPS.spire.arrival === "spireArrive" && BEATS[MAPS.spire.arrival]);
 const save = newGame("lead_m"); const pay = payQuest(save, FALLBACK_QUESTS[1]);
 assert.equal(save.gold, 60 + pay.gold); assert.equal(save.items.potion, 4); assert.equal(save.questsDone, 1); assert(save.story.includes("tram token"));
 console.log("ok");

@@ -3,7 +3,8 @@
 import { STAMPS, TALK } from "./data.js";
 import { mapFor, areaOf, areaLabel } from "./world.js";
 import { G } from "./state.js";
-import { ITEMS, questStep, payQuest, canGift, markGift, resetGifts } from "./rules.js";
+import { ITEMS, ENEMIES, questStep, payQuest, canGift, markGift, resetGifts } from "./rules.js";
+import { BEATS, ENDINGS, destroyRelay } from "./story.js";
 import { W, H, drawWindow, text, talk, choose, say, prompt, waitFor } from "./ui.js";
 import { ask, prefetchQuest, takeQuest, warmAtlases, suggestions } from "./anansi.js";
 
@@ -21,7 +22,7 @@ export class Field extends Phaser.Scene {
     const M = (this.M = mapFor(this.mapId));
     this.area = areaOf(this.mapId);
     G.s.map = this.mapId;
-    this.busy = false; this.marker = null; // Phaser reuses this object when a map restarts: clear the last visit's state
+    this.busy = false; this.marker = null; this.leaving = false; // Phaser reuses this object when a map restarts: clear the last visit's state
     this.cast = this.cache.json.get("cast");
     this.solids = [];
     this.things = []; // things you can face and press confirm at: {box, act}
@@ -33,9 +34,11 @@ export class Field extends Phaser.Scene {
     for (const [key, tx, ty, opt = {}] of M.objects) this.addStamp(key, tx, ty, opt);
     for (const [s, tx, ty] of M.labels || []) this.add.text(tx * T, ty * T, s, { fontFamily: "monospace", fontSize: "11px", color: "#fff", stroke: "#000", strokeThickness: 3 }).setOrigin(0.5).setDepth(5000);
     for (const n of M.npcs || []) this.addNpc(n);
+    if (M.relay) this.addRelay(M.relay);
+    for (const pad of M.pads || []) this.addPad(pad);
     if (M.boss && !G.s.flags[M.boss.flag]) {
       const p = feet(M.boss.x, M.boss.y);
-      this.bossImg = this.add.image(p.x, p.y, `enemy-${M.boss.enemy}`).setOrigin(0.5, 1).setDepth(p.y);
+      this.bossImg = this.add.image(p.x, p.y, `enemy-${ENEMIES[M.boss.enemy].sprite || M.boss.enemy}`).setOrigin(0.5, 1).setDepth(p.y);
       this.solids.push((this.bossBox = { x: p.x - 24, y: p.y - 16, w: 48, h: 16 }));
     }
 
@@ -50,12 +53,13 @@ export class Field extends Phaser.Scene {
     this.keys = this.input.keyboard.addKeys("UP,DOWN,LEFT,RIGHT,W,A,S,D", false); // no key capture: the NPC text box needs W/A/S/D
     this.input.keyboard.on("keydown", e => this.onKey(e.key));
     this.inZone = this.zonesAt(this.hero.s).length > 0; // arriving on an exit does not bounce you back
-    this.nextFight = Phaser.Math.Between(500, 900);
+    this.nextFight = this.fightGap();
     this.events.on("resume", () => { this.input.keyboard.resetKeys(); });
     this.cameras.main.fadeIn(250);
     const banner = this.add.text(W / 2, 30, M.name, { fontFamily: "monospace", fontSize: "18px", color: "#fff", stroke: "#000", strokeThickness: 4 }).setOrigin(0.5).setScrollFactor(0).setDepth(9000);
     this.tweens.add({ targets: banner, alpha: 0, delay: 1500, duration: 600, onComplete: () => banner.destroy() });
     if (M.intro && !G.s.flags[M.intro]) { G.s.flags[M.intro] = true; this.run(() => this.lines(TALK[M.intro])); }
+    else if (M.arrival && !G.s.flags[`seen:${this.mapId}`]) { G.s.flags[`seen:${this.mapId}`] = true; this.run(() => this.lines(BEATS[M.arrival])); }
     else if (M.vibe && !G.s.flags[`seen:${this.mapId}`]) { G.s.flags[`seen:${this.mapId}`] = true; this.run(() => say(this, "", M.vibe)); } // a new city: what it feels like
     this.refreshMarker();
     // quests take a while on CPU: start before anyone asks, but not the instant you land in a new city (you may only be passing through)
@@ -100,7 +104,7 @@ export class Field extends Phaser.Scene {
   async run(fn) {
     this.busy = true;
     this.face(this.hero, this.hero.dir, false); this.face(this.mate, this.mate.dir, false);
-    try { await fn(); } finally { this.busy = false; this.input.keyboard.resetKeys(); }
+    try { await fn(); } finally { if (!this.leaving) this.busy = false; this.input.keyboard.resetKeys(); }
   }
 
   /** Dialogue lines with LEAD/MATE replaced by the party's names. */
@@ -291,7 +295,7 @@ export class Field extends Phaser.Scene {
       return this.run(async () => { await say(this, "", `Found: ${this.area.names[id]}`); await this.questEvent("fetch", id); });
     }
     if (this.M.encounters && (this.nextFight -= moved) <= 0) {
-      this.nextFight = Phaser.Math.Between(550, 1000);
+      this.nextFight = this.fightGap();
       this.battle(Phaser.Utils.Array.GetRandom(this.M.encounters));
     }
   }
@@ -300,35 +304,91 @@ export class Field extends Phaser.Scene {
   teleportTo(mapId) { const [x, y] = mapFor(mapId).spawn; this.goTo({ map: mapId, x, y }); }
 
   goTo(go) {
-    this.busy = true;
+    this.busy = this.leaving = true; // stays locked through the fade, until the new map is built
     G.s.pos = null;
     this.cameras.main.fadeOut(250);
     this.cameras.main.once("camerafadeoutcomplete", () => this.scene.restart({ map: go.map, at: feet(go.x, go.y) }));
   }
 
-  bossFight() {
+  /** Steps to walk before the next random fight: [min, max] from the map, else the usual. */
+  fightGap() { return Phaser.Math.Between(...(this.M.encounterSteps || [550, 1000])); }
+
+  /** A Directorate relay (Act II): dark before the Warden falls, a pulsing red light after, wreckage once destroyed. */
+  addRelay(r) {
+    const p = feet(r.x, r.y), live = G.s.plot.act === 2 && !G.s.plot.relays.includes(this.area.key);
+    this.add.graphics().setDepth(p.y).fillStyle(0x23242e, 1).fillRect(p.x - 10, p.y - 12, 20, 14).fillRect(p.x - 3, p.y - 46, 6, 36);
+    this.relayLight = this.add.circle(p.x, p.y - 50, 6, live ? 0xff3b3b : 0x55565f).setDepth(p.y + 1);
+    if (live) this.tweens.add({ targets: this.relayLight, alpha: 0.35, scale: 1.5, yoyo: true, repeat: -1, duration: 600 });
+    const box = { x: p.x - 12, y: p.y - 12, w: 24, h: 14 };
+    this.solids.push(box);
+    this.things.push({ box, act: () => this.useRelay() });
+  }
+
+  useRelay() {
+    const plot = G.s.plot, key = this.area.key, name = this.area.label;
     this.run(async () => {
-      await this.lines(TALK.warden, "The Warden");
-      await this.battle([this.M.boss.enemy], true);
+      if (plot.act <= 1) return say(this, "", BEATS.relayDark);
+      if (plot.act > 2 || plot.relays.includes(key)) return say(this, "", BEATS.relayDead);
+      await this.lines(BEATS.relayFound(name));
+      if ((await this.battle(["relay_guard", "relay_drone", "relay_drone"], true)) !== "won") return;
+      this.busy = true; // the battle handed control back; the story goes on
+      const { count, last } = destroyRelay(plot, key);
+      this.tweens.killTweensOf(this.relayLight);
+      this.relayLight.setFillStyle(0x55565f).setScale(1).setAlpha(1);
+      await this.lines(BEATS.relayDown(count, name));
+      if (last) { plot.act = 3; plot.spire = true; this.teleportTo("spire"); }
     });
   }
 
-  /** Starts a battle over this scene; resolves when it ends and the field is back. */
-  battle(enemies, boss = false) {
+  /** A recovery pad (Act III): confirm on it to restore the party. */
+  addPad(pad) {
+    const q = feet(pad.x, pad.y);
+    const ring = this.add.ellipse(q.x, q.y - 4, 30, 14, 0x5fe0d0, 0.35).setDepth(q.y - 20).setStrokeStyle(2, 0x9ffff0);
+    this.tweens.add({ targets: ring, alpha: 0.9, yoyo: true, repeat: -1, duration: 800 });
+    this.things.push({ box: { x: q.x - 14, y: q.y - 12, w: 28, h: 16 }, act: () => this.run(async () => {
+      G.s.party.forEach(h => { h.hp = h.maxhp; h.mp = h.maxmp; });
+      resetGifts(G.s);
+      this.cameras.main.flash(300, 95, 224, 208);
+      await say(this, "", "The pad hums and the party is fully restored.");
+    }) });
+  }
+
+  bossFight() {
+    const b = this.M.boss;
+    this.run(async () => {
+      await this.lines(BEATS.bossIntro[b.flag], b.name);
+      await this.battle([b.enemy], true, true);
+    });
+  }
+
+  /** What follows a boss: the Warden opens Act II; the Director ends the story. */
+  async afterBoss(b) {
+    if (b.flag === "warden") { await this.lines(BEATS.wardenWon); G.s.plot.act = Math.max(G.s.plot.act, 2); return; }
+    await this.lines(BEATS.directorWon);
+    const kinds = Object.keys(ENDINGS), k = await choose(this, W / 2 - 110, 90, 220, kinds.map(e => ENDINGS[e]), { cancel: false });
+    G.s.plot.ending = kinds[k];
+    await this.lines(BEATS.endings[kinds[k]]);
+    this.scene.start("ending");
+  }
+
+  /** Starts a battle over this scene; resolves with "won", "fled" ... when it ends and the field is back.
+   *  noFlee: no running away. mapBoss: this map's boss (see data.js), whose defeat is remembered and followed by afterBoss. */
+  battle(enemies, noFlee = false, mapBoss = false) {
     this.busy = true;
     this.face(this.hero, this.hero.dir, false); this.face(this.mate, this.mate.dir, false);
     G.s.pos = { x: this.hero.s.x, y: this.hero.s.y };
     return new Promise(done => {
       this.cameras.main.flash(300, 255, 255, 255);
       this.time.delayedCall(300, () => {
-        this.scene.launch("battle", { enemies, bg: this.M.battle, boss, onEnd: async result => {
+        this.scene.launch("battle", { enemies, bg: this.M.battle, boss: noFlee, onEnd: async result => {
           this.scene.resume();
           this.busy = false;
-          if (result === "won" && boss) {
-            G.s.flags[this.M.boss.flag] = true;
+          if (result === "won" && mapBoss) {
+            const b = this.M.boss;
+            G.s.flags[b.flag] = true;
             this.bossImg?.destroy();
             this.solids = this.solids.filter(sb => sb !== this.bossBox);
-            await this.run(() => this.lines(TALK.won));
+            await this.run(() => this.afterBoss(b));
           }
           done(result);
         } });

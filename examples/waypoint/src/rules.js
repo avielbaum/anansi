@@ -1,4 +1,5 @@
 // Game rules with no Phaser in them, so check.mjs can test them in Node.
+import { newPlot } from "./story.js";
 
 export const ITEMS = {
   potion: { name: "Potion", price: 20, hp: 40, desc: "Restores 40 HP to one ally." },
@@ -25,7 +26,17 @@ export const ENEMIES = {
   eyeball: { name: "Watcher", hp: 30, atk: 6, mag: 11, def: 4, spd: 10, xp: 9, gold: 8, magic: true },
   spider_bot: { name: "Spider Drone", hp: 38, atk: 13, mag: 0, def: 8, spd: 9, xp: 11, gold: 10 },
   drone_tank: { name: "Directorate Tank", hp: 60, atk: 15, mag: 0, def: 10, spd: 6, xp: 18, gold: 20 },
-  minotaur_mage: { name: "The Warden", hp: 260, atk: 17, mag: 15, def: 9, spd: 10, xp: 80, gold: 120, magic: true, boss: true },
+  minotaur_mage: { name: "The Warden", hp: 260, atk: 17, mag: 15, def: 9, spd: 10, xp: 150, gold: 120, magic: true, boss: true },
+  // Act II: the guards of a Directorate relay. `sprite` reuses another enemy's picture.
+  relay_guard: { name: "Relay Guard", sprite: "drone_tank", hp: 95, atk: 16, mag: 0, def: 10, spd: 8, xp: 50, gold: 40 },
+  relay_drone: { name: "Relay Drone", sprite: "spider_bot", hp: 55, atk: 13, mag: 0, def: 8, spd: 10, xp: 35, gold: 25 },
+  // Act III: inside the Spire
+  spire_guard: { name: "Spire Guard", sprite: "drone_tank", hp: 110, atk: 19, mag: 0, def: 11, spd: 9, xp: 70, gold: 35 },
+  spire_drone: { name: "Spire Drone", sprite: "spider_bot", hp: 65, atk: 15, mag: 0, def: 9, spd: 11, xp: 50, gold: 25 },
+  wraith: { name: "Null Wraith", hp: 85, atk: 8, mag: 17, def: 7, spd: 12, xp: 65, gold: 30, magic: true },
+  // The Director fights harder at half health: `rage` changes how often he uses Null Wave and how hard he hits
+  director: { name: "The Director", sprite: "wraith", scale: 2.2, hp: 800, atk: 22, mag: 19, def: 11, spd: 11, xp: 0, gold: 0, magic: true, boss: true,
+    waveEvery: 3, rage: { at: 0.5, waveEvery: 2, atk: 27, note: "The Director's mask cracks!" } },
 };
 
 export const statsAt = (id, lvl) => Object.fromEntries(Object.entries(HEROES[id].base).map(([k, v]) => [k, v + HEROES[id].grow[k] * (lvl - 1)]));
@@ -72,7 +83,7 @@ export function useItem(item, target) {
 export function newGame(lead) {
   const other = lead === "lead_m" ? "lead_f" : "lead_m";
   return { v: 1, party: [newHero(lead), newHero(other)], items: { potion: 3, ether: 1 }, gold: 60, map: "town", pos: null, flags: {},
-    quest: null, offer: null, story: "", questsDone: 0, gifted: {}, cities: {} };
+    quest: null, offer: null, story: "", questsDone: 0, gifted: {}, cities: {}, plot: newPlot() };
 }
 
 // ---- side quests (from Anansi or the written fallbacks) ------------------------------------------------------------

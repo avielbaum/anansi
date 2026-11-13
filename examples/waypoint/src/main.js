@@ -5,11 +5,12 @@ import { G, start, load, hasSave } from "./state.js";
 import { Field } from "./field.js";
 import { Battle } from "./battle.js";
 import { Menu } from "./menu.js";
+import { Ending } from "./ending.js";
 
 const DIRS = ["up", "left", "down", "right"]; // LPC row order
 const LEADS = ["lead_m", "lead_f"];
 const TILES = ["grass", "ground_sand", "ground_snow", "ground_lush", "flagstone", "road", "road_line", "sidewalk", "cobble", "brick", "house", "tree", "pine", "gate", "chest", "dungeon_wall", "battle_town", "battle_dungeon"];
-const ENEMY_IMGS = ["bat", "slime", "snake", "eyeball", "spider_bot", "drone_tank", "minotaur_mage"];
+const ENEMY_IMGS = ["bat", "slime", "snake", "eyeball", "spider_bot", "drone_tank", "minotaur_mage", "wraith"];
 
 class Boot extends Phaser.Scene {
   constructor() { super("boot"); }
@@ -94,5 +95,5 @@ const lastLead = () => { try { return localStorage.getItem("waypoint.lead"); } c
 window.game = new Phaser.Game({ // on window for debugging from the console
   type: Phaser.AUTO, parent: "game", width: W, height: H, pixelArt: true, backgroundColor: "#05060c",
   dom: { createContainer: true }, // the NPC text box is a real <input>
-  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [Boot, Title, LeadSelect, Field, Battle, Menu] });
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [Boot, Title, LeadSelect, Field, Battle, Menu, Ending] });
 window.G = G;

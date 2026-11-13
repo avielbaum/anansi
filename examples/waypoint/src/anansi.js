@@ -3,6 +3,7 @@
 import { Anansi } from "../../../sdk/js/anansi.mjs";
 import { questFits, tidyQuest } from "./rules.js";
 import { cityPrompt, parseAtlas, parseClimate, suggest } from "./atlas.js";
+import { situation, epilogueFallback } from "./story.js";
 import { G } from "./state.js";
 
 // shortcut: the title keys sit in the page, fine for a local dev gateway; a shipped game proxies through its own server.
@@ -20,7 +21,7 @@ const history = {}; // "area:npc" -> recent messages, for this session only
 function persona(id, area) {
   const p = area.personas[id], [lead, mate] = G.s.party, a = G.s.quest?.area === area.key ? G.s.quest : null;
   const task = a ? ` The hero is working on "${a.q.title}"; the current step: ${a.q.steps[a.step]?.description}` : "";
-  const warden = area.key !== "home" ? "" : G.s.flags.warden ? " They have defeated the Directorate's Warden in the Undercroft." : " The Directorate's Warden guards the Undercroft.";
+  const warden = situation(G.s.plot, area.key === "home"); // where the story is, so that what people say fits
   return `${p.bio} The hero, ${lead.name}, and their companion, ${mate.name}, can teleport. They just arrived in ${area.label} on the run from the Directorate.` +
     `${warden}${task} The hero has ${lead.hp} of ${lead.maxhp} health. ${p.acts} Never mention being an AI.`;
 }
@@ -33,6 +34,18 @@ export async function ask(id, line, area) {
   const r = await client.chat([{ role: "system", content: persona(id, area) }, ...h.slice(-8)], { npcId: id, structured: true });
   h.push({ role: "assistant", content: r.say });
   return r;
+}
+
+/** A two-sentence epilogue for the ending, written by the model from the cities the party visited; the written one if it cannot. */
+export async function epilogue(ending, cities) {
+  const fallback = epilogueFallback(ending, cities);
+  // This gateway runs one model, so the request may queue behind a quest being written: wait longer than for a chat reply
+  const narrator = new Anansi({ ...opts, title: "waypoint", timeoutMs: 90000, fallback: () => fallback });
+  const what = ending === "keep" ? "kept the Directorate's keys, so every relay on Earth now answers to them" : "burned the Directorate's archive, so nobody can be traced by a jump again";
+  const r = await narrator.chat([
+    { role: "system", content: "You are the narrator of a travel thriller about two teleporting runaways. Answer with exactly two short sentences and nothing else." },
+    { role: "user", content: `Write the epilogue. The runaways ${what}. Along the way they visited: ${cities.length ? cities.join(", ") : "only Old Town"}. Mention one or two of those places.` }]);
+  return r.say;
 }
 
 const atlasKey = dest => "waypoint.atlas:" + dest.toLowerCase();

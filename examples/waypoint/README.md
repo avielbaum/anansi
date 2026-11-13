@@ -13,7 +13,7 @@ prototype, with real-world destinations, is in `prototype/`.
 - **Battles:** side view, with a gauge per fighter (time waits while you choose). Commands are Fight, Skill, Item, Defend
   and Flee. Kai has Blink Strike and Rift Burst; Mira has Mend and Static Lance. You earn XP, gold and level-ups; losing
   returns you to the title.
-- **Menu** (Esc or X): Items, Status, Quests, Teleport, Save.
+- **Menu** (Esc or X): Items, Status, Story, Quests, Teleport, Save.
 
 **Milestone 2, Anansi in town:**
 
@@ -51,11 +51,28 @@ prototype, with real-world destinations, is in `prototype/`.
   gives jobs instead of names (a job-only entry gets a generic first name). A larger model behind the same gateway
   does better. A city made while the gateway was down stays generic until you type its name in Teleport again.
 
+**Milestone 4, the story** (`src/story.js`), written by hand so it holds together whatever the model says in each city:
+
+- **Act I, Cold Trail:** the Warden under Old Town. Beating him reveals the Directorate's relays.
+- **Act II, The Relays:** every generated city hides a Directorate relay, a pulsing red light once the Warden has
+  fallen. Destroy three, in three different cities (a guard and two drones each, no running away). The third pulls the
+  party to the Spire.
+- **Act III, The Spire:** a dungeon with stronger fights, three chests and two recovery pads, ending at the Director.
+  He has a second phase at half health (Null Wave twice as often, harder hits). Afterwards you choose **Burn the
+  archive** or **Keep the keys**, and the ending shows a summary and an epilogue that Anansi writes from the cities
+  you visited (with a written one if the gateway is down or slow). Then the world stays open.
+- **Menu → Story** shows the act and what to do next. The NPCs' prompts include how far the story has got, so a local
+  talks about the relays you have destroyed. Old saves from before the story load as Act I, or Act II if the Warden
+  was already down.
+- **Balance:** `node tools/balance.mjs` simulates the fights for a player who uses skills and potions and for one who
+  only picks Fight. The Director falls to a skilled party at about L5 to L6 and to a Fight-only one at about L8 to L9;
+  the XP of the story fights and the Spire's encounters is meant to bring a party there without grinding.
+
 Controls: arrows or WASD to move; Enter, Space or Z to talk and confirm; Esc or X for the menu and to go back.
 
 Code: `src/rules.js` (stats, damage, levelling, quests; no Phaser, tested by `check.mjs`), `src/data.js` (the written
 maps, dialogue, quest world, personas), `src/atlas.js` (parsing what the model says about a place; the prototype
-shares it), `src/city.js` (generating a city's map, people and written quests), `src/world.js` (which map and quest area
+shares it), `src/city.js` (generating a city's map, people and written quests), `src/story.js` (the acts and their words), `src/ending.js`, `src/world.js` (which map and quest area
 an id belongs to), `src/anansi.js` (the SDK calls), `src/field.js`, `src/battle.js`, `src/menu.js`, `src/ui.js`
 (windows, dialogue, text box, choosers), `src/state.js` (save). `check.mjs` walks every map tile by tile, written or
 generated, to prove that each exit, chest, person, quest item and the boss can be reached; it generates 56 cities,
@@ -75,7 +92,8 @@ and, in a second terminal, serve the files:
 python -m http.server 8000
 ```
 
-Open http://localhost:8000/examples/waypoint/ . Without the gateway, the game still runs, using the written lines and
+Open http://localhost:8000/examples/waypoint/ . (While editing the code, serve with a `Cache-Control: no-store` header, or
+the browser may keep running old modules.) Without the gateway, the game still runs, using the written lines and
 quests. Query parameters: `?gateway=URL&key=KEY`. Self-check: `node examples/waypoint/check.mjs`.
 
 ## Characters

@@ -1,9 +1,10 @@
-// The field menu (Esc / X): party summary, Items, Status, Quests, Teleport, Save.
+// The field menu (Esc / X): party summary, Items, Status, Story, Quests, Teleport, Save.
 /* global Phaser */
 import { G, save } from "./state.js";
 import { mapFor, areaOf, areaLabel, cityId } from "./world.js";
 import { fetchAtlas, atlasCached, suggestions } from "./anansi.js";
 import { cleanDest } from "./atlas.js";
+import { ACTS, objective } from "./story.js";
 import { ITEMS, SKILLS, HEROES, xpToNext, useItem } from "./rules.js";
 import { W, H, drawWindow, text, choose, say, prompt, waitFor } from "./ui.js";
 
@@ -28,12 +29,13 @@ export class Menu extends Phaser.Scene {
   async loop() {
     for (;;) {
       this.draw();
-      const k = await choose(this, 486, 8, 146, ["Items", "Status", "Quests", "Teleport", "Save", "Close"]);
+      const k = await choose(this, 486, 8, 146, ["Items", "Status", "Story", "Quests", "Teleport", "Save", "Close"]);
       if (k === 0) await this.items();
       else if (k === 1) await this.status();
-      else if (k === 2) await this.quests();
-      else if (k === 3) { if (await this.teleport()) return; }
-      else if (k === 4) await say(this, "", save() ? "Game saved." : "Could not save (browser storage is blocked).");
+      else if (k === 2) await this.story();
+      else if (k === 3) await this.quests();
+      else if (k === 4) { if (await this.teleport()) return; }
+      else if (k === 5) await say(this, "", save() ? "Game saved." : "Could not save (browser storage is blocked).");
       else return this.close();
     }
   }
@@ -58,6 +60,16 @@ export class Menu extends Phaser.Scene {
     }
   }
 
+  async story() {
+    const p = G.s.plot;
+    const lines = [ACTS[p.act] || ACTS[1], "", objective(p)];
+    if (p.act === 2) lines.push("", `Relays destroyed: ${p.relays.length ? p.relays.join(", ") : "none yet"}`);
+    const win = drawWindow(this, 8, 8, 470, H - 16);
+    const body = text(this, 26, 24, lines.join("\n"), { wordWrap: { width: 430 }, lineSpacing: 6 });
+    await choose(this, 486, H - 140, 146, ["Back"]);
+    win.destroy(); body.destroy();
+  }
+
   async quests() {
     const a = G.s.quest;
     if (!a) return say(this, "", `No quest right now. ${G.s.questsDone ? `Finished: ${G.s.questsDone}. ` : ""}Ines in Old Town, and the first local you meet in a new city, often have work.`);
@@ -74,6 +86,7 @@ export class Menu extends Phaser.Scene {
   async teleport() {
     const here = G.s.map;
     const entries = [{ label: "Type a place…" }, ...suggestions().map(d => ({ label: d + (atlasCached(d) ? " ✦" : ""), dest: d })), // ✦: ready, no waiting
+      ...(G.s.plot.spire && here !== "spire" ? [{ label: "Directorate Spire", map: "spire" }] : []),
       ...(here === "town" ? [] : [{ label: "Old Town", map: "town" }]),
       ...Object.keys(G.s.cities).filter(d => cityId(d) !== here).slice(-6).map(d => ({ label: d.slice(0, 20), map: cityId(d) }))];
     const k = await choose(this, 250, 40, 220, entries.map(e => e.label));

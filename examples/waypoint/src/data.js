@@ -38,7 +38,7 @@ export const MAPS = {
     ],
     objects: [["dungeon_wall", 1, -1], ["dungeon_wall", 10, -1], ["dungeon_wall", 17, -1], ["dungeon_wall", 24, -1],
       ["chest", 5, 15, { chest: "c1", item: "ether", n: 2 }], ["chest", 18, 4, { chest: "c2", item: "potion", n: 3 }]],
-    boss: { x: 26, y: 9, enemy: "minotaur_mage", flag: "warden" },
+    boss: { x: 26, y: 9, enemy: "minotaur_mage", flag: "warden", name: "The Warden" },
     labels: [["▲ Old Town", 2.5, 3.2]],
     zones: [
       { x: 1, y: 3, w: 3, h: 1, go: { map: "town", x: 31, y: 11 } },
@@ -47,21 +47,37 @@ export const MAPS = {
     encounters: [["bat", "bat"], ["slime"], ["snake", "bat"], ["eyeball", "slime"], ["spider_bot"], ["drone_tank"], ["snake", "snake", "bat"], ["slime", "eyeball", "slime"]],
     spawn: [3, 6],
   },
+  spire: {
+    name: "The Spire", w: 32, h: 22, ground: "flagstone", battle: "dungeon",
+    paint: [
+      ["brick", 0, 0, 32, 3, true], ["brick", 0, 21, 32, 1, true], ["brick", 0, 0, 1, 22, true], ["brick", 31, 0, 1, 22, true],
+      ["brick", 10, 3, 1, 6, true], ["brick", 10, 13, 1, 8, true], // gap at rows 9-12
+      ["brick", 16, 3, 1, 4, true], ["brick", 16, 11, 1, 10, true], // gap at rows 7-10
+      ["brick", 22, 3, 1, 6, true], ["brick", 22, 13, 1, 8, true], // gap at rows 9-12
+    ],
+    objects: [...[1, 4, 7, 10, 13, 16, 19, 22, 25, 28].map(x => ["dungeon_wall", x, -1]),
+      ["chest", 5, 17, { chest: "s1", item: "potion", n: 4 }], ["chest", 13, 18, { chest: "s2", item: "ether", n: 3 }], ["chest", 19, 4, { chest: "s3", item: "potion", n: 4 }]],
+    pads: [{ x: 4, y: 10 }, { x: 19, y: 10 }], // recovery pads: confirm to restore the party
+    boss: { x: 27, y: 11, enemy: "director", flag: "director", name: "The Director" },
+    zones: [{ x: 24, y: 8, w: 1, h: 6, boss: true }],
+    encounters: [["spire_drone", "spire_guard"], ["spire_guard", "spire_guard"], ["wraith"], ["wraith", "spire_drone"], ["spire_drone", "spire_drone", "spire_drone"]],
+    encounterSteps: [350, 700], // more often than elsewhere
+    spawn: [3, 10],
+    arrival: "spireArrive",
+  },
 };
 
 // Dialogue: lines are "text" (spoken by the NPC) or [speaker, "text"]; LEAD and MATE stand for the party.
 export const TALK = {
-  arrived: [["MATE", "So this is where we landed. Quiet little town."], ["LEAD", "Too quiet. Someone has been following our jumps."],
-    ["MATE", "Let's ask around. Esc or X opens the menu, and Teleport there can take us anywhere on Earth."]],
+  arrived: [["MATE", "So this is where we landed. Quiet little town."],
+    ["LEAD", "Too quiet. The Directorate has followed every jump since we walked out of the Waypoint program."],
+    ["MATE", "Then let's find out how. Ask around. Esc opens the menu, and Teleport there can take us anywhere on Earth when we're ready."]],
   ines: { before: ["The old tram tunnels run under the town. Men in grey suits go down there at night.", "If you're heading down, buy potions from Tobias first."],
     after: ["The suits are gone! I don't know what you did, but thank you."] },
   agent: { before: ["You must be the jumper. The Directorate has a job offer for you.", "Folding space is wasted on errands for shopkeepers. Work for us.",
     "Our Warden waits in the Undercroft. Go and see what refusing us costs."],
     after: ["...You broke the Warden.", "The Director will hear of this. Blink wherever you like. We will be there first."] },
   shop: ["Welcome to Tobias' Provisions! What'll it be?"],
-  warden: ["The jumper, at last. The Directorate does not ask twice.", "Come quietly, or come in pieces."],
-  won: [["LEAD", "That's the Warden down. They'll only send more."], ["MATE", "Then we'd better be somewhere else when they do."],
-    ["", "The Directorate will send more. Open the menu (Esc) and choose Teleport to jump to any real place."]],
 };
 
 // ---- Anansi: the world quests are built from, and who the NPCs are when you talk to them freely ------------------

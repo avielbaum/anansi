@@ -21,6 +21,7 @@ export function solidsOf(M) {
   for (const [key, x, y] of M.objects) { const f = STAMPS[key].foot; if (f) out.push([x * T + f[0], y * T + f[1], f[2], f[3]]); }
   for (const n of M.npcs || []) { const p = feet(n.x, n.y); out.push([p.x - 12, p.y - 12, 24, 14]); }
   if (M.boss) { const p = feet(M.boss.x, M.boss.y); out.push([p.x - 24, p.y - 16, 48, 16]); }
+  if (M.relay) { const p = feet(M.relay.x, M.relay.y); out.push([p.x - 12, p.y - 12, 24, 14]); }
   return out;
 }
 
@@ -91,7 +92,8 @@ function layout(dest, world, vibe, climate, ri) {
     choose((x, y) => x > avX + 3 && x < W - 9 && rows.includes(y)), // east along the street
     choose((x, y) => x >= W - 8 && rows.includes(y)), // Kessler waits at the east end
   ];
-  if (spots.some(s => !s)) return { ok: false };
+  const relay = choose((x, y) => Math.hypot(x - spawn[0], y - spawn[1]) >= 8); // the Directorate relay of Act II, away from the spawn point
+  if (spots.some(s => !s) || !relay) return { ok: false };
 
   const used = new Set();
   const sprite = name => { let i = hash(name) % LOCALS.length; while (used.has(LOCALS[i])) i = (i + 1) % LOCALS.length; used.add(LOCALS[i]); return LOCALS[i]; };
@@ -108,10 +110,10 @@ function layout(dest, world, vibe, climate, ri) {
     const p = c[ri(c.length)]; itemTaken.push(p); itemSpots[it.id] = [id, p[0], p[1]];
   }
 
-  const map = { name: dest, w: W, h: H, ground: GROUND[climate], battle: "town", paint, objects, labels, npcs, zones: [], spawn, encounters: ENCOUNTERS, vibe, climate };
+  const map = { name: dest, w: W, h: H, ground: GROUND[climate], battle: "town", paint, objects, labels, npcs, zones: [], spawn, encounters: ENCOUNTERS, vibe, climate, relay: { x: relay[0], y: relay[1] } };
   const { seen } = walkable(map);
   const reach = (x, y) => [[x, y], [x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]].some(([a, b]) => seen.has(`${a},${b}`));
-  const ok = npcs.every(n => reach(n.x, n.y)) && Object.values(itemSpots).every(([, x, y]) => seen.has(`${x},${y}`));
+  const ok = npcs.every(n => reach(n.x, n.y)) && reach(relay[0], relay[1]) && Object.values(itemSpots).every(([, x, y]) => seen.has(`${x},${y}`));
 
   const names = {};
   for (const e of [...world.npcs, ...world.locations, ...world.items]) names[e.id] = e.name;
