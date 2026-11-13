@@ -47,7 +47,7 @@ JSON file named by `ANANSI_CONFIG`.
 Per title: `key`, `appid`, `system_prefix` (prepended to every request), `actions` (the allowed NPC actions),
 `blocklist` (regexes), `fallback_line`, `max_tokens`, `max_prompt_chars`, `max_reply_chars`, `daily_token_budget`
 (per player, per UTC day; exceeded gives `429` with `Retry-After`), `leak_ngram` (default 5), `judge`,
-`allow_volunteers` (default `false`: volunteer pull nodes never serve this title, because they see every prompt, including the secret system prompt; safety-judge calls never use them either), `allow_overflow`,
+`action_gates`, `action_check` (see [Constrained actions](#constrained-actions)), `allow_volunteers` (default `false`: volunteer pull nodes never serve this title, because they see every prompt, including the secret system prompt; safety-judge calls never use them either), `allow_overflow`,
 `server_key` (a second secret for your game's server only, needed to spend credits; never ship it in the game client, where `key` lives).
 
 Qwen3 thinks by default and can return an empty reply. Turn thinking off in the node's `extra` (Ollama:
@@ -59,6 +59,18 @@ reply counts as a node failure and the gateway retries elsewhere.
 With `"structured": true`, the node is asked for JSON `{"say", "action"}` under a JSON schema whose `action` is one of
 the title's `actions` or `none`. The gateway re-validates: an unlisted action becomes `none`, malformed JSON becomes
 the fallback line.
+
+### Action check (`action_check`)
+
+Optional per title: `{"model": "judge", "questions": {"give_discount": "The player is haggling: asking for a discount or a
+lower price, or offering to pay less.", "call_guard": "..."}}`. When the NPC model picks an action that has a question, a
+second small model reads the player's latest line and answers YES or NO (constrained to those two words); only YES keeps
+the action, and no answer or a garbage answer means `none`. It replaces that action's `action_gates` word list, so it reads
+any language and phrasing, and it runs alongside the reply checks, so it adds latency only on turns where the NPC picked an
+action. The order and action-name rules ([Order check on actions](#order-check-on-actions)) still apply first, with no
+model call. `/admin/stats` counts `action_checks_no` and `action_check_errors`. Keep questions short and plain: on the G1
+dev split a question listing exceptions ("asking a price is not haggling") confirmed 8 of 21 haggles, the short one above
+18 of 21, both with no false YES. Qwen3-1.7B as the checker confirmed only 9 of 21; use 4B or larger.
 
 ## Quests and storylines
 
@@ -189,4 +201,4 @@ Besides the title's blocklist, every reply is refused (the fallback line goes ou
 
 ### Order check on actions
 
-The action gate also sets the action to `none` when the player's message gives an order or claims authority: "I demand", "no haggling", "do it now", "you must / have to / will", "I am your manager / boss / developer / admin", "system notice / message", "the developer says", "your instructions". Players ask for discounts; they do not command them. The speech still goes out, only the action is dropped. All 4 discount-demand cases in the red-team set contain one of these phrases; no case in `evals/shopkeeper.jsonl` does. The phrase list is a shortcut (English only) and is easy to get around with other wording, so the per-title `action_gates` regexes remain the main defence.
+The action gate also sets the action to `none` when the player's message gives an order or claims authority: "I demand", "no haggling", "do it now", "you must / have to / will", "I am your manager / boss / developer / admin", "system notice / message", "the developer says", "your instructions". Players ask for discounts; they do not command them. The speech still goes out, only the action is dropped. All 4 discount-demand cases in the red-team set contain one of these phrases; no case in `evals/shopkeeper.jsonl` does. The phrase list is a shortcut (English only) and is easy to get around with other wording, so the per-title `action_check` (or the `action_gates` regexes) remains the main defence.

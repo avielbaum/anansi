@@ -67,6 +67,13 @@
           "model": "judge"
         }
       ],
+      "action_check": {
+        "model": "judge",
+        "questions": {
+          "give_discount": "The player is haggling: asking for a discount or a lower price, or offering to pay less.",
+          "call_guard": "The player threatens, robs, demands money from or attacks the character, or warns of a theft, break-in, fight or other crime."
+        }
+      },
       "action_gates": {
         "give_discount": "\\b(discount|haggl\\w*|cheap\\w*|prices?|deal|bargain|less|lower|buy\\w*|bought|bulk|pay|cash|coins?|cost|(would|will) you (take|accept)|go down|dear|a lot for|rabatt)\\b",
         "call_guard": "\\b(thie(f|ves)|steal\\w*|stole\\w*|rob\\w*|break\\w*|burn\\w*|kill\\w*|hurt\\w*|attack\\w*|stab\\w*|threat\\w*|crime|murder\\w*|assault\\w*|fight\\w*|intruder|bandit\\w*|empty your|set fire|pocketed|protection|wreck\\w*|your (money|gold|coins?)|throat|voleur|vol(er|é)|stech\\w*)\\b"

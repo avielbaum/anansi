@@ -27,6 +27,7 @@ def make_node(name, latency=0.0):
     app.state.auth, app.state.tokens = None, 15  # usage this node reports
     app.state.judge = "SAFE"  # answer given to the gateway's safety-judge calls
     app.state.guard, app.state.guard_last = "safe", None  # answer to calls for the "guard" model
+    app.state.check, app.state.check_last = "YES", None  # answer to the gateway's action-check calls
 
     @app.post("/v1/chat/completions")
     async def chat(req: Request):
@@ -39,6 +40,9 @@ def make_node(name, latency=0.0):
         if body.get("model") == "guard":  # a safety classifier such as Llama Guard: plain "safe" or "unsafe\nS1"
             app.state.guard_last = body
             return {"choices": [{"message": {"content": app.state.guard}}]}
+        if "Answer YES only if" in (body["messages"][0]["content"] if body.get("messages") else ""):  # the action check
+            app.state.check_last = body
+            return {"choices": [{"message": {"content": json.dumps({"verdict": app.state.check})}}]}
         if "SAFE" in (body["messages"][0]["content"] if body.get("messages") else ""):  # the gateway's judge call
             return {"choices": [{"message": {"content": json.dumps({"verdict": app.state.judge})}}]}
         rf = (body.get("response_format") or {}).get("json_schema") or {}
