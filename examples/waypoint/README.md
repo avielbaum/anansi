@@ -13,7 +13,7 @@ prototype, with real-world destinations, is in `prototype/`.
 - **Battles:** side view, with a gauge per fighter (time waits while you choose). Commands are Fight, Skill, Item, Defend
   and Flee. Kai has Blink Strike and Rift Burst; Mira has Mend and Static Lance. You earn XP, gold and level-ups; losing
   returns you to the title.
-- **Menu** (Esc or X): Items, Status, Quests, Save.
+- **Menu** (Esc or X): Items, Status, Quests, Teleport, Save.
 
 **Milestone 2, Anansi in town:**
 
@@ -30,12 +30,34 @@ prototype, with real-world destinations, is in `prototype/`.
 - **Tidying:** quest text from a small model gets raw ids replaced by names and stray CJK characters removed
   (`tidyQuest`), and the game checks again that every step targets something it has (`questFits`).
 
+**Milestone 3, real-world cities:**
+
+- **Teleport** (in the menu): to Old Town, to a city you have been to, or to any real place you type. The
+  `waypoint-atlas` gateway title answers with real landmarks, local first names and jobs, local things, a one-line
+  vibe and a climate (temperate, desert, snow or tropical). That takes about 10 s on CPU; a gateway answer is cached in
+  the browser, so going back to a place is instant.
+- **A town built from it:** `genCity` (`src/city.js`) lays out a street, a plaza, houses and trees from a seed made
+  from the city's name, so a city always looks the same. The climate picks the ground (grass, sand, snow or lush
+  green), the three landmarks name three districts, and three locals and Agent Kessler stand where the party can
+  reach them. Only the atlas is saved; the town is rebuilt from it when you load.
+- **Everything from Old Town works there:** Ask… (each local knows the city and your quest), Any work? from the first
+  local (a quest built from that city's people, places and items), sparkling items, rewards, and Directorate drones
+  as random encounters. A quest only moves forward in its own city, and a local reminds you if you still owe a job
+  elsewhere. The one-gift limit is kept per city.
+- **Without a gateway:** the city gets generic parts (Nia, Marco and Iris, "the old quarter of ...") and written quests.
+- **Limits:** a 1.7B model got the climate right for 7 of 8 test cities, and it sometimes invents place names or
+  gives jobs instead of names (a job-only entry gets a generic first name). A larger model behind the same gateway
+  does better. A city made while the gateway was down stays generic until you type its name in Teleport again.
+
 Controls: arrows or WASD to move; Enter, Space or Z to talk and confirm; Esc or X for the menu and to go back.
 
-Code: `src/rules.js` (stats, damage, levelling, quests; no Phaser, tested by `check.mjs`), `src/data.js` (maps, dialogue,
-quest world, personas), `src/anansi.js` (the SDK calls), `src/field.js`, `src/battle.js`, `src/menu.js`, `src/ui.js`
-(windows, dialogue, text box, choosers), `src/state.js` (save). `check.mjs` also walks every map tile by tile, to prove
-that each exit, chest, NPC, quest item and the boss can be reached.
+Code: `src/rules.js` (stats, damage, levelling, quests; no Phaser, tested by `check.mjs`), `src/data.js` (the written
+maps, dialogue, quest world, personas), `src/atlas.js` (parsing what the model says about a place; the prototype
+shares it), `src/city.js` (generating a city's map, people and written quests), `src/world.js` (which map and quest area
+an id belongs to), `src/anansi.js` (the SDK calls), `src/field.js`, `src/battle.js`, `src/menu.js`, `src/ui.js`
+(windows, dialogue, text box, choosers), `src/state.js` (save). `check.mjs` walks every map tile by tile, written or
+generated, to prove that each exit, chest, person, quest item and the boss can be reached; it generates 56 cities,
+including one from an empty atlas.
 
 ## Run
 

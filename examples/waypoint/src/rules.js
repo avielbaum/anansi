@@ -106,7 +106,7 @@ export const resetGifts = s => { s.gifted = {}; };
 
 /** Tidies generated quest text: raw ids become names, and stray CJK characters (a small-model glitch) go. */
 export function tidyQuest(q, names) {
-  const fix = s => String(s).replace(/\b[a-z]+(?:_[a-z]+)+\b/g, w => names[w] || w)
+  const fix = s => String(s).replace(/\b[a-z]+(?:_[a-z]+)+\b|\b[pli]\d\b/g, w => names[w] || w) // snake_case ids, and a generated city's p0 / l1 / i2
     .replace(/[\p{Script=Han}\p{Script=Hangul}\p{Script=Hiragana}\p{Script=Katakana}]+/gu, "").replace(/\s+/g, " ").trim();
   return { ...q, title: fix(q.title), summary: fix(q.summary), story_summary: fix(q.story_summary),
     steps: q.steps.map(s => ({ ...s, description: fix(s.description) })) };

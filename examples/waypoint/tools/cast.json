@@ -45,5 +45,29 @@
     ["torso/aprons/torso_aprons_apron.json", "leather"],
     ["legs/pants/legs_pants2.json", "brown"],
     ["feet/shoes/feet_shoes_basic.json", "black"]
+  ]},
+  "local_m": { "name": "Local man", "body": "male", "layers": [
+    ["body/body.json", "olive"],
+    ["head/heads/human/heads_human_male.json", "olive"],
+    ["hair/short/hair_messy1.json", "black"],
+    ["torso/shirts/shortsleeve/torso_clothes_tshirt.json", "teal"],
+    ["legs/pants/legs_pants2.json", "charcoal"],
+    ["feet/shoes/feet_shoes_basic.json", "black"]
+  ]},
+  "local_f2": { "name": "Local woman", "body": "female", "layers": [
+    ["body/body.json", "amber"],
+    ["head/heads/human/heads_human_female.json", "amber"],
+    ["hair/braids/hair_ponytail.json", "gray"],
+    ["torso/shirts/torso_clothes_blouse_longsleeve.json", "lavender"],
+    ["legs/pants/legs_pants2.json", "slate"],
+    ["feet/shoes/feet_shoes_basic.json", "brown"]
+  ]},
+  "local_m2": { "name": "Local worker", "body": "male", "layers": [
+    ["body/body.json", "taupe"],
+    ["head/heads/human/heads_human_male.json", "taupe"],
+    ["hair/short/hair_messy1.json", "ginger"],
+    ["torso/shirts/shortsleeve/torso_clothes_tshirt.json", "orange"],
+    ["legs/pants/legs_pants2.json", "tan"],
+    ["feet/boots/feet_boots_basic.json", "brown"]
   ]}
 }

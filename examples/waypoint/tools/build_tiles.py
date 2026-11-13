@@ -48,6 +48,18 @@ def unwhite(img):
     return img
 
 
+def recolour(img, hue=None, sat=1.0, val=1.0):
+    """Change an image's hue (PIL scale 0-255; None keeps it), saturation and brightness, keeping its transparency."""
+    alpha = img.getchannel("A")
+    h, s, v = img.convert("RGB").convert("HSV").split()
+    if hue is not None:
+        h = h.point(lambda _: hue)
+    s, v = s.point(lambda x: min(255, int(x * sat))), v.point(lambda x: min(255, int(x * val)))
+    out = Image.merge("HSV", (h, s, v)).convert("RGB").convert("RGBA")
+    out.putalpha(alpha)
+    return out
+
+
 def shapes(img, reach=3):
     """Bounding boxes of the opaque shapes, joining pixels up to `reach` apart (so a wasp keeps its stinger)."""
     w, h = img.size
@@ -89,6 +101,10 @@ def main():
         for x, c in enumerate(row):
             mix.alpha_composite(tile(grass, 1, 3) if c == "0" else tile(grass, int(c) - 1, 5), (x * 32, y * 32))
     save(mix, "tiles/grass.png")
+    # climate grounds for generated cities: the same grass with its hue, saturation and brightness changed
+    save(recolour(mix, hue=28, sat=0.7, val=1.7), "tiles/ground_sand.png")
+    save(recolour(mix, hue=150, sat=0.22, val=1.85), "tiles/ground_snow.png")
+    save(recolour(mix, hue=62, sat=1.15, val=1.3), "tiles/ground_lush.png")
     save(tile(cement, 1, 3), "tiles/paving.png")
     save(tile(cement, 1, 5), "tiles/flagstone.png")
     save(tile(street, 3, 3), "tiles/road.png")

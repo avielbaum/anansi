@@ -1,6 +1,7 @@
-// The walking scene: one class for every map in data.js.
+// The walking scene: one class for every map, whether written in data.js or generated for a city (city.js).
 /* global Phaser */
-import { MAPS, STAMPS, TALK, REGIONS, ITEM_SPOTS, SHORT_NAMES } from "./data.js";
+import { STAMPS, TALK } from "./data.js";
+import { mapFor, areaOf, areaLabel } from "./world.js";
 import { G } from "./state.js";
 import { ITEMS, questStep, payQuest, canGift, markGift, resetGifts } from "./rules.js";
 import { W, H, drawWindow, text, talk, choose, say, prompt, waitFor } from "./ui.js";
@@ -14,10 +15,11 @@ const hit = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a
 export class Field extends Phaser.Scene {
   constructor() { super("field"); }
 
-  init(d) { this.mapId = d.map || G.s.map; this.at = d.at || G.s.pos || feet(...MAPS[this.mapId].spawn); }
+  init(d) { this.mapId = d.map || G.s.map; this.at = d.at || G.s.pos || feet(...mapFor(this.mapId).spawn); }
 
   create() {
-    const M = (this.M = MAPS[this.mapId]);
+    const M = (this.M = mapFor(this.mapId));
+    this.area = areaOf(this.mapId);
     G.s.map = this.mapId;
     this.busy = false; this.marker = null; // Phaser reuses this object when a map restarts: clear the last visit's state
     this.cast = this.cache.json.get("cast");
@@ -37,6 +39,8 @@ export class Field extends Phaser.Scene {
       this.solids.push((this.bossBox = { x: p.x - 24, y: p.y - 16, w: 48, h: 16 }));
     }
 
+    if (this.blocked(this.at.x, this.at.y)) this.at = feet(...M.spawn); // a saved spot can end up inside something if a city's layout changed between versions
+
     const [lead, mate] = G.s.party.map(h => h.id);
     this.hero = this.addActor(lead, this.at.x, this.at.y, "down");
     this.mate = this.addActor(mate, this.at.x, this.at.y - 24, "down"); // a step behind (north of) the lead
@@ -52,8 +56,10 @@ export class Field extends Phaser.Scene {
     const banner = this.add.text(W / 2, 30, M.name, { fontFamily: "monospace", fontSize: "18px", color: "#fff", stroke: "#000", strokeThickness: 4 }).setOrigin(0.5).setScrollFactor(0).setDepth(9000);
     this.tweens.add({ targets: banner, alpha: 0, delay: 1500, duration: 600, onComplete: () => banner.destroy() });
     if (M.intro && !G.s.flags[M.intro]) { G.s.flags[M.intro] = true; this.run(() => this.lines(TALK[M.intro])); }
+    else if (M.vibe && !G.s.flags[`seen:${this.mapId}`]) { G.s.flags[`seen:${this.mapId}`] = true; this.run(() => say(this, "", M.vibe)); } // a new city: what it feels like
     this.refreshMarker();
-    if (!G.s.quest && !G.s.offer) prefetchQuest(); // quests take a while on CPU: start before anyone asks
+    // quests take a while on CPU: start before anyone asks, but not the instant you land in a new city (you may only be passing through)
+    if (!G.s.quest && G.s.offer?.area !== this.area.key) this.time.delayedCall(this.area.key === "home" ? 0 : 15000, () => prefetchQuest(this.area));
   }
 
   addStamp(key, tx, ty, opt) {
@@ -113,7 +119,7 @@ export class Field extends Phaser.Scene {
       for (;;) {
         const o = opts[await choose(this, W - 170, 56, 160, opts)];
         if (o === "Shop") await this.shop(who);
-        else if (o === "Talk") await this.lines(Array.isArray(t) ? t : G.s.flags.warden ? t.after : t.before, who);
+        else if (o === "Talk") await this.lines(n.lines || (Array.isArray(t) ? t : G.s.flags.warden ? t.after : t.before), who);
         else if (o === "Ask…") await this.chat(n, who);
         else if (o === "Any work?") await this.offerQuest(n, who);
         else break;
@@ -127,9 +133,9 @@ export class Field extends Phaser.Scene {
     for (;;) {
       const line = await prompt(this, `Say something to ${who}:`);
       if (!line) return;
-      const r = await waitFor(this, ask(n.qid, line), `${who} is thinking`);
+      const r = await waitFor(this, ask(n.qid, line, this.area), `${who} is thinking`);
       await say(this, who, r.say);
-      const gift = `home:${n.qid}`;
+      const gift = `${this.area.key}:${n.qid}`;
       if (r.action === "none" || n.qid === "agent" || !canGift(G.s, gift)) continue;
       if (r.action === "heal_hero") {
         G.s.party.forEach(h => { if (h.hp > 0) h.hp = h.maxhp; });
@@ -145,34 +151,38 @@ export class Field extends Phaser.Scene {
 
   async offerQuest(n, who) {
     const a = G.s.quest;
-    if (a) return say(this, who, `How's "${a.q.title}" going? ${a.q.steps[a.step].description}`);
-    const q = G.s.offer || (G.s.offer = (await waitFor(this, takeQuest(), `${who} is thinking`)).quest);
+    if (a) return say(this, who, a.area === this.area.key ? `How's "${a.q.title}" going? ${a.q.steps[a.step].description}`
+      : `You still have a job in ${areaLabel(a.area)}: "${a.q.title}". Finish that first.`);
+    let q = G.s.offer?.area === this.area.key ? G.s.offer.q : null;
+    if (!q) { q = (await waitFor(this, takeQuest(this.area), `${who} is thinking`)).quest; G.s.offer = { q, area: this.area.key }; }
     await say(this, who, `${q.title}. ${q.summary}`);
     if ((await choose(this, W - 170, 56, 160, ["Take the job", "Not now"])) !== 0) return say(this, who, "The offer stands. Come back when you're ready.");
-    G.s.quest = { q, step: 0 }; G.s.offer = null;
+    G.s.quest = { q, step: 0, area: this.area.key }; G.s.offer = null;
     await say(this, "", `New quest: ${q.title}. Open the menu (Esc) and choose Quests to review it.`);
     await this.questEvent("talk_to", n.qid); // a quest that starts with "talk to Ines" is already under way
     this.refreshMarker();
   }
 
-  stepIs(kind, id) { const s = G.s.quest?.q.steps[G.s.quest.step]; return !!s && s.objective === kind && s.target_id === id; }
+  /** The quest step that is current here, or null: a quest only moves on in its own area. */
+  currentStep() { const a = G.s.quest; return a?.area === this.area.key ? a.q.steps[a.step] : null; }
+  stepIs(kind, id) { const s = this.currentStep(); return !!s && s.objective === kind && s.target_id === id; }
 
   async questEvent(kind, id) {
+    if (!this.stepIs(kind, id)) return;
     const r = questStep(G.s.quest, kind, id);
-    if (!r) return;
     const q = G.s.quest.q;
     this.refreshMarker();
     if (r === "step") return this.toast(`✔ ${q.steps[G.s.quest.step - 1].description}`);
     G.s.quest = null;
     const pay = payQuest(G.s, q), extra = Object.entries(pay.items).map(([i, k]) => `, ${k} × ${ITEMS[i].name}`).join("");
     await say(this, "", `Quest complete: ${q.title}! +${pay.gold} G${extra}.`);
-    prefetchQuest();
+    prefetchQuest(this.area);
   }
 
   /** A sparkle where the current fetch step's item is, when it is on this map. */
   refreshMarker() {
     this.marker?.obj.destroy(); this.marker = null;
-    const s = G.s.quest?.q.steps[G.s.quest.step], spot = s?.objective === "fetch" && ITEM_SPOTS[s.target_id];
+    const s = this.currentStep(), spot = s?.objective === "fetch" && this.area.itemSpots[s.target_id];
     if (!spot || spot[0] !== this.mapId) return;
     const p = feet(spot[1], spot[2]);
     const obj = this.add.star(p.x, p.y - 10, 4, 3, 8, 0xfff2a8).setDepth(p.y).setStrokeStyle(1, 0xffffff);
@@ -273,17 +283,20 @@ export class Field extends Phaser.Scene {
       if (z.boss && !G.s.flags[this.M.boss.flag]) return this.bossFight();
     }
     if (!zones.length) this.inZone = false;
-    const s = this.hero.s, here = (REGIONS[this.mapId] || []).find(([, x, y, w, h]) => hit({ x: s.x, y: s.y, w: 1, h: 1 }, { x: x * T, y: y * T, w: w * T, h: h * T }));
+    const s = this.hero.s, here = (this.area.regions[this.mapId] || []).find(([, x, y, w, h]) => hit({ x: s.x, y: s.y, w: 1, h: 1 }, { x: x * T, y: y * T, w: w * T, h: h * T }));
     if (here && this.stepIs("explore", here[0])) return this.run(() => this.questEvent("explore", here[0]));
     if (this.marker && Phaser.Math.Distance.Between(s.x, s.y, this.marker.x, this.marker.y) < 20) {
       const id = this.marker.id;
-      return this.run(async () => { await say(this, "", `Found the ${SHORT_NAMES[id]}!`); await this.questEvent("fetch", id); });
+      return this.run(async () => { await say(this, "", `Found: ${this.area.names[id]}`); await this.questEvent("fetch", id); });
     }
     if (this.M.encounters && (this.nextFight -= moved) <= 0) {
       this.nextFight = Phaser.Math.Between(550, 1000);
       this.battle(Phaser.Utils.Array.GetRandom(this.M.encounters));
     }
   }
+
+  /** Jumps to another map (Teleport in the menu) and arrives at its spawn point. */
+  teleportTo(mapId) { const [x, y] = mapFor(mapId).spawn; this.goTo({ map: mapId, x, y }); }
 
   goTo(go) {
     this.busy = true;

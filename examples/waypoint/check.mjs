@@ -5,6 +5,8 @@ import { damage, gainXp, newHero, newGame, atbFill, useItem, xpToNext, ENEMIES, 
 import { upgrade } from "./src/state.js";
 import { MAPS, STAMPS, TALK, QUEST_WORLD, REGIONS, ITEM_SPOTS, PERSONAS, FALLBACK_QUESTS, SHORT_NAMES } from "./src/data.js";
 import { pages } from "./src/ui.js";
+import { genCity, walkable, LOCALS } from "./src/city.js";
+import { parseAtlas, parseClimate, cityPrompt, CLIMATES } from "./src/atlas.js";
 
 // long dialogue splits into pages that fit the box, losing no words
 const long = "The Whispering Tram. Kai stumbles into a quiet town where the Directorate watches from afar. Tobias, the shopkeeper, offers a job to help retrieve a lost letter. Ines reveals a secret about the tram token. Agent Kessler watches from the shadows, waiting for the right moment.";
@@ -41,21 +43,15 @@ for (const h of Object.values(HEROES)) for (const s of h.skills) assert(SKILLS[s
 // maps
 const opens = {}, seens = {};
 for (const [mid, M] of Object.entries(MAPS)) {
-  const T = 32, solids = [];
-  for (const [tex, x, y, w, h, solid] of M.paint) { assert(existsSync(here(`assets/tiles/${tex}.png`)), tex); if (solid) solids.push([x * T, y * T, w * T, h * T]); }
+  for (const [tex] of M.paint) assert(existsSync(here(`assets/tiles/${tex}.png`)), tex);
   assert(existsSync(here(`assets/tiles/${M.ground}.png`)) && existsSync(here(`assets/tiles/battle_${M.battle}.png`)), mid);
-  for (const [key, x, y] of M.objects) { const st = STAMPS[key]; assert(st, key); if (st.foot) solids.push([x * T + st.foot[0], y * T + st.foot[1], st.foot[2], st.foot[3]]); }
-  const feet = (tx, ty) => [tx * T + 16, ty * T + 28];
-  for (const n of M.npcs || []) { assert(cast[n.id], n.id); assert(TALK[n.talk], n.talk); const [x, y] = feet(n.x, n.y); solids.push([x - 12, y - 12, 24, 14]); }
-  if (M.boss) { assert(ENEMIES[M.boss.enemy]); const [x, y] = feet(M.boss.x, M.boss.y); solids.push([x - 24, y - 16, 48, 16]); }
+  for (const [key] of M.objects) assert(STAMPS[key], key);
+  for (const n of M.npcs || []) { assert(cast[n.id], n.id); assert(TALK[n.talk], n.talk); }
+  if (M.boss) assert(ENEMIES[M.boss.enemy]);
   for (const e of (M.encounters || []).flat()) assert(ENEMIES[e], e);
-  // tile (tx,ty) is walkable when the hero's feet box at its centre touches nothing solid
-  const open = (tx, ty) => tx >= 0 && ty >= 0 && tx < M.w && ty < M.h &&
-    !solids.some(([sx, sy, sw, sh]) => { const [x, y] = feet(tx, ty); return x - 9 < sx + sw && x + 9 > sx && y - 8 < sy + sh && y + 2 > sy; });
+  const { open, seen } = walkable(M); // tile (tx,ty) is walkable when the hero's feet box at its centre touches nothing solid
   opens[mid] = open;
   assert(open(...M.spawn), `${mid}: spawn is blocked`);
-  const seen = new Set([M.spawn.join()]), q = [M.spawn];
-  while (q.length) { const [x, y] = q.shift(); for (const [a, b] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) if (open(a, b) && !seen.has(`${a},${b}`)) { seen.add(`${a},${b}`); q.push([a, b]); } }
   const reach = (tx, ty, what) => assert([[tx, ty], [tx + 1, ty], [tx - 1, ty], [tx, ty + 1], [tx, ty - 1]].some(([a, b]) => seen.has(`${a},${b}`)), `${mid}: cannot reach ${what} at ${tx},${ty}`);
   for (const z of M.zones || []) {
     assert(!z.go || MAPS[z.go.map], `${mid}: zone to unknown map`);
@@ -98,6 +94,37 @@ markGift(gs, "home:ines"); payQuest(gs, FALLBACK_QUESTS[0]); assert(canGift(gs, 
 const old = upgrade({ v: 1, map: "town", pos: null, quest: { q: FALLBACK_QUESTS[0], step: 0 }, offer: FALLBACK_QUESTS[1], flags: {} });
 assert.deepEqual([old.gifted, old.cities, old.quest.area, old.offer.area, old.offer.q.title], [{}, {}, "home", "home", FALLBACK_QUESTS[1].title]);
 assert.equal(upgrade({ v: 1, map: "city:Nowhere", pos: { x: 1, y: 1 }, flags: {} }).map, "town", "a city with no saved data falls back to town");
+// ---- generated cities: whatever the model says (or nothing), the town is complete, walkable and consistent ----------------
+const atlasText = "PLACES: Fushimi Inari | Kinkaku-ji | Gion\nPEOPLE: Kiyomi (tea maker) | Akira (sushi chef) | Tada (calligrapher)\nITEMS: kaiseki | torii gate | matcha\nVIBE: Tranquil temples and lanterns.\nCLIMATE: snow";
+assert.deepEqual(["desert", "cold and snowy", "Tropical", "temperate (one of desert, snow)", "", "warm"].map(c => parseClimate(`CLIMATE: ${c}`)), ["desert", "snow", "tropical", "temperate", "temperate", "temperate"]);
+assert(CLIMATES.every(c => existsSync(here(`assets/tiles/${{ temperate: "grass", desert: "ground_sand", snow: "ground_snow", tropical: "ground_lush" }[c]}.png`))), "a ground texture per climate");
+assert(cityPrompt("Lisbon").includes("CLIMATE") && cityPrompt("Kyoto").endsWith("Now Kyoto:"));
+for (const id of LOCALS) assert(cast[id], `${id} is missing from the built sprites`);
+const dests = ["Kyoto", "Marrakech", "Reykjavik", "Singapore", "Lima", "x", "Ulaanbaatar", "Cape Town", "Oslo", "Hanoi", "Buenos Aires", "Nairobi", "São Paulo", "Tromsø", "Yakutsk", "Dubai",
+  ...Array.from({ length: 40 }, (_, i) => `City ${i * 7919}`)];
+for (const [i, dest] of dests.entries()) {
+  const climate = CLIMATES[i % 4], atlas = i === 5 ? parseAtlas("...") : parseAtlas(atlasText); // "x" gets the SDK's empty fallback
+  const c = genCity(dest, atlas, climate), M = c.map, area = c.area;
+  assert(c.ok, `${dest}: no valid layout`);
+  assert.equal(JSON.stringify(genCity(dest, atlas, climate).map), JSON.stringify(M), `${dest}: the same city must always look the same`);
+  for (const [tex] of M.paint) assert(existsSync(here(`assets/tiles/${tex}.png`)), tex);
+  assert(existsSync(here(`assets/tiles/${M.ground}.png`)) && existsSync(here(`assets/tiles/battle_${M.battle}.png`)));
+  for (const [key] of M.objects) assert(STAMPS[key], key);
+  for (const e of M.encounters.flat()) assert(ENEMIES[e], e);
+  const { open, seen } = walkable(M);
+  assert(open(...M.spawn), `${dest}: spawn is blocked`);
+  assert.equal(M.npcs.length, 4); assert.equal(new Set(M.npcs.map(n => n.id)).size, 4, `${dest}: two people share a sprite`);
+  for (const n of M.npcs) {
+    assert(cast[n.id], n.id); assert(area.personas[n.qid], `no persona for ${n.qid}`); assert(n.lines.length >= 3 && n.name);
+    assert([[n.x, n.y], [n.x + 1, n.y], [n.x - 1, n.y], [n.x, n.y + 1], [n.x, n.y - 1]].some(([a, b]) => seen.has(`${a},${b}`)), `${dest}: cannot reach ${n.qid}`);
+  }
+  assert.deepEqual(area.world.npcs.map(n => n.id).sort(), M.npcs.map(n => n.qid).sort());
+  for (const it of area.world.items) { const [m, x, y] = area.itemSpots[it.id]; assert.equal(m, area.key); assert(seen.has(`${x},${y}`), `${dest}: cannot reach ${it.id}`); }
+  for (const l of area.world.locations) assert(area.regions[area.key].some(r => r[0] === l.id), `${dest}: no region for ${l.id}`);
+  assert.equal(area.fallbackQuests.length, 3);
+  for (const q of area.fallbackQuests) assert(questFits(q, area.world), `${dest}: ${q.title}`);
+  assert(!/\b[pli]\d\b/.test(tidyQuest({ title: "t", summary: "Ask p0 at l1 for i2", story_summary: "", steps: [] }, area.names).summary), "city ids become names");
+}
 const save = newGame("lead_m"); const pay = payQuest(save, FALLBACK_QUESTS[1]);
 assert.equal(save.gold, 60 + pay.gold); assert.equal(save.items.potion, 4); assert.equal(save.questsDone, 1); assert(save.story.includes("tram token"));
 console.log("ok");

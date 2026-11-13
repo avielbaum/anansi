@@ -135,5 +135,104 @@
     "rows": 1
    }
   }
+ },
+ "local_m": {
+  "name": "Local man",
+  "anims": {
+   "idle": {
+    "frames": 2,
+    "rows": 4
+   },
+   "walk": {
+    "frames": 9,
+    "rows": 4
+   },
+   "run": {
+    "frames": 8,
+    "rows": 4
+   },
+   "slash": {
+    "frames": 6,
+    "rows": 4
+   },
+   "thrust": {
+    "frames": 8,
+    "rows": 4
+   },
+   "spellcast": {
+    "frames": 7,
+    "rows": 4
+   },
+   "hurt": {
+    "frames": 6,
+    "rows": 1
+   },
+   "combat_idle": {
+    "frames": 2,
+    "rows": 4
+   }
+  }
+ },
+ "local_f2": {
+  "name": "Local woman",
+  "anims": {
+   "walk": {
+    "frames": 9,
+    "rows": 4
+   },
+   "slash": {
+    "frames": 6,
+    "rows": 4
+   },
+   "thrust": {
+    "frames": 8,
+    "rows": 4
+   },
+   "spellcast": {
+    "frames": 7,
+    "rows": 4
+   },
+   "hurt": {
+    "frames": 6,
+    "rows": 1
+   }
+  }
+ },
+ "local_m2": {
+  "name": "Local worker",
+  "anims": {
+   "idle": {
+    "frames": 2,
+    "rows": 4
+   },
+   "walk": {
+    "frames": 9,
+    "rows": 4
+   },
+   "run": {
+    "frames": 8,
+    "rows": 4
+   },
+   "slash": {
+    "frames": 6,
+    "rows": 4
+   },
+   "thrust": {
+    "frames": 8,
+    "rows": 4
+   },
+   "spellcast": {
+    "frames": 7,
+    "rows": 4
+   },
+   "hurt": {
+    "frames": 6,
+    "rows": 1
+   },
+   "combat_idle": {
+    "frames": 2,
+    "rows": 4
+   }
+  }
  }
 }

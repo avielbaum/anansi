@@ -9,6 +9,7 @@ change it, also commercially, as long as you follow the terms below.
 | `sprites/*` (characters) | [CC-BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) | Liberated Pixel Cup (LPC) layers, recoloured and combined by `tools/build_sprites.py`. Every author is listed in [`CREDITS.csv`](CREDITS.csv). |
 | `enemies/*` | CC-BY-SA 3.0 | "LPC in battle RPG sprites" by Stephen Challener (Redshrike), cut out by `tools/build_tiles.py` |
 | `tiles/grass, flagstone, paving, cobble, brick, house, tree, pine, chest, gate, dungeon_wall` | CC-BY-SA 3.0 | LPC Base Assets (Lanea Zimmerman, Stephen Challener, Charles Sanchez, Manuel Riecke, Daniel Armstrong), combined by `tools/build_tiles.py` |
+| `tiles/ground_sand, ground_snow, ground_lush` | CC-BY-SA 3.0 | The LPC grass above with its colours changed by `tools/build_tiles.py`; an adaptation, so it stays CC-BY-SA 3.0 |
 | `tiles/road, road_line, sidewalk` | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | "Street tiles" by curato |
 | `tiles/battle_town, battle_dungeon` | CC0 | "Battlebacks Pack" by Pixel-boy |
 

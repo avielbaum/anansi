@@ -52,7 +52,7 @@ export const MAPS = {
 // Dialogue: lines are "text" (spoken by the NPC) or [speaker, "text"]; LEAD and MATE stand for the party.
 export const TALK = {
   arrived: [["MATE", "So this is where we landed. Quiet little town."], ["LEAD", "Too quiet. Someone has been following our jumps."],
-    ["MATE", "Let's ask around. Esc or X opens the menu if you need it."]],
+    ["MATE", "Let's ask around. Esc or X opens the menu, and Teleport there can take us anywhere on Earth."]],
   ines: { before: ["The old tram tunnels run under the town. Men in grey suits go down there at night.", "If you're heading down, buy potions from Tobias first."],
     after: ["The suits are gone! I don't know what you did, but thank you."] },
   agent: { before: ["You must be the jumper. The Directorate has a job offer for you.", "Folding space is wasted on errands for shopkeepers. Work for us.",
@@ -61,7 +61,7 @@ export const TALK = {
   shop: ["Welcome to Tobias' Provisions! What'll it be?"],
   warden: ["The jumper, at last. The Directorate does not ask twice.", "Come quietly, or come in pieces."],
   won: [["LEAD", "That's the Warden down. They'll only send more."], ["MATE", "Then we'd better be somewhere else when they do."],
-    ["", "End of the vertical slice. Thanks for playing! You can keep exploring."]],
+    ["", "The Directorate will send more. Open the menu (Esc) and choose Teleport to jump to any real place."]],
 };
 
 // ---- Anansi: the world quests are built from, and who the NPCs are when you talk to them freely ------------------
