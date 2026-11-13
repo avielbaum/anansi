@@ -1,5 +1,5 @@
 // The one game state (party, items, gold, where the party is, story flags) and saving it in the browser.
-import { newGame } from "./rules.js";
+import { newGame, kit, START_GEAR } from "./rules.js";
 import { newPlot } from "./story.js";
 
 const KEY = "waypoint.save";
@@ -18,6 +18,8 @@ export function load() {
 export function upgrade(s) {
   s.gifted ||= {}; s.cities ||= {}; s.story ||= ""; s.questsDone ||= 0;
   s.plot ||= newPlot();
+  s.gear ||= {};
+  for (const h of s.party || []) if (!h.eq) kit(h, START_GEAR[h.id]); // a save from before equipment: the starting gear, with its small bonus
   if (s.flags?.warden && s.plot.act < 2) s.plot.act = 2; // a save from before the story existed, after the Warden
   if (s.quest && !s.quest.area) s.quest.area = "home";
   if (s.offer && !s.offer.q) s.offer = { q: s.offer, area: "home" };

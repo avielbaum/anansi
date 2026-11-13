@@ -2,6 +2,7 @@
 import assert from "node:assert";
 import { readFileSync, existsSync } from "node:fs";
 import { damage, gainXp, newHero, newGame, atbFill, useItem, xpToNext, ENEMIES, HEROES, SKILLS, questStep, payQuest, questFits, tidyQuest, canGift, markGift, resetGifts } from "./src/rules.js";
+import { EQUIP, START_GEAR, SHOP_GEAR, WARDEN_GEAR, RELAY_GEAR, SLOTS, kit, addGear, equip, unequip, preview, canEquip } from "./src/rules.js";
 import { upgrade } from "./src/state.js";
 import { MAPS, STAMPS, TALK, QUEST_WORLD, REGIONS, ITEM_SPOTS, PERSONAS, FALLBACK_QUESTS, SHORT_NAMES } from "./src/data.js";
 import { pages } from "./src/ui.js";
@@ -195,6 +196,29 @@ for (const M of Object.values(MAPS)) assert(audio.music[M.music] && (!M.boss || 
 for (const c of CLIMATES) assert(audio.music[genCity("Testville", parseAtlas(atlasText), c).map.music], `no music for the ${c} climate`);
 assert(existsSync(here("assets/CREDITS_AUDIO.csv")), "run python tools/build_audio.py");
 for (const s of Object.values(SKILLS)) assert(s.sound && audio.sfx[s.sound], "every skill has a sound");
+
+// equipment
+{
+  const g = newGame("lead_m"), kai = g.party[0], mira = g.party[1];
+  assert(kai.eq.weapon === "training_blade" && mira.eq.weapon === "training_rod", "each lead starts with their own weapon");
+  const before = { ...kai };
+  addGear(g, "rift_edge"); equip(g, kai, "rift_edge");
+  assert.equal(kai.atk, before.atk - EQUIP.training_blade.atk + EQUIP.rift_edge.atk);
+  assert.equal(g.gear.training_blade, 1, "the old weapon goes back to the bag");
+  assert(!canEquip(mira, "rift_edge") && canEquip(kai, "rift_edge"), "weapons are for one lead");
+  unequip(g, kai, "weapon"); equip(g, kai, "training_blade");
+  assert.deepEqual({ atk: kai.atk, def: kai.def, maxhp: kai.maxhp }, { atk: before.atk, def: before.def, maxhp: before.maxhp }, "equip and unequip round-trip");
+  addGear(g, "brass_charm"); equip(g, kai, "brass_charm"); kai.hp = kai.maxhp; unequip(g, kai, "accessory");
+  assert(kai.hp <= kai.maxhp, "hp is clamped when the maximum drops");
+  addGear(g, "vital_pendant");
+  assert.equal(preview(kai, "accessory", "vital_pendant").maxhp, kai.maxhp + EQUIP.vital_pendant.hp, "the preview shows the real result");
+  const ids = new Set([...Object.values(START_GEAR).flat(), ...SHOP_GEAR, ...WARDEN_GEAR, ...RELAY_GEAR]);
+  for (const M of Object.values(MAPS)) for (const e of M.things || M.objects || []) if (e[3]?.equip) ids.add(e[3].equip);
+  for (const id of Object.keys(EQUIP)) { assert(ids.has(id), `${id} cannot be obtained`); assert(existsSync(here(`assets/icons/${id}.png`)), `${id}: no icon`); assert(SLOTS.includes(EQUIP[id].slot)); }
+  for (const id of ids) assert(EQUIP[id], `unknown gear ${id}`);
+  const old = newGame("lead_f"); delete old.gear; old.party.forEach(h => delete h.eq);
+  upgrade(old); assert(old.gear && old.party.every(h => h.eq), "old saves get gear");
+}
 
 const save = newGame("lead_m"); const pay = payQuest(save, FALLBACK_QUESTS[1]);
 assert.equal(save.gold, 60 + pay.gold); assert.equal(save.items.potion, 4); assert.equal(save.questsDone, 1); assert(save.story.includes("tram token"));

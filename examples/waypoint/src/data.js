@@ -37,7 +37,7 @@ export const MAPS = {
       ["brick", 8, 3, 1, 9, true], ["brick", 15, 7, 1, 10, true], ["brick", 22, 3, 1, 9, true],
     ],
     objects: [["dungeon_wall", 1, -1], ["dungeon_wall", 10, -1], ["dungeon_wall", 17, -1], ["dungeon_wall", 24, -1],
-      ["chest", 5, 15, { chest: "c1", item: "ether", n: 2 }], ["chest", 18, 4, { chest: "c2", item: "potion", n: 3 }]],
+      ["chest", 5, 15, { chest: "c1", item: "ether", n: 2 }], ["chest", 18, 4, { chest: "c2", equip: "plated_jacket" }]],
     boss: { x: 26, y: 9, enemy: "minotaur_mage", flag: "warden", name: "The Warden", music: "tension" },
     labels: [["▲ Old Town", 2.5, 3.2]],
     zones: [
@@ -56,7 +56,7 @@ export const MAPS = {
       ["brick", 22, 3, 1, 6, true], ["brick", 22, 13, 1, 8, true], // gap at rows 9-12
     ],
     objects: [...[1, 4, 7, 10, 13, 16, 19, 22, 25, 28].map(x => ["dungeon_wall", x, -1]),
-      ["chest", 5, 17, { chest: "s1", item: "potion", n: 4 }], ["chest", 13, 18, { chest: "s2", item: "ether", n: 3 }], ["chest", 19, 4, { chest: "s3", item: "potion", n: 4 }]],
+      ["chest", 5, 17, { chest: "s1", equip: "rift_edge" }], ["chest", 13, 18, { chest: "s2", equip: "spire_helm" }], ["chest", 19, 4, { chest: "s3", equip: "moon_scepter" }]],
     pads: [{ x: 4, y: 10 }, { x: 19, y: 10 }], // recovery pads: confirm to restore the party
     boss: { x: 27, y: 11, enemy: "director", flag: "director", name: "The Director", music: "final" },
     zones: [{ x: 24, y: 8, w: 1, h: 6, boss: true }],

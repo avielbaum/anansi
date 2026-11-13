@@ -6,7 +6,7 @@ import { fetchAtlas, atlasCached, suggestions } from "./anansi.js";
 import { cleanDest } from "./atlas.js";
 import { ACTS, objective } from "./story.js";
 import { settings, setMuted, cycleVolume, sfx } from "./audio.js";
-import { ITEMS, SKILLS, HEROES, xpToNext, useItem } from "./rules.js";
+import { ITEMS, SKILLS, HEROES, xpToNext, useItem, EQUIP, SLOTS, SLOT_NAMES, canEquip, equip, unequip, preview, bonusText } from "./rules.js";
 import { W, H, drawWindow, text, choose, say, prompt, waitFor } from "./ui.js";
 
 export class Menu extends Phaser.Scene {
@@ -30,14 +30,15 @@ export class Menu extends Phaser.Scene {
   async loop() {
     for (;;) {
       this.draw();
-      const k = await choose(this, 486, 8, 146, ["Items", "Status", "Story", "Quests", "Teleport", "Sound", "Save", "Close"]);
+      const k = await choose(this, 486, 8, 146, ["Items", "Equip", "Status", "Story", "Quests", "Teleport", "Sound", "Save", "Close"]);
       if (k === 0) await this.items();
-      else if (k === 1) await this.status();
-      else if (k === 2) await this.story();
-      else if (k === 3) await this.quests();
-      else if (k === 4) { if (await this.teleport()) return; }
-      else if (k === 5) await this.soundPage();
-      else if (k === 6) { const ok = save(); if (ok) sfx("save"); await say(this, "", ok ? "Game saved." : "Could not save (browser storage is blocked)."); }
+      else if (k === 1) await this.equipment();
+      else if (k === 2) await this.status();
+      else if (k === 3) await this.story();
+      else if (k === 4) await this.quests();
+      else if (k === 5) { if (await this.teleport()) return; }
+      else if (k === 6) await this.soundPage();
+      else if (k === 7) { const ok = save(); if (ok) sfx("save"); await say(this, "", ok ? "Game saved." : "Could not save (browser storage is blocked)."); }
       else return this.close();
     }
   }
@@ -60,6 +61,56 @@ export class Menu extends Phaser.Scene {
     for (const h of G.s.party) {
       await say(this, h.name, `Lv ${h.lvl}  ATK ${h.atk}  MAG ${h.mag}  DEF ${h.def}  SPD ${h.spd}\nSkills: ${HEROES[h.id].skills.map(s => SKILLS[s].name).join(", ")}`);
     }
+  }
+
+  /** Equip: pick a hero, a slot, then a piece from the gear bag. The stats show what would change before you choose. */
+  async equipment() {
+    this.summary.setVisible(false); // text is drawn above every window, so the party summary would show through
+    const win = drawWindow(this, 8, 8, 470, H - 16);
+    let objs = [];
+    const clear = () => { objs.forEach(o => o.destroy()); objs = []; };
+    // `slot` and `id`: preview that piece in that slot (id null: the slot emptied). `slots`: draw the three slots; `note`: a line under the list.
+    const show = (h, { slot, id, slots = true, note = "" } = {}) => {
+      clear();
+      const p = slot ? preview(h, slot, id) : h;
+      objs.push(text(this, 26, 20, `${h.name}   Lv ${h.lvl}`, { color: "#ffd76a" }));
+      if (slots) SLOTS.forEach((s, i) => {
+        const piece = p.eq?.[s], y = 46 + i * 58;
+        objs.push(text(this, 26, y + 2, SLOT_NAMES[s], { fontSize: "11px", color: "#9aa3d8" }));
+        if (piece) {
+          objs.push(this.add.image(46, y + 36, "icon-" + piece).setScale(1.5).setScrollFactor(0).setDepth(10002));
+          objs.push(text(this, 76, y + 20, EQUIP[piece].name), text(this, 76, y + 38, bonusText(piece), { fontSize: "12px", color: "#9fd3ff" }));
+        } else objs.push(text(this, 76, y + 28, "-", { color: "#7f86a8" }));
+      });
+      if (note) objs.push(text(this, 26, 190, note, { fontSize: "12px", color: "#c8d0ff", wordWrap: { width: 430 } }));
+      [["atk", "ATK"], ["mag", "MAG"], ["def", "DEF"], ["spd", "SPD"], ["maxhp", "HP"], ["maxmp", "MP"]].forEach(([k, label], i) => {
+        const now = h[k], then = p[k], x = 26 + (i % 3) * 145, y = 250 + Math.floor(i / 3) * 24;
+        objs.push(text(this, x, y, then === now ? `${label} ${now}` : `${label} ${now} > ${then}`, { color: then > now ? "#7dff9a" : then < now ? "#ff8a8a" : "#ffffff" }));
+      });
+    };
+    for (;;) {
+      const hi = await choose(this, 486, 8, 146, [...G.s.party.map(h => h.name), "Back"], { onMove: i => G.s.party[i] && show(G.s.party[i]) });
+      if (hi < 0 || hi === G.s.party.length) break;
+      const h = G.s.party[hi];
+      let at = 0;
+      for (;;) {
+        show(h);
+        const si = await choose(this, 486, 8, 146, [...SLOTS.map(s => SLOT_NAMES[s]), "Back"], { start: at });
+        if (si < 0 || si === SLOTS.length) break;
+        at = si;
+        const slot = SLOTS[si], worn = h.eq?.[slot];
+        const opts = [...(worn ? [{ id: null, label: "Take off" }] : []),
+          ...Object.keys(G.s.gear).filter(id => G.s.gear[id] > 0 && EQUIP[id].slot === slot && canEquip(h, id)).map(id => ({ id, label: `${EQUIP[id].name}  x${G.s.gear[id]}` }))];
+        if (!opts.length) { await say(this, "", `Nothing in the bag fits ${h.name}'s ${SLOT_NAMES[slot].toLowerCase()} slot.`); continue; }
+        const note = o => (o.id ? `${bonusText(o.id)}. ${EQUIP[o.id].desc}` : `Take off the ${EQUIP[worn].name}.`);
+        show(h, { slot, id: opts[0].id, slots: false, note: note(opts[0]) });
+        const k = await choose(this, 20, 46, 300, opts.map(o => o.label), { onMove: i => show(h, { slot, id: opts[i].id, slots: false, note: note(opts[i]) }) });
+        if (k >= 0) { if (opts[k].id) equip(G.s, h, opts[k].id); else unequip(G.s, h, slot); }
+      }
+    }
+    clear(); win.destroy();
+    this.summary.setVisible(true);
+    this.draw();
   }
 
   async soundPage() {

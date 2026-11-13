@@ -1,0 +1,19 @@
+{
+  "_doc": "equipment id -> its icon. weapon: a sprite from the Ninja Adventure pack's Items/Weapons, set in a coloured frame like the pack's own icons. skill: one of the pack's 24x24 Ui/Skill Icon icons (Items & Weapon), optionally with its colours rotated by hue (degrees) so that tiers differ.",
+  "training_blade": { "weapon": "Club", "frame": "orange" },
+  "iron_sword": { "weapon": "Sword2", "frame": "orange" },
+  "steel_blade": { "weapon": "Katana", "frame": "blue" },
+  "rift_edge": { "weapon": "BigSword", "frame": "purple" },
+  "training_rod": { "weapon": "Stick", "frame": "orange" },
+  "oak_wand": { "weapon": "MagicWand", "frame": "orange" },
+  "crystal_tome": { "weapon": "Book", "frame": "blue" },
+  "moon_scepter": { "weapon": "Whip", "frame": "purple" },
+  "travel_coat": { "skill": "Armor", "hue": 0 },
+  "leather_vest": { "skill": "Armor", "hue": 20 },
+  "plated_jacket": { "skill": "Armor", "hue": 190 },
+  "brass_charm": { "skill": "Amulet", "hue": 0 },
+  "quick_boots": { "skill": "Boot", "hue": 0 },
+  "mana_ring": { "skill": "Ring", "hue": 0 },
+  "vital_pendant": { "skill": "Amulet", "hue": 160 },
+  "spire_helm": { "skill": "Helmet", "hue": 0 }
+}

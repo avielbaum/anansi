@@ -3,11 +3,20 @@
 // someone is below 35%). The enemy numbers in src/rules.js were tuned with this: a smart party should win the fights
 // of its act at the level it usually has (about L3-L5 for the relays, L5-L6 for the Director), a casual one a level or
 // two later.
-import { newHero, damage, atbFill, ENEMIES, SKILLS, HEROES } from "../src/rules.js";
+import { newHero, kit, START_GEAR, damage, atbFill, ENEMIES, SKILLS, HEROES } from "../src/rules.js";
+
+// The gear a party usually has at each point of the story: the starting gear; the shop's and the Warden's by the relays;
+// the Spire's chests and relay salvage by the Director.
+const GEAR = {
+  start: START_GEAR,
+  act2: { lead_m: ["steel_blade", "leather_vest", "quick_boots"], lead_f: ["crystal_tome", "leather_vest", "brass_charm"] },
+  act3: { lead_m: ["rift_edge", "plated_jacket", "vital_pendant"], lead_f: ["moon_scepter", "plated_jacket", "vital_pendant"] },
+};
+const mk = (id, lvl, gear) => { const h = newHero(id, lvl); kit(h, GEAR[gear][id]); return h; };
 
 let POLICY = "smart";
-function fight(lvl, foeIds, potions = 3, ether = 1, rand = Math.random) {
-  const party = [newHero("lead_m", lvl), newHero("lead_f", lvl)].map(h => ({ h, atb: rand() * 60 }));
+function fight(lvl, foeIds, potions = 3, ether = 1, rand = Math.random, gear = "start") {
+  const party = [mk("lead_m", lvl, gear), mk("lead_f", lvl, gear)].map(h => ({ h, atb: rand() * 60 }));
   const foes = foeIds.map(id => ({ ...ENEMIES[id], id, maxhp: ENEMIES[id].hp, atb: rand() * 60, turns: 0 }));
   const alive = a => a.filter(x => (x.h ? x.h.hp : x.hp) > 0);
   let t = 0, items = { potion: potions, ether };
@@ -46,23 +55,18 @@ function fight(lvl, foeIds, potions = 3, ether = 1, rand = Math.random) {
 const q35 = party => party.some(q => q.h.hp > 0 && q.h.hp < q.h.maxhp * 0.35);
 function report(label, lvl, foes, opts = {}) {
   const N = 400; let w = 0, left = 0, secs = 0;
-  for (let i = 0; i < N; i++) { const r = fight(lvl, foes, opts.potions ?? 3, opts.ether ?? 1); if (r.won) { w++; left += r.left; } secs += r.secs; }
-  console.log(`${label.padEnd(34)} L${lvl}  win ${String(Math.round((100 * w) / N)).padStart(3)}%  hp left ${w ? Math.round((100 * left) / w) : 0}%  ~${Math.round(secs / N)}s`);
+  for (let i = 0; i < N; i++) { const r = fight(lvl, foes, opts.potions ?? 3, opts.ether ?? 1, Math.random, opts.gear || "start"); if (r.won) { w++; left += r.left; } secs += r.secs; }
+  console.log(`${label.padEnd(34)} L${lvl} ${(opts.gear || "start").padEnd(5)} win ${String(Math.round((100 * w) / N)).padStart(3)}%  hp left ${w ? Math.round((100 * left) / w) : 0}%  ~${Math.round(secs / N)}s`);
 }
 
-console.log("-- Warden (Act I)");
-for (const l of [2, 3, 4]) report("The Warden", l, ["minotaur_mage"]);
-console.log("-- Relay guards (Act II): the party is about L3 for the first relay, L4 for the second, L5 for the third");
-for (const l of [3, 4, 5]) report("Guard + 2 drones", l, ["relay_guard", "relay_drone", "relay_drone"]);
-console.log("-- Spire encounters (Act III), arriving at L5");
-for (const l of [5, 6]) { report("2 guards", l, ["spire_guard", "spire_guard"]); report("wraith + drone", l, ["wraith", "spire_drone"]); report("3 drones", l, ["spire_drone", "spire_drone", "spire_drone"]); }
-console.log("-- The Director");
-for (const l of [5, 6, 7, 8]) report("The Director (3 potions, 1 ether)", l, ["director"]);
-report("The Director (full supplies)", 6, ["director"], { potions: 8, ether: 3 });
-
-POLICY = "casual";
-console.log("== casual player: Fight only, potions below 35%");
-for (const l of [3, 4, 5, 6]) report("Guard + 2 drones", l, ["relay_guard", "relay_drone", "relay_drone"]);
-for (const l of [2, 3, 4]) report("The Warden", l, ["minotaur_mage"]);
-for (const l of [5, 6, 7]) report("2 spire guards", l, ["spire_guard", "spire_guard"]);
-for (const l of [6, 7, 8, 9]) report("The Director", l, ["director"]);
+const REPORT = [
+  ["Act I: the Warden (starting gear)", [2, 3, 4], ["minotaur_mage"], "start"],
+  ["Act II: guard + 2 drones (steel/tome, vest)", [3, 4, 5], ["relay_guard", "relay_drone", "relay_drone"], "act2"],
+  ["Act III: 2 spire guards (Spire gear)", [5, 6, 7], ["spire_guard", "spire_guard"], "act3"],
+  ["Act III: the Director (Spire gear)", [5, 6, 7, 8], ["director"], "act3"],
+];
+for (const policy of ["smart", "casual"]) {
+  POLICY = policy;
+  console.log(`== ${policy === "smart" ? "skilled player: spells, heals and potions when they help" : "casual player: Fight only, a potion below 35%"}`);
+  for (const [label, levels, foes, gear] of REPORT) for (const l of levels) report(label, l, foes, { gear });
+}

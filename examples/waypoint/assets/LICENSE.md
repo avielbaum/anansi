@@ -12,6 +12,7 @@ change it, also commercially, as long as you follow the terms below.
 | `tiles/ground_sand, ground_snow, ground_lush` | CC-BY-SA 3.0 | The LPC grass above with its colours changed by `tools/build_tiles.py`; an adaptation, so it stays CC-BY-SA 3.0 |
 | `tiles/road, road_line, sidewalk` | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | "Street tiles" by curato |
 | `tiles/battle_town, battle_dungeon` | CC0 | "Battlebacks Pack" by Pixel-boy |
+| `icons/*` (equipment) | CC0 | Weapon sprites and skill icons from the "Ninja Adventure Asset Pack" by Pixel-boy and AAA, framed and recoloured by `tools/build_icons.py`. Each file is listed in [`CREDITS_ICONS.csv`](CREDITS_ICONS.csv). |
 | `audio/*` (music, effects, jingles) | CC0 | "Ninja Adventure Asset Pack" by Pixel-boy and AAA; the music is re-encoded and the effects converted by `tools/build_audio.py`. Each file is listed in [`CREDITS_AUDIO.csv`](CREDITS_AUDIO.csv). |
 
 Full source links are in [`CREDITS.csv`](CREDITS.csv), [`CREDITS_TILES.csv`](CREDITS_TILES.csv) and [`CREDITS_AUDIO.csv`](CREDITS_AUDIO.csv).

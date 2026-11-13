@@ -6,6 +6,7 @@ import { Field } from "./field.js";
 import { Battle } from "./battle.js";
 import { Menu } from "./menu.js";
 import { Ending } from "./ending.js";
+import { EQUIP } from "./rules.js";
 import { preloadAudio, initAudio, music } from "./audio.js";
 
 const DIRS = ["up", "left", "down", "right"]; // LPC row order
@@ -22,6 +23,7 @@ class Boot extends Phaser.Scene {
       for (const [id, c] of Object.entries(cast))
         for (const anim of Object.keys(c.anims)) this.load.spritesheet(`${id}-${anim}`, `assets/sprites/${id}/${anim}.png`, { frameWidth: 64, frameHeight: 64 });
     });
+    for (const id of Object.keys(EQUIP)) this.load.image("icon-" + id, `assets/icons/${id}.png`); // equipment icons, 24x24
     for (const t of TILES) this.load.image(`tile-${t}`, `assets/tiles/${t}.png`);
     for (const e of ENEMY_IMGS) this.load.image(`enemy-${e}`, `assets/enemies/${e}.png`);
   }

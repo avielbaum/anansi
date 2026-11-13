@@ -14,6 +14,81 @@ export const SKILLS = {
   static_lance: { name: "Static Lance", mp: 5, kind: "mag", power: 1.8, target: "enemy", anim: "spellcast", sound: "lance", desc: "A bolt of folded lightning." },
 };
 
+// ---- equipment: a weapon, armor and an accessory per hero ---------------------------------------------------------------
+// A bonus is added to the hero's own stats while the piece is worn and taken off again when it is removed, so level-ups and
+// the battle code need to know nothing about equipment. hp and mp raise the maximums. `for` limits a piece to one hero.
+export const SLOTS = ["weapon", "armor", "accessory"];
+export const SLOT_NAMES = { weapon: "Weapon", armor: "Armor", accessory: "Accessory" };
+const STATS = ["atk", "mag", "def", "spd", "hp", "mp"];
+export const EQUIP = {
+  training_blade: { name: "Training Blade", slot: "weapon", for: "lead_m", atk: 2, desc: "A blunt blade for practice." },
+  iron_sword: { name: "Iron Sword", slot: "weapon", for: "lead_m", atk: 5, price: 70, desc: "Plain, sharp and reliable." },
+  steel_blade: { name: "Steel Blade", slot: "weapon", for: "lead_m", atk: 9, desc: "The Warden's own blade." },
+  rift_edge: { name: "Rift Edge", slot: "weapon", for: "lead_m", atk: 14, spd: 2, desc: "It cuts space as well as flesh." },
+  training_rod: { name: "Training Rod", slot: "weapon", for: "lead_f", mag: 2, desc: "A willow rod for practice." },
+  oak_wand: { name: "Oak Wand", slot: "weapon", for: "lead_f", mag: 5, price: 70, desc: "It hums faintly when you cast." },
+  crystal_tome: { name: "Crystal Tome", slot: "weapon", for: "lead_f", mag: 9, desc: "Taken from the Warden's belt." },
+  moon_scepter: { name: "Moon Scepter", slot: "weapon", for: "lead_f", mag: 14, spd: 2, desc: "It spirals light into the air." },
+  travel_coat: { name: "Travel Coat", slot: "armor", def: 1, desc: "Warm, and hard to spot in a crowd." },
+  leather_vest: { name: "Leather Vest", slot: "armor", def: 3, price: 60, desc: "Stiff leather over the ribs." },
+  plated_jacket: { name: "Plated Jacket", slot: "armor", def: 6, hp: 10, desc: "A coat with Directorate plating sewn in." },
+  brass_charm: { name: "Brass Charm", slot: "accessory", hp: 12, price: 80, desc: "A lucky trinket from Tobias' shelf." },
+  quick_boots: { name: "Quick Boots", slot: "accessory", spd: 3, desc: "Salvaged from the first relay." },
+  mana_ring: { name: "Mana Ring", slot: "accessory", mp: 10, desc: "Salvaged from the second relay." },
+  vital_pendant: { name: "Vital Pendant", slot: "accessory", hp: 30, def: 2, desc: "Salvaged from the third relay." },
+  spire_helm: { name: "Spire Helm", slot: "accessory", def: 4, hp: 15, desc: "A helm from the Director's guards." },
+};
+export const START_GEAR = { lead_m: ["training_blade", "travel_coat"], lead_f: ["training_rod", "travel_coat"] };
+export const SHOP_GEAR = ["iron_sword", "oak_wand", "leather_vest", "brass_charm"];
+export const WARDEN_GEAR = ["steel_blade", "crystal_tome"]; // dropped when the Warden falls
+export const RELAY_GEAR = ["quick_boots", "mana_ring", "vital_pendant"]; // one from each of the first three relays
+
+export const canEquip = (h, id) => !!EQUIP[id] && (!EQUIP[id].for || EQUIP[id].for === h.id);
+export const bonusText = id => STATS.filter(k => EQUIP[id][k]).map(k => `${EQUIP[id][k] > 0 ? "+" : ""}${EQUIP[id][k]} ${k.toUpperCase()}`).join("  ");
+
+function apply(h, id, sign) {
+  const e = EQUIP[id];
+  for (const k of ["atk", "mag", "def", "spd"]) h[k] += sign * (e[k] || 0);
+  for (const [k, max, cur] of [["hp", "maxhp", "hp"], ["mp", "maxmp", "mp"]]) {
+    if (!e[k]) continue;
+    h[max] += sign * e[k];
+    if (sign > 0 && (k === "mp" || h.hp > 0)) h[cur] += e[k]; // a bonus fills in as well as raising the maximum
+    h[cur] = Math.min(h[cur], h[max]);
+  }
+}
+
+/** Puts a hero's starting gear on (new games, and saves from before equipment existed). Nothing comes out of the gear bag. */
+export function kit(h, ids) {
+  h.eq ||= {};
+  for (const id of ids) if (!h.eq[EQUIP[id].slot]) { h.eq[EQUIP[id].slot] = id; apply(h, id, 1); }
+}
+export function addGear(state, id) { state.gear[id] = (state.gear[id] || 0) + 1; }
+/** Takes the piece off a slot and into the gear bag. */
+export function unequip(state, h, slot) {
+  const id = h.eq?.[slot];
+  if (!id) return false;
+  apply(h, id, -1);
+  delete h.eq[slot];
+  addGear(state, id);
+  return true;
+}
+/** Wears a piece from the gear bag, sending what was in its slot back to the bag. */
+export function equip(state, h, id) {
+  if (!canEquip(h, id) || !(state.gear[id] > 0)) return false;
+  unequip(state, h, EQUIP[id].slot);
+  state.gear[id]--;
+  (h.eq ||= {})[EQUIP[id].slot] = id;
+  apply(h, id, 1);
+  return true;
+}
+/** A copy of the hero as it would be with `id` in `slot` (id null: the slot empty), for showing the change before choosing. */
+export function preview(h, slot, id) {
+  const p = { ...h, eq: { ...h.eq } };
+  if (p.eq[slot]) { apply(p, p.eq[slot], -1); delete p.eq[slot]; }
+  if (id) { p.eq[slot] = id; apply(p, id, 1); }
+  return p;
+}
+
 export const HEROES = {
   lead_m: { name: "Kai", base: { hp: 62, mp: 14, atk: 12, mag: 7, def: 7, spd: 11 }, grow: { hp: 9, mp: 2, atk: 3, mag: 1, def: 2, spd: 1 }, skills: ["blink_strike", "rift_burst"], attack: "slash" },
   lead_f: { name: "Mira", base: { hp: 50, mp: 22, atk: 9, mag: 12, def: 6, spd: 13 }, grow: { hp: 7, mp: 3, atk: 2, mag: 3, def: 1, spd: 1 }, skills: ["mend", "static_lance"], attack: "thrust" },
@@ -28,15 +103,15 @@ export const ENEMIES = {
   drone_tank: { name: "Directorate Tank", hp: 60, atk: 15, mag: 0, def: 10, spd: 6, xp: 18, gold: 20 },
   minotaur_mage: { name: "The Warden", hp: 260, atk: 17, mag: 15, def: 9, spd: 10, xp: 150, gold: 120, magic: true, boss: true },
   // Act II: the guards of a Directorate relay. `sprite` reuses another enemy's picture.
-  relay_guard: { name: "Relay Guard", sprite: "drone_tank", hp: 95, atk: 16, mag: 0, def: 10, spd: 8, xp: 50, gold: 40 },
-  relay_drone: { name: "Relay Drone", sprite: "spider_bot", hp: 55, atk: 13, mag: 0, def: 8, spd: 10, xp: 35, gold: 25 },
+  relay_guard: { name: "Relay Guard", sprite: "drone_tank", hp: 125, atk: 19, mag: 0, def: 12, spd: 8, xp: 50, gold: 40 },
+  relay_drone: { name: "Relay Drone", sprite: "spider_bot", hp: 72, atk: 15, mag: 0, def: 9, spd: 10, xp: 35, gold: 25 },
   // Act III: inside the Spire
-  spire_guard: { name: "Spire Guard", sprite: "drone_tank", hp: 110, atk: 19, mag: 0, def: 11, spd: 9, xp: 70, gold: 35 },
-  spire_drone: { name: "Spire Drone", sprite: "spider_bot", hp: 65, atk: 15, mag: 0, def: 9, spd: 11, xp: 50, gold: 25 },
-  wraith: { name: "Null Wraith", hp: 85, atk: 8, mag: 17, def: 7, spd: 12, xp: 65, gold: 30, magic: true },
+  spire_guard: { name: "Spire Guard", sprite: "drone_tank", hp: 150, atk: 23, mag: 0, def: 14, spd: 9, xp: 70, gold: 35 },
+  spire_drone: { name: "Spire Drone", sprite: "spider_bot", hp: 90, atk: 19, mag: 0, def: 11, spd: 11, xp: 50, gold: 25 },
+  wraith: { name: "Null Wraith", hp: 115, atk: 8, mag: 21, def: 7, spd: 12, xp: 65, gold: 30, magic: true },
   // The Director fights harder at half health: `rage` changes how often he uses Null Wave and how hard he hits
-  director: { name: "The Director", sprite: "wraith", scale: 2.2, hp: 800, atk: 22, mag: 19, def: 11, spd: 11, xp: 0, gold: 0, magic: true, boss: true,
-    waveEvery: 3, rage: { at: 0.5, waveEvery: 2, atk: 27, note: "The Director's mask cracks!" } },
+  director: { name: "The Director", sprite: "wraith", scale: 2.2, hp: 1280, atk: 26, mag: 22, def: 13, spd: 11, xp: 0, gold: 0, magic: true, boss: true,
+    waveEvery: 3, rage: { at: 0.5, waveEvery: 2, atk: 32, note: "The Director's mask cracks!" } },
 };
 
 export const statsAt = (id, lvl) => Object.fromEntries(Object.entries(HEROES[id].base).map(([k, v]) => [k, v + HEROES[id].grow[k] * (lvl - 1)]));
@@ -82,8 +157,8 @@ export function useItem(item, target) {
 
 export function newGame(lead) {
   const other = lead === "lead_m" ? "lead_f" : "lead_m";
-  return { v: 1, party: [newHero(lead), newHero(other)], items: { potion: 3, ether: 1 }, gold: 60, map: "town", pos: null, flags: {},
-    quest: null, offer: null, story: "", questsDone: 0, gifted: {}, cities: {}, plot: newPlot() };
+  return { v: 1, party: [lead, other].map(id => { const h = newHero(id); kit(h, START_GEAR[id]); return h; }), items: { potion: 3, ether: 1 }, gold: 60, map: "town", pos: null, flags: {},
+    quest: null, offer: null, story: "", questsDone: 0, gifted: {}, cities: {}, gear: {}, plot: newPlot() };
 }
 
 // ---- side quests (from Anansi or the written fallbacks) ------------------------------------------------------------
