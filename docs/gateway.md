@@ -172,8 +172,8 @@ Example (`config.openrouter.json`):
 
 ```json
 {"url": "https://openrouter.ai/api", "models": ["npc-small"], "overflow": true,
- "api_key_env": "OPENROUTER_API_KEY", "upstream_model": "meta-llama/llama-3.1-8b-instruct",
- "max_inflight": 10, "extra": {"provider": {"data_collection": "deny"}}}
+ "api_key_env": "OPENROUTER_API_KEY", "upstream_model": "qwen/qwen3-32b",
+ "max_inflight": 10, "extra": {"provider": {"data_collection": "deny"}, "reasoning": {"enabled": false}}}
 ```
 
 - The key is read from the environment variable named by `api_key_env` (never put it in the config); startup fails if it is unset. Any OpenAI-compatible API with bearer auth works the same way.
@@ -181,7 +181,7 @@ Example (`config.openrouter.json`):
 - **Opt-in per title:** set `"allow_overflow": true` on a title. Without it that title never reaches the paid API, even when the mesh is down (it gets a 503 and your SDK falls back). Opting in means player messages **and the NPC's system prompt** are sent to the provider and its upstream model hosts; the example's `data_collection: deny` asks OpenRouter to route only to providers that do not store prompts, but check their terms.
 - Safety judges and the guard never use overflow nodes, because they receive the secret prompt; they stay on your own nodes.
 - Overflow replies go through the same output checks, budgets and token accounting as any other reply. Your OpenRouter bill is separate from the per-player token budgets, so set a spending limit on the OpenRouter key too.
-- Streaming and quests/storylines use overflow the same way. Tested with a mock node, and live against OpenRouter with the local node down: plain, structured (valid JSON with the right action; OpenRouter enforces the schema), streamed and quest requests all overflowed to Llama 3.1 8B, and also to `qwen/qwen3-32b`; a title without `allow_overflow` got `503` with no paid call. Eight paid requests cost $0.0004. Each overflowed request first spent about 2 s failing on the dead local node.
+- Streaming and quests/storylines use overflow the same way. Tested with a mock node, and live against OpenRouter with the local node down: plain, structured (valid JSON with the right action; OpenRouter enforces the schema), streamed and quest requests all overflowed to Llama 3.1 8B, and also to `qwen/qwen3-32b`; a title without `allow_overflow` got `503` with no paid call. Eight paid requests cost $0.0004. Each overflowed request first spent about 2 s failing on the dead local node. The example uses Qwen3-32B (same family as the volunteer models, Apache-2.0) with `reasoning` off: left on, it spent 181 tokens thinking before an 18-token NPC line.
 
 ## Running more than one gateway process
 

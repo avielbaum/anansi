@@ -24,11 +24,14 @@
       "region": "cloud",
       "overflow": true,
       "api_key_env": "OPENROUTER_API_KEY",
-      "upstream_model": "meta-llama/llama-3.1-8b-instruct",
+      "upstream_model": "qwen/qwen3-32b",
       "max_inflight": 10,
       "extra": {
         "provider": {
           "data_collection": "deny"
+        },
+        "reasoning": {
+          "enabled": false
         }
       }
     }
