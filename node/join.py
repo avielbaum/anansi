@@ -95,7 +95,7 @@ def plan(a, ram, have):
 
 def parser():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--gateway", required=True)
+    ap.add_argument("--gateway", required=True, help="gateway URL; several gateway machines sharing one database: comma-separated")
     ap.add_argument("--token", required=True)
     ap.add_argument("--model", help="override the automatic choice (the gateway must expect this model)")
     ap.add_argument("--slots", type=int, default=1)
@@ -127,8 +127,13 @@ def main():
     print("Starting. Press Ctrl+C to stop.")
 
     async def run():
-        async with httpx.AsyncClient(base_url=a.gateway) as gw, httpx.AsyncClient(base_url=a.local) as local:
-            await serve(gw, local, a.token, a.slots, model=model, idle=idle_limits(a))
+        gws = [httpx.AsyncClient(base_url=u.strip().rstrip("/")) for u in a.gateway.split(",") if u.strip()]
+        async with httpx.AsyncClient(base_url=a.local) as local:
+            try:
+                await serve(gws, local, a.token, a.slots, model=model, idle=idle_limits(a))
+            finally:
+                for g in gws:
+                    await g.aclose()
     try:
         asyncio.run(run())
     except KeyboardInterrupt:

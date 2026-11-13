@@ -580,6 +580,40 @@ async def t_action_check():
     assert s["action_checks_no"] == 1 and s["action_check_errors"] == 1  # a "no" and a garbage answer, counted apart
 
 
+async def t_one_agent_serves_several_gateways():
+    import tempfile
+    from gateway.store import Store
+    from node.agent import serve
+    path = os.path.join(tempfile.mkdtemp(), "shared.db")  # two gateway machines, one database
+    cfg = copy.deepcopy(CFG)
+    cfg.update(nodes=[], db_path=path, pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2, canary_rate=0,
+               canaries=[{"user": "say hi", "expect": "hello"}])
+    gws = [httpx.AsyncClient(transport=httpx.ASGITransport(app=make_app(copy.deepcopy(cfg))), base_url=f"http://gw{i}") for i in (1, 2)]
+    busy = {"now": 0, "max": 0}
+
+    class Counted(httpx.AsyncBaseTransport):  # how many jobs the volunteer's model runs at once
+        def __init__(self):
+            self.t = httpx.ASGITransport(app=make_node("v", latency=0.1))
+
+        async def handle_async_request(self, req):
+            busy["now"] += 1
+            busy["max"] = max(busy["max"], busy["now"])
+            try:
+                r = await self.t.handle_async_request(req)
+                await r.aread()
+                return r
+            finally:
+                busy["now"] -= 1
+    local = httpx.AsyncClient(transport=Counted(), base_url="http://local")
+    task = asyncio.create_task(serve(gws, local, "tok", slots=1, log=lambda m: None, agent="multi"))
+    await asyncio.sleep(1.0)  # registers with both and passes both entry probes
+    rs = await asyncio.gather(*[g.post("/v1/chat/completions", json=BODY, headers=H) for g in gws for _ in range(2)])
+    task.cancel()
+    assert all(r.status_code == 200 and r.json()["choices"][0]["message"]["content"] == "[v] hello" for r in rs)
+    assert busy["max"] == 1  # one slot means one job at a time on this machine, whichever gateway sent it
+    assert Store(path).report()["agents"][0]["jobs"] == 4  # both gateways' work is in the one ledger
+
+
 async def t_pull_nodes():
     from node.agent import serve
     cfg = copy.deepcopy(CFG)

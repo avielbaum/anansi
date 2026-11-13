@@ -126,7 +126,7 @@ Not built: what an item costs (each studio decides), Steam Inventory grants, an 
   and still cheat on real jobs.
 - **No answer quorum:** free text differs between machines, so two nodes cannot simply be compared.
 - **Shared token:** one secret per pool. Use only with machines you trust.
-- **Not built:** Steam Inventory grants, model signing and download, hardware checks, volunteers shared across gateway machines.
+- **Not built:** Steam Inventory grants, model signing and download, hardware checks. (Volunteers serve several gateway machines by listing them all in `--gateway`; see [gateway.md](gateway.md#running-more-than-one-gateway-process).)
 
 ## Linux
 

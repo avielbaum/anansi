@@ -8,7 +8,7 @@ The probe looks like any chat request, but a node that fingerprints it (no syste
 questions) can still cheat. Quorum on real answers is not built: free text differs across hardware.
 A ban covers the agent id and, for a per-volunteer token, the token (stored as a hash), so a new id does not help.
 shortcut: with a token marked "shared" the ban is by self-chosen agent id only (a Sybil can mint new ones), and an
-operator can still ask for new tokens: real identity needs platform-bound certificates, DESIGN 9. State is in memory, one gateway only; a streamed request is answered whole by the agent
+operator can still ask for new tokens: real identity needs platform-bound certificates, DESIGN 9. Worker queues are in memory, so an agent registers with every gateway machine itself (agent --gateway a,b); a streamed request is answered whole by the agent
 (the SSE text is relayed after the node finishes), so streaming from a pull node is correct but not incremental."""
 import asyncio
 import hashlib

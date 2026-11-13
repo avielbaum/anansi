@@ -40,7 +40,7 @@ instead of answering until its verdict was constrained by JSON schema.
 - **Safety is partial.** Regex blocklist, word-overlap leak guard and an optional judge. No trained classifier; the red-team
   sets below are self-written; paraphrased leaks get through. On titles with a judge, streams are buffered so the judge covers them (unless `stream_unjudged`).
 - **Streaming:** plain replies only. A sentence that fails the checks is never sent: the stream ends before it and the last chunk says `filtered`, so the player sees a shorter reply, not the bad text.
-- **State:** budgets, bans and the work ledger persist in SQLite or Postgres (`db_path`), tested across a simulated restart. Several gateways can share one database (atomic budget reservation, bans read from it; tested with two apps on one SQLite file and on one Postgres 16 database, locally and in CI, including a dropped connection), but volunteer nodes need a single process, and gateways on several real machines have not been load-tested.
+- **State:** budgets, bans and the work ledger persist in SQLite or Postgres (`db_path`), tested across a simulated restart. Several gateways can share one database (atomic budget reservation, bans read from it; tested with two apps on one SQLite file and on one Postgres 16 database, locally and in CI, including a dropped connection), volunteer agents list every gateway machine and serve them all with one slot limit (tested with two gateways on one database), and gateways on several real machines have not been load-tested.
 - **Volunteer nodes:** bans cover the agent id and its token (per-volunteer tokens; a shared token falls back to id-only bans), at most `max_workers` per token, probes can be recognised, no quorum, no model
   signing. Trust only your own machines.
 - **Credits:** linking, earning per token, the 7-day hold and spending work in the self-checks on SQLite and Postgres
@@ -83,4 +83,4 @@ instead of answering until its verdict was constrained by JSON schema.
 ## Next
 
 Blind rating for gate G1 against a larger model; a GPU run once hardware is available; a real safety classifier and red-team set;
-volunteer nodes shared across gateway machines; a live Steam token check with a publisher key, and checks for other platforms; a Unity project test.
+a live Steam token check with a publisher key, and checks for other platforms; a Unity project test.

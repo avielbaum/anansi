@@ -154,7 +154,7 @@ def agent_id(path=pathlib.Path.home() / ".anansi-agent-id"):
     return path.read_text().strip()
 
 
-async def worker(gw, local, token, agent, log=print, model=None, idle=None, check_s=10):
+async def worker(gw, local, token, agent, log=print, model=None, idle=None, check_s=10, slot=None):
     """idle = (cpu %, gpu %) limits: while the machine is busier than that and none of our own jobs are running, this worker
     does not register or poll, so no job is sent to it (the gateway forgets it within seconds and re-checks it when it returns).
     shortcut: load right after our own job is ignored for SETTLE_S seconds; a job queued just before the pause waits for
@@ -191,6 +191,7 @@ async def worker(gw, local, token, agent, log=print, model=None, idle=None, chec
             job = r.json()
             res = {"status": 400, "body": "", "content_type": "text/plain"}
             if job["path"] == ALLOWED:
+                await slot.acquire() if slot else None  # one limit for the machine, however many gateways send work
                 JOBS["active"] += 1
                 try:
                     body = job["body"]
@@ -205,6 +206,7 @@ async def worker(gw, local, token, agent, log=print, model=None, idle=None, chec
                 finally:
                     JOBS["active"] -= 1
                     JOBS["last"] = time.monotonic()
+                    slot.release() if slot else None
             await gw.post("/node/result", json={"node_id": nid, "job": job["job"], **res}, headers=H)
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:  # also a reply that is not the JSON we expect
             nid = None if not isinstance(e, httpx.HTTPError) else nid
@@ -225,13 +227,18 @@ def idle_limits(a):
 
 
 async def serve(gw, local, token, slots=1, log=print, agent=None, model=None, idle=None):
+    """gw: one gateway client, or a list of them (one per gateway machine sharing a database). Every gateway gets `slots`
+    workers so none waits for another's long poll; at most `slots` jobs run on the local model at once across all of them."""
     agent = agent or agent_id()
-    await asyncio.gather(*[worker(gw, local, token, agent, log, model, idle) for _ in range(slots)])
+    gws = gw if isinstance(gw, (list, tuple)) else [gw]
+    slot = asyncio.Semaphore(slots)
+    await asyncio.gather(*[worker(g, local, token, agent, log if len(gws) == 1 else (lambda m, u=str(g.base_url): log(f"[{u}] {m}")),
+                                  model, idle, slot=slot) for g in gws for _ in range(slots)])
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--gateway", required=True)
+    ap.add_argument("--gateway", required=True, help="gateway URL; several gateway machines sharing one database: comma-separated")
     ap.add_argument("--token", required=True)
     ap.add_argument("--local", default="http://127.0.0.1:11434")
     ap.add_argument("--slots", type=int, default=1)
@@ -239,16 +246,22 @@ if __name__ == "__main__":
     ap.add_argument("--link", action="store_true", help="print a code to type into a game, so this machine earns credits for you")
     add_load_args(ap)
     a = ap.parse_args()
-    if a.link:
-        r = httpx.post(a.gateway + "/node/link-code", headers={"X-Node-Token": a.token, "X-Node-Agent": agent_id()}, timeout=20)
+    urls = [u.strip().rstrip("/") for u in a.gateway.split(",") if u.strip()]
+    if a.link:  # codes live in the shared database, so any one gateway can issue them
+        r = httpx.post(urls[0] + "/node/link-code", headers={"X-Node-Token": a.token, "X-Node-Agent": agent_id()}, timeout=20)
         r.raise_for_status()
         d = r.json()
         print(f"Type this code into a game that uses Anansi within {d['expires_s'] // 60} minutes: {d['code']}")
         raise SystemExit
 
     async def main():
-        async with httpx.AsyncClient(base_url=a.gateway) as gw, httpx.AsyncClient(base_url=a.local) as local:
-            await serve(gw, local, a.token, a.slots, model=a.model, idle=idle_limits(a))
+        gws = [httpx.AsyncClient(base_url=u) for u in urls]
+        async with httpx.AsyncClient(base_url=a.local) as local:
+            try:
+                await serve(gws, local, a.token, a.slots, model=a.model, idle=idle_limits(a))
+            finally:
+                for g in gws:
+                    await g.aclose()
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

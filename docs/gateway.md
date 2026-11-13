@@ -176,9 +176,11 @@ ejection, the Steam ticket cache, the failed-login counter, `max_inflight` and `
 multiplied by the process count).
 
 Limits to plan around:
-- **Volunteer (pull) nodes need a single process.** An agent registers with one process and polls it by node id; if the next poll
-  lands on another process the agent gets `404`, registers again and churns. Run volunteers against a dedicated single-process
-  gateway, or route `/node/*` to one process.
+- **Volunteer (pull) nodes connect to every gateway themselves.** A gateway keeps its volunteers' queues in memory, so an agent
+  registers with each gateway machine directly: `--gateway https://gw1.example,https://gw2.example` (each machine's own address,
+  not the load balancer, whose next poll could land elsewhere and get `404`). Every gateway can then use every volunteer; the
+  agent's `--slots` still caps the jobs its model runs at once across all of them, and bans, the ledger, credits and link codes
+  are in the shared database. Within one machine, route `/node/*` to one process.
 - **Postgres:** every budget check is a round trip on the request path (about a millisecond to a database in the same data
   centre), and if the database restarts, the requests that were using the connection fail once and the next ones reconnect.
   Tested against Postgres 16 (locally and in CI); no load test across real machines.
