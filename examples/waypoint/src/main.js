@@ -93,5 +93,6 @@ const lastLead = () => { try { return localStorage.getItem("waypoint.lead"); } c
 
 window.game = new Phaser.Game({ // on window for debugging from the console
   type: Phaser.AUTO, parent: "game", width: W, height: H, pixelArt: true, backgroundColor: "#05060c",
+  dom: { createContainer: true }, // the NPC text box is a real <input>
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [Boot, Title, LeadSelect, Field, Battle, Menu] });
 window.G = G;

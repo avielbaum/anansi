@@ -1,6 +1,7 @@
 // The field menu (Esc / X): party summary, Items, Status, Save.
 /* global Phaser */
 import { G, save } from "./state.js";
+import { ITEM_SPOTS, MAPS } from "./data.js";
 import { ITEMS, SKILLS, HEROES, xpToNext, useItem } from "./rules.js";
 import { W, H, drawWindow, text, choose, say } from "./ui.js";
 
@@ -25,10 +26,11 @@ export class Menu extends Phaser.Scene {
   async loop() {
     for (;;) {
       this.draw();
-      const k = await choose(this, 486, 8, 146, ["Items", "Status", "Save", "Close"]);
+      const k = await choose(this, 486, 8, 146, ["Items", "Status", "Quests", "Save", "Close"]);
       if (k === 0) await this.items();
       else if (k === 1) await this.status();
-      else if (k === 2) await say(this, "", save() ? "Game saved." : "Could not save (browser storage is blocked).");
+      else if (k === 2) await this.quests();
+      else if (k === 3) await say(this, "", save() ? "Game saved." : "Could not save (browser storage is blocked).");
       else return this.close();
     }
   }
@@ -51,6 +53,17 @@ export class Menu extends Phaser.Scene {
     for (const h of G.s.party) {
       await say(this, h.name, `Lv ${h.lvl}  ATK ${h.atk}  MAG ${h.mag}  DEF ${h.def}  SPD ${h.spd}\nSkills: ${HEROES[h.id].skills.map(s => SKILLS[s].name).join(", ")}`);
     }
+  }
+
+  async quests() {
+    const a = G.s.quest;
+    if (!a) return say(this, "", `No quest right now. ${G.s.questsDone ? `Finished: ${G.s.questsDone}. ` : ""}Ines in Old Town often has work.`);
+    const where = s => (s.objective === "fetch" && ITEM_SPOTS[s.target_id] ? ` (${MAPS[ITEM_SPOTS[s.target_id][0]].name})` : "");
+    const steps = a.q.steps.map((s, i) => `${i < a.step ? "✔" : i === a.step ? "▶" : "·"} ${s.description}${where(s)}`).join("\n");
+    const win = drawWindow(this, 8, 8, 470, H - 16);
+    const body = text(this, 26, 24, `${a.q.title}\n\n${a.q.summary}\n\n${steps}`, { wordWrap: { width: 430 }, lineSpacing: 5 });
+    await choose(this, 486, H - 140, 146, ["Back"]);
+    win.destroy(); body.destroy();
   }
 
   close() {

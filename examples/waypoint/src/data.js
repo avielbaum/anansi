@@ -22,9 +22,9 @@ export const MAPS = {
     ],
     labels: [["Undercroft", 31.5, 7.6]],
     npcs: [
-      { id: "shopkeeper", x: 15, y: 7, dir: "down", talk: "shop" },
-      { id: "local_f", x: 21, y: 12, dir: "down", talk: "ines" },
-      { id: "agent", x: 33, y: 11, dir: "left", talk: "agent" },
+      { id: "shopkeeper", qid: "tobias", name: "Tobias", x: 15, y: 7, dir: "down", talk: "shop" },
+      { id: "local_f", qid: "ines", name: "Ines", x: 21, y: 12, dir: "down", talk: "ines", work: true },
+      { id: "agent", qid: "agent", name: "Agent Kessler", x: 33, y: 11, dir: "left", talk: "agent" },
     ],
     zones: [{ x: 31, y: 10, w: 1, h: 1, go: { map: "undercroft", x: 3, y: 6 } }],
     spawn: [19, 12],
@@ -63,3 +63,72 @@ export const TALK = {
   won: [["LEAD", "That's the Warden down. They'll only send more."], ["MATE", "Then we'd better be somewhere else when they do."],
     ["", "End of the vertical slice. Thanks for playing! You can keep exploring."]],
 };
+
+// ---- Anansi: the world quests are built from, and who the NPCs are when you talk to them freely ------------------
+
+// Only these ids can appear in a generated quest. Each NPC id is an npc's qid above; each location is a REGIONS entry;
+// each item has a spot in ITEM_SPOTS where it sparkles while a quest asks for it.
+export const QUEST_WORLD = {
+  npcs: [
+    { id: "tobias", name: "Tobias", role: "shopkeeper on the plaza" },
+    { id: "ines", name: "Ines", role: "tram mechanic" },
+    { id: "agent", name: "Agent Kessler", role: "Directorate agent watching the town" },
+  ],
+  locations: [
+    { id: "plaza", name: "the town plaza" },
+    { id: "high_street", name: "the high street" },
+    { id: "undercroft", name: "the Undercroft tram tunnels" },
+  ],
+  items: [
+    { id: "lost_letter", name: "a lost letter, blown onto the high street" }, // where it lies helps the model place it
+    { id: "tram_token", name: "an old tram token, lying in the Undercroft tunnels" },
+    { id: "brass_key", name: "a brass signal key, dropped in the Undercroft tunnels" },
+  ],
+};
+export const REGIONS = { // [location id, x, y, w, h] in tiles, per map
+  town: [["plaza", 11, 7, 18, 9], ["high_street", 0, 16, 40, 4]],
+  undercroft: [["undercroft", 0, 0, 30, 18]],
+};
+// Short names put back into quest text where a small model wrote a raw id ("the tram_token").
+export const SHORT_NAMES = { tobias: "Tobias", ines: "Ines", agent: "Agent Kessler", plaza: "plaza", high_street: "high street",
+  undercroft: "Undercroft", lost_letter: "lost letter", tram_token: "tram token", brass_key: "signal key" };
+export const ITEM_SPOTS = { lost_letter: ["town", 3, 15], tram_token: ["undercroft", 19, 9], brass_key: ["undercroft", 11, 14] };
+
+export const PERSONAS = {
+  tobias: {
+    bio: "You are Tobias, the cheerful, gossipy owner of Tobias' Provisions on the plaza of Old Town. You sell potions and ethers. You worry about the men in grey suits who go down into the Undercroft, the old tram tunnels under the town.",
+    acts: "You may choose give_supplies when the hero asks for help or supplies.",
+    fallback: ["Business is slow with those suits about.", "Potions are on the shelf if you need them.", "Mind the tunnels, friend. Folk go down and come back quiet."],
+  },
+  ines: {
+    bio: "You are Ines, a young tram mechanic who grew up in Old Town. You are curious, brave and practical. You know the Undercroft tunnels well because the trams used to run there, and you carry a first-aid kit.",
+    acts: "You may choose heal_hero when the hero is hurt and asks for help, or give_supplies when they ask for supplies.",
+    fallback: ["The old tram lines still hum some nights.", "If you go down there, keep to the left tunnel.", "I fixed those trams for years. Now nobody rides them."],
+  },
+  agent: {
+    bio: "You are Agent Kessler of the Directorate, a shadowy government agency. You are calm, polite and menacing. You want the teleporting hero to work for the Directorate and use their power for its operations. Remind them they cannot run forever. Never help them.",
+    acts: "You always choose none.",
+    fallback: ["The Directorate is patient. Mostly.", "Every jump leaves a trace. We read them all.", "Think about our offer while you still can."],
+  },
+};
+
+// Written quests for when the gateway cannot answer; they use the same ids as generated ones.
+const q = (title, summary, steps, reward_tier, story_summary) =>
+  ({ title, summary, reward_tier, story_summary, steps: steps.map(([objective, target_id, description]) => ({ objective, target_id, description })) });
+export const FALLBACK_QUESTS = [
+  q("Return to Sender", "Ines found an unsent letter's envelope; the letter itself blew away near the high street.", [
+    ["explore", "high_street", "Search the high street."],
+    ["fetch", "lost_letter", "Find the lost letter."],
+    ["talk_to", "tobias", "Ask Tobias who it belongs to."],
+  ], "small", "The heroes returned a lost letter, and Tobias now trusts them with town gossip."),
+  q("End of the Line", "Ines wants proof the old trams still have power down in the tunnels.", [
+    ["explore", "undercroft", "Go down into the Undercroft."],
+    ["fetch", "tram_token", "Find an old tram token by the platform."],
+    ["talk_to", "ines", "Bring the token back to Ines."],
+  ], "medium", "The heroes brought Ines a tram token from the tunnels, and she suspects the Directorate is powering the old lines."),
+  q("Signals Crossed", "Someone locked the tunnel signals. Ines needs the brass key to switch them back.", [
+    ["fetch", "brass_key", "Find the brass signal key in the Undercroft."],
+    ["talk_to", "agent", "Confront Agent Kessler about the locked signals."],
+    ["talk_to", "ines", "Give the key to Ines."],
+  ], "large", "The heroes recovered the signal key and told Kessler to his face that the town would not be bullied."),
+];

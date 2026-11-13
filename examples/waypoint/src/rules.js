@@ -71,5 +71,40 @@ export function useItem(item, target) {
 
 export function newGame(lead) {
   const other = lead === "lead_m" ? "lead_f" : "lead_m";
-  return { v: 1, party: [newHero(lead), newHero(other)], items: { potion: 3, ether: 1 }, gold: 60, map: "town", pos: null, flags: {} };
+  return { v: 1, party: [newHero(lead), newHero(other)], items: { potion: 3, ether: 1 }, gold: 60, map: "town", pos: null, flags: {},
+    quest: null, offer: null, story: "", questsDone: 0 };
 }
+
+// ---- side quests (from Anansi or the written fallbacks) ------------------------------------------------------------
+
+export const QUEST_REWARDS = { small: { gold: 30, items: {} }, medium: { gold: 60, items: { potion: 1 } }, large: { gold: 100, items: { ether: 1 } } };
+
+/** The active quest {q, step}: moves on when (kind, id) is its current step. Returns "step", "done" or null. */
+export function questStep(active, kind, id) {
+  const s = active?.q.steps[active.step];
+  if (!s || s.objective !== kind || s.target_id !== id) return null;
+  active.step++;
+  return active.step >= active.q.steps.length ? "done" : "step";
+}
+
+/** Pays a finished quest's reward into the save; returns the reward. Unknown tiers pay as small. */
+export function payQuest(state, q) {
+  const r = QUEST_REWARDS[q.reward_tier] || QUEST_REWARDS.small;
+  state.gold += r.gold;
+  for (const [id, n] of Object.entries(r.items)) state.items[id] = (state.items[id] || 0) + n;
+  state.story = [state.story, q.story_summary].filter(Boolean).join(" ").slice(-800); // the newest part; the gateway cuts story_so_far at 1500 chars
+  state.questsDone = (state.questsDone || 0) + 1;
+  return r;
+}
+
+/** Tidies generated quest text: raw ids become names, and stray CJK characters (a small-model glitch) go. */
+export function tidyQuest(q, names) {
+  const fix = s => String(s).replace(/\b[a-z]+(?:_[a-z]+)+\b/g, w => names[w] || w)
+    .replace(/[\p{Script=Han}\p{Script=Hangul}\p{Script=Hiragana}\p{Script=Katakana}]+/gu, "").replace(/\s+/g, " ").trim();
+  return { ...q, title: fix(q.title), summary: fix(q.summary), story_summary: fix(q.story_summary),
+    steps: q.steps.map(s => ({ ...s, description: fix(s.description) })) };
+}
+
+/** A quest is usable only if every step targets something this game has; generated quests are checked again here. */
+export const questFits = (q, world) => !!q && Array.isArray(q.steps) && q.steps.length > 0 && q.steps.every(s =>
+  ({ talk_to: world.npcs, explore: world.locations, fetch: world.items })[s.objective]?.some(e => e.id === s.target_id));

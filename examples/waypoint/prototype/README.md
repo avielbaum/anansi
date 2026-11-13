@@ -23,7 +23,7 @@ on generic districts and authored quests.
 From the `anansi` folder, with Ollama running and `qwen3:1.7b` pulled:
 
 ```bash
-ANANSI_CONFIG=examples/waypoint/prototype/config.waypoint.json python -m uvicorn gateway.app:make_app --factory --port 8080
+ANANSI_CONFIG=examples/waypoint/config.waypoint.json python -m uvicorn gateway.app:make_app --factory --port 8080
 ```
 
 ```bash

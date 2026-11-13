@@ -1,11 +1,10 @@
 # Waypoint
 
 A browser JRPG in the 16-bit style: Phaser 3, LPC character art, side-view battles where each character acts when
-their gauge fills. The plan is a vertical slice first, offline: a town, a dungeon, menus and battles. After that come
-Anansi dialogue, real-world cities and the story. The earlier canvas prototype, which already talks to Anansi, is in
-`prototype/`.
+their gauge fills, and NPCs and side quests powered by Anansi through the JavaScript SDK (`sdk/js`). The earlier canvas
+prototype, with real-world destinations, is in `prototype/`.
 
-Milestone 1, the vertical slice, is playable:
+**Milestone 1, the vertical slice:**
 
 - **Title:** New Game, or Continue from a save. **Lead choice:** Kai or Mira; the other one becomes the companion and follows you.
 - **Old Town:** houses, a plaza, a street, a shopkeeper (buy Potions and Ethers, or rest for 10 G), a townsperson, and a
@@ -14,23 +13,46 @@ Milestone 1, the vertical slice, is playable:
 - **Battles:** side view, with a gauge per fighter (time waits while you choose). Commands are Fight, Skill, Item, Defend
   and Flee. Kai has Blink Strike and Rift Burst; Mira has Mend and Static Lance. You earn XP, gold and level-ups; losing
   returns you to the title.
-- **Menu** (Esc or X): Items, Status, Save.
+- **Menu** (Esc or X): Items, Status, Quests, Save.
+
+**Milestone 2, Anansi in town:**
+
+- **Ask…:** type anything to Tobias, Ines or Agent Kessler, and they answer in character (`anansi.chat`, structured).
+  The NPC knows the story so far and your current quest. Ines can patch you up (`heal_hero`), and Tobias or Ines can
+  hand you a Potion (`give_supplies`), each at most once per visit. Kessler never helps.
+- **Any work?:** Ines offers side quests that `anansi.quest` builds only from this town's people, places and items
+  (`QUEST_WORLD` in `src/data.js`). Steps are talk to someone, go somewhere, or find an item, which sparkles on the map
+  while a quest asks for it. Rewards follow the quest's tier (`small`, `medium`, `large`). Each finished quest's summary
+  becomes the story so far for the next one.
+- **No waiting, no stalling:** the next quest is generated in the background as soon as you are on a map (30 to 60 s
+  on CPU), so it is usually ready when you ask. Without a gateway, NPCs answer with written lines and Ines hands out
+  three written quests.
+- **Tidying:** quest text from a small model gets raw ids replaced by names and stray CJK characters removed
+  (`tidyQuest`), and the game checks again that every step targets something it has (`questFits`).
 
 Controls: arrows or WASD to move; Enter, Space or Z to talk and confirm; Esc or X for the menu and to go back.
 
-Code: `src/rules.js` (stats, damage, levelling; no Phaser, tested by `check.mjs`), `src/data.js` (maps, dialogue),
-`src/field.js`, `src/battle.js`, `src/menu.js`, `src/ui.js` (windows, dialogue, choosers), `src/state.js` (save).
-`check.mjs` also walks every map tile by tile, to prove that each exit, chest, NPC and the boss can be reached.
+Code: `src/rules.js` (stats, damage, levelling, quests; no Phaser, tested by `check.mjs`), `src/data.js` (maps, dialogue,
+quest world, personas), `src/anansi.js` (the SDK calls), `src/field.js`, `src/battle.js`, `src/menu.js`, `src/ui.js`
+(windows, dialogue, text box, choosers), `src/state.js` (save). `check.mjs` also walks every map tile by tile, to prove
+that each exit, chest, NPC, quest item and the boss can be reached.
 
 ## Run
 
-From the `anansi` folder:
+From the `anansi` folder, with Ollama running and `qwen3:1.7b` pulled, start the gateway:
+
+```bash
+ANANSI_CONFIG=examples/waypoint/config.waypoint.json python -m uvicorn gateway.app:make_app --factory --port 8080
+```
+
+and, in a second terminal, serve the files:
 
 ```bash
 python -m http.server 8000
 ```
 
-Open http://localhost:8000/examples/waypoint/ . Self-check: `node examples/waypoint/check.mjs`.
+Open http://localhost:8000/examples/waypoint/ . Without the gateway, the game still runs, using the written lines and
+quests. Query parameters: `?gateway=URL&key=KEY`. Self-check: `node examples/waypoint/check.mjs`.
 
 ## Characters
 

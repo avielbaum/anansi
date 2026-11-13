@@ -1,9 +1,10 @@
 // The walking scene: one class for every map in data.js.
 /* global Phaser */
-import { MAPS, STAMPS, TALK } from "./data.js";
+import { MAPS, STAMPS, TALK, REGIONS, ITEM_SPOTS, SHORT_NAMES } from "./data.js";
 import { G } from "./state.js";
-import { ITEMS } from "./rules.js";
-import { W, H, drawWindow, text, talk, choose, say } from "./ui.js";
+import { ITEMS, questStep, payQuest } from "./rules.js";
+import { W, H, drawWindow, text, talk, choose, say, prompt, waitFor } from "./ui.js";
+import { ask, prefetchQuest, takeQuest } from "./anansi.js";
 
 const T = 32, DIRS = ["up", "left", "down", "right"], SPEED = 110;
 const VEC = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
@@ -18,6 +19,7 @@ export class Field extends Phaser.Scene {
   create() {
     const M = (this.M = MAPS[this.mapId]);
     G.s.map = this.mapId;
+    this.busy = false; this.marker = null; // Phaser reuses this object when a map restarts: clear the last visit's state
     this.cast = this.cache.json.get("cast");
     this.solids = [];
     this.things = []; // things you can face and press confirm at: {box, act}
@@ -41,7 +43,7 @@ export class Field extends Phaser.Scene {
     this.hero.s.setDepth(this.at.y + 0.5); this.mate.s.setDepth(this.at.y - 24);
     this.trail = [];
     this.cameras.main.setBounds(0, 0, M.w * T, M.h * T).startFollow(this.hero.s, true).setRoundPixels(true);
-    this.keys = this.input.keyboard.addKeys("UP,DOWN,LEFT,RIGHT,W,A,S,D");
+    this.keys = this.input.keyboard.addKeys("UP,DOWN,LEFT,RIGHT,W,A,S,D", false); // no key capture: the NPC text box needs W/A/S/D
     this.input.keyboard.on("keydown", e => this.onKey(e.key));
     this.inZone = this.zonesAt(this.hero.s).length > 0; // arriving on an exit does not bounce you back
     this.nextFight = Phaser.Math.Between(500, 900);
@@ -50,6 +52,9 @@ export class Field extends Phaser.Scene {
     const banner = this.add.text(W / 2, 30, M.name, { fontFamily: "monospace", fontSize: "18px", color: "#fff", stroke: "#000", strokeThickness: 4 }).setOrigin(0.5).setScrollFactor(0).setDepth(9000);
     this.tweens.add({ targets: banner, alpha: 0, delay: 1500, duration: 600, onComplete: () => banner.destroy() });
     if (M.intro && !G.s.flags[M.intro]) { G.s.flags[M.intro] = true; this.run(() => this.lines(TALK[M.intro])); }
+    this.gifted = new Set(); // NPCs who already healed or gave something on this visit
+    this.refreshMarker();
+    if (!G.s.quest && !G.s.offer) prefetchQuest(); // quests take a while on CPU: start before anyone asks
   }
 
   addStamp(key, tx, ty, opt) {
@@ -102,13 +107,82 @@ export class Field extends Phaser.Scene {
   talkTo(n, a) {
     const opposite = { up: "down", down: "up", left: "right", right: "left" }[this.hero.dir];
     this.face(a, opposite, false);
-    const who = this.cast[n.id].name === "Shopkeeper" ? "Tobias" : this.cast[n.id].name;
-    const t = TALK[n.talk];
+    const who = n.name || this.cast[n.id].name, t = TALK[n.talk];
     this.run(async () => {
-      if (n.talk === "shop") return this.shop(who);
-      await this.lines(Array.isArray(t) ? t : G.s.flags.warden ? t.after : t.before, who);
+      if (n.qid) await this.questEvent("talk_to", n.qid);
+      const opts = [n.talk === "shop" ? "Shop" : "Talk", ...(n.qid ? ["Ask…"] : []), ...(n.work ? ["Any work?"] : []), "Leave"];
+      for (;;) {
+        const o = opts[await choose(this, W - 170, 56, 160, opts)];
+        if (o === "Shop") await this.shop(who);
+        else if (o === "Talk") await this.lines(Array.isArray(t) ? t : G.s.flags.warden ? t.after : t.before, who);
+        else if (o === "Ask…") await this.chat(n, who);
+        else if (o === "Any work?") await this.offerQuest(n, who);
+        else break;
+      }
       this.face(a, n.dir, false);
     });
+  }
+
+  /** Free-text talk through Anansi until the player presses Esc. */
+  async chat(n, who) {
+    for (;;) {
+      const line = await prompt(this, `Say something to ${who}:`);
+      if (!line) return;
+      const r = await waitFor(this, ask(n.qid, line), `${who} is thinking`);
+      await say(this, who, r.say);
+      if (r.action === "none" || n.qid === "agent" || this.gifted.has(n.qid)) continue;
+      if (r.action === "heal_hero") {
+        G.s.party.forEach(h => { if (h.hp > 0) h.hp = h.maxhp; });
+        await say(this, "", `${who} patches the party up. HP restored.`);
+      } else if (r.action === "give_supplies") {
+        G.s.items.potion = (G.s.items.potion || 0) + 1;
+        await say(this, "", `${who} hands you a Potion.`);
+      } else continue;
+      this.gifted.add(n.qid);
+    }
+  }
+
+  async offerQuest(n, who) {
+    const a = G.s.quest;
+    if (a) return say(this, who, `How's "${a.q.title}" going? ${a.q.steps[a.step].description}`);
+    const q = G.s.offer || (G.s.offer = (await waitFor(this, takeQuest(), `${who} is thinking`)).quest);
+    await say(this, who, `${q.title}. ${q.summary}`);
+    if ((await choose(this, W - 170, 56, 160, ["Take the job", "Not now"])) !== 0) return say(this, who, "The offer stands. Come back when you're ready.");
+    G.s.quest = { q, step: 0 }; G.s.offer = null;
+    await say(this, "", `New quest: ${q.title}. Open the menu (Esc) and choose Quests to review it.`);
+    await this.questEvent("talk_to", n.qid); // a quest that starts with "talk to Ines" is already under way
+    this.refreshMarker();
+  }
+
+  stepIs(kind, id) { const s = G.s.quest?.q.steps[G.s.quest.step]; return !!s && s.objective === kind && s.target_id === id; }
+
+  async questEvent(kind, id) {
+    const r = questStep(G.s.quest, kind, id);
+    if (!r) return;
+    const q = G.s.quest.q;
+    this.refreshMarker();
+    if (r === "step") return this.toast(`✔ ${q.steps[G.s.quest.step - 1].description}`);
+    G.s.quest = null;
+    const pay = payQuest(G.s, q), extra = Object.entries(pay.items).map(([i, k]) => `, ${k} × ${ITEMS[i].name}`).join("");
+    await say(this, "", `Quest complete: ${q.title}! +${pay.gold} G${extra}.`);
+    prefetchQuest();
+  }
+
+  /** A sparkle where the current fetch step's item is, when it is on this map. */
+  refreshMarker() {
+    this.marker?.obj.destroy(); this.marker = null;
+    const s = G.s.quest?.q.steps[G.s.quest.step], spot = s?.objective === "fetch" && ITEM_SPOTS[s.target_id];
+    if (!spot || spot[0] !== this.mapId) return;
+    const p = feet(spot[1], spot[2]);
+    const obj = this.add.star(p.x, p.y - 10, 4, 3, 8, 0xfff2a8).setDepth(p.y).setStrokeStyle(1, 0xffffff);
+    this.tweens.add({ targets: obj, scale: 1.5, alpha: 0.55, angle: 45, yoyo: true, repeat: -1, duration: 500 });
+    this.marker = { obj, x: p.x, y: p.y, id: s.target_id };
+  }
+
+  toast(msg) {
+    const short = msg.length > 90 ? msg.slice(0, 87).replace(/\s+\S*$/, "") + "…" : msg;
+    const t = text(this, W / 2, 56, short, { stroke: "#000", strokeThickness: 4, align: "center", wordWrap: { width: W - 80 } }).setOrigin(0.5, 0);
+    this.tweens.add({ targets: t, alpha: 0, delay: 1800, duration: 500, onComplete: () => t.destroy() });
   }
 
   async shop(who) {
@@ -197,6 +271,12 @@ export class Field extends Phaser.Scene {
       if (z.boss && !G.s.flags[this.M.boss.flag]) return this.bossFight();
     }
     if (!zones.length) this.inZone = false;
+    const s = this.hero.s, here = (REGIONS[this.mapId] || []).find(([, x, y, w, h]) => hit({ x: s.x, y: s.y, w: 1, h: 1 }, { x: x * T, y: y * T, w: w * T, h: h * T }));
+    if (here && this.stepIs("explore", here[0])) return this.run(() => this.questEvent("explore", here[0]));
+    if (this.marker && Phaser.Math.Distance.Between(s.x, s.y, this.marker.x, this.marker.y) < 20) {
+      const id = this.marker.id;
+      return this.run(async () => { await say(this, "", `Found the ${SHORT_NAMES[id]}!`); await this.questEvent("fetch", id); });
+    }
     if (this.M.encounters && (this.nextFight -= moved) <= 0) {
       this.nextFight = Phaser.Math.Between(550, 1000);
       this.battle(Phaser.Utils.Array.GetRandom(this.M.encounters));

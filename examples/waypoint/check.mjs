@@ -1,8 +1,17 @@
 // node check.mjs: rules, data and maps agree; every exit, chest, NPC and boss can be reached on foot.
 import assert from "node:assert";
 import { readFileSync, existsSync } from "node:fs";
-import { damage, gainXp, newHero, newGame, atbFill, useItem, xpToNext, ENEMIES, HEROES, SKILLS } from "./src/rules.js";
-import { MAPS, STAMPS, TALK } from "./src/data.js";
+import { damage, gainXp, newHero, newGame, atbFill, useItem, xpToNext, ENEMIES, HEROES, SKILLS, questStep, payQuest, questFits, tidyQuest } from "./src/rules.js";
+import { MAPS, STAMPS, TALK, QUEST_WORLD, REGIONS, ITEM_SPOTS, PERSONAS, FALLBACK_QUESTS, SHORT_NAMES } from "./src/data.js";
+import { pages } from "./src/ui.js";
+
+// long dialogue splits into pages that fit the box, losing no words
+const long = "The Whispering Tram. Kai stumbles into a quiet town where the Directorate watches from afar. Tobias, the shopkeeper, offers a job to help retrieve a lost letter. Ines reveals a secret about the tram token. Agent Kessler watches from the shadows, waiting for the right moment.";
+const pg = pages(long, 180);
+assert(pg.length > 1 && pg.every(p => p.length <= 180), "pages fit");
+assert.equal(pg.join(" "), long, "no words lost");
+assert.deepEqual(pages("Short line.", 180), ["Short line."]);
+assert(pages("x".repeat(50) + " " + "y".repeat(50), 60).every(p => p.length <= 60));
 
 const here = p => new URL(p, import.meta.url);
 const cast = JSON.parse(readFileSync(here("assets/sprites/manifest.json")));
@@ -29,7 +38,7 @@ const g = newGame("lead_f"); assert.deepEqual(g.party.map(h => h.id), ["lead_f",
 for (const h of Object.values(HEROES)) for (const s of h.skills) assert(SKILLS[s], s);
 
 // maps
-const opens = {};
+const opens = {}, seens = {};
 for (const [mid, M] of Object.entries(MAPS)) {
   const T = 32, solids = [];
   for (const [tex, x, y, w, h, solid] of M.paint) { assert(existsSync(here(`assets/tiles/${tex}.png`)), tex); if (solid) solids.push([x * T, y * T, w * T, h * T]); }
@@ -56,6 +65,27 @@ for (const [mid, M] of Object.entries(MAPS)) {
   for (const n of M.npcs || []) reach(n.x, n.y, n.id);
   for (const [key, x, y, opt] of M.objects) if (opt?.chest) { reach(x, y, opt.chest); reach(x, y + 1, opt.chest); }
   if (M.boss) reach(M.boss.x, M.boss.y, "the boss");
+  seens[mid] = seen;
 }
 for (const [mid, M] of Object.entries(MAPS)) for (const z of M.zones || []) if (z.go) assert(opens[z.go.map](z.go.x, z.go.y), `${mid}: arrival in ${z.go.map} at ${z.go.x},${z.go.y} is blocked`);
+
+// side quests: every id in the quest world exists in the game, and the written quests only use those ids
+const npcQids = Object.values(MAPS).flatMap(M => (M.npcs || []).map(n => n.qid)).filter(Boolean);
+for (const n of QUEST_WORLD.npcs) { assert(npcQids.includes(n.id), `quest NPC ${n.id} is on no map`); assert(PERSONAS[n.id], `no persona for ${n.id}`); }
+for (const l of QUEST_WORLD.locations) assert(Object.values(REGIONS).flat().some(r => r[0] === l.id), `no region for ${l.id}`);
+for (const it of QUEST_WORLD.items) {
+  const [m, x, y] = ITEM_SPOTS[it.id] || []; assert(MAPS[m], `no spot for ${it.id}`);
+  assert(seens[m].has(`${x},${y}`), `${it.id} at ${m} ${x},${y} cannot be reached`);
+}
+for (const q of FALLBACK_QUESTS) assert(questFits(q, QUEST_WORLD), q.title);
+assert(!questFits({ steps: [{ objective: "fetch", target_id: "sword" }] }, QUEST_WORLD), "unknown items are rejected");
+const tidy = tidyQuest({ title: "The tram_token", summary: "Find the lost_letter 冒险", story_summary: "", steps: [{ objective: "fetch", target_id: "tram_token", description: "Get the tram_token." }] }, SHORT_NAMES);
+assert.equal(tidy.title, "The tram token"); assert.equal(tidy.summary, "Find the lost letter"); assert.equal(tidy.steps[0].target_id, "tram_token", "ids stay ids");
+const st = { q: FALLBACK_QUESTS[1], step: 0 };
+assert.equal(questStep(st, "fetch", "tram_token"), null, "steps happen in order");
+assert.equal(questStep(st, "explore", "undercroft"), "step");
+assert.equal(questStep(st, "fetch", "tram_token"), "step");
+assert.equal(questStep(st, "talk_to", "ines"), "done");
+const save = newGame("lead_m"); const pay = payQuest(save, FALLBACK_QUESTS[1]);
+assert.equal(save.gold, 60 + pay.gold); assert.equal(save.items.potion, 4); assert.equal(save.questsDone, 1); assert(save.story.includes("tram token"));
 console.log("ok");
