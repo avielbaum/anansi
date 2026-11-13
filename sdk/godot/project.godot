@@ -5,3 +5,4 @@ config_version=5
 [application]
 
 config/name="Anansi SDK test"
+run/main_scene="res://test/main.tscn"

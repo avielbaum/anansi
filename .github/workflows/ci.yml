@@ -54,3 +54,24 @@ jobs:
           godot --headless --path sdk/godot --script res://test/run.gd > godot.log 2>&1 || true
           cat godot.log
           grep -q "0 failed" godot.log && ! grep -q "SCRIPT ERROR\|Parse Error" godot.log
+      - name: Cache the Godot export template
+        uses: actions/cache@v4
+        with: {path: ~/.local/share/godot/export_templates, key: "godot-templates-${{ env.GODOT }}"}
+      - name: Install the Linux export template (checksum from the release page)
+        run: |
+          d=~/.local/share/godot/export_templates/${GODOT/-/.}   # 4.3-stable -> 4.3.stable
+          if [ ! -f $d/linux_release.x86_64 ]; then
+            f=Godot_v${GODOT}_export_templates.tpz
+            curl -fsSL -O https://github.com/godotengine/godot/releases/download/$GODOT/$f
+            grep " $f\$" SHA512-SUMS.txt | sha512sum -c -
+            mkdir -p $d && unzip -q -j $f templates/linux_release.x86_64 templates/version.txt -d $d   # only what this test needs
+          fi
+      - name: Export the test game and run it (the SDK in a release build, not the editor)
+        run: |
+          mkdir -p build
+          godot --headless --path sdk/godot --export-release "Linux" $PWD/build/anansi_test.x86_64 > export.log 2>&1 || true
+          cat export.log
+          test -x build/anansi_test.x86_64
+          ./build/anansi_test.x86_64 --headless > game.log 2>&1 || true
+          cat game.log
+          grep -q "0 failed" game.log && ! grep -q "SCRIPT ERROR\|Parse Error" game.log
