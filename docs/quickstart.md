@@ -56,8 +56,7 @@ adjust image tags and vLLM flags.
 ## macOS (Apple Silicon)
 
 Nothing in the gateway or agent depends on the platform. Install Ollama (it uses Metal), pull a model and use the
-Ollama steps above. CI runs the self-checks on an arm64 Mac runner; model speed and memory use on a real Mac are
-untested. Memory guidance is in [DESIGN.md section 19.1](../DESIGN.md).
+Ollama steps above. Untested on macOS: no Mac hardware is available. Memory guidance is in [DESIGN.md section 19.1](../DESIGN.md).
 
 ## C# SDK test
 

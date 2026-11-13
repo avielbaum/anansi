@@ -97,7 +97,7 @@ Measured on one Windows PC with no GPU, running Qwen3-1.7B and 4B through Ollama
 | Godot 4 addon (GDScript) | working: 10 checks in the real Godot 4.3 engine, headless, against a live gateway in CI (not tried in an exported game or on a console) |
 | Unreal Engine 5 plugin (C++, Blueprint-callable) | **written, never compiled or run: no Unreal install was available** |
 | Linux | gateway and C# SDK tested in CI on Ubuntu; Docker, vLLM and systemd files written but never run |
-| macOS Apple Silicon | gateway tests pass on a CI arm64 runner; no real Mac, no real model |
+| macOS Apple Silicon | untested: no Mac hardware |
 | **GPU nodes** (vLLM, llama-server) | **not tested, no GPU available** |
 | **Live platform identity check** (Steam is the only one written) | **not tested, needs a Steam publisher key** |
 | Persistence (budgets, bans) and a volunteer work ledger in SQLite, or Postgres for gateways on several machines | working, tested across a restart and on Postgres 16 |

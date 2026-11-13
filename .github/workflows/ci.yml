@@ -26,18 +26,6 @@ jobs:
           sleep 5
           dotnet run --project sdk/unity/ci
           node sdk/js/test.mjs   # the runner's default Node (18+) has fetch
-  macos:
-    # Off unless the repository variable RUN_MACOS is 'true'. GitHub began answering "The configuration 'macos-14-arm64-us-xl' is not
-    # supported" for this private repository (a plan or billing limit on macOS runners), which cancelled the job and turned every run red.
-    if: vars.RUN_MACOS == 'true'
-    runs-on: macos-14   # Apple Silicon
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: {python-version: "3.12"}
-      - run: uname -m
-      - run: pip install -r requirements.txt
-      - run: python tests/test_gateway.py
   godot:
     runs-on: ubuntu-latest   # the real Godot engine, headless, against a live gateway
     env:

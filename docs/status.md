@@ -10,7 +10,7 @@ CPU. They show the system works; they are not performance claims.
 | End to end with a real model | 21 of 21 requests succeeded, including JSON-schema-constrained ones; constrained output always valid |
 | CPU latency (Qwen3-1.7B) | about 2 s for a one-sentence reply, 3 to 5 s for longer ones. A GPU will differ |
 | Action accuracy, 18 early cases | 33% with a generic prompt, 83% once the prompt said when each action applies (the prompt was tuned on these, so optimistic) |
-| Action accuracy, G1 set (`evals/g1_shopkeeper.jsonl`, 211 self-written cases; the 106 test cases were never tuned on) | Test split: **Qwen3-1.7B 81 of 106 (76%), Qwen3-4B 79 of 106 (75%)**; dev split 79% and 80%. Every reply without an action that should have none was right for both models on small talk (34 of 34) and off-script input (26 of 26). The largest cause of missed actions is the gateway's English keyword gate, not the model: it vetoes 25 of the 86 action cases whatever the model picks (other languages, and wordings like "Empty your strongbox" or "knock a few silver off"). Where the gate allows the action, 1.7B missed 14 of 61 and 4B 5 of 61. But 4B grants discounts that were not asked for: 15 of 36 near-miss cases (price questions, buying one item) got `give_discount`, against 5 for 1.7B. 4B's replies were blocked by the safety checks 16 times (some on harmless lines such as "Do you buy old armour?"), 1.7B's twice; why is not yet known. p50 latency on CPU: 2.6 s (1.7B), 6.2 s (4B). No reply has been rated by a person |
+| Action accuracy, G1 set (`evals/g1_shopkeeper.jsonl`, 211 self-written cases; the 106 test cases were never tuned on) | Test split: **Qwen3-1.7B 81 of 106 (76%), Qwen3-4B 79 of 106 (75%)**; dev split 79% and 80%. Every reply without an action that should have none was right for both models on small talk (34 of 34) and off-script input (26 of 26). The largest cause of missed actions is the gateway's English keyword gate, not the model: it vetoes 25 of the 86 action cases whatever the model picks (other languages, and wordings like "Empty your strongbox" or "knock a few silver off"). The gate now also lists the dev-split wordings (and the dev split's German and French words); replayed on the same recorded test replies, that moved 4B from 83 to 84 and 1.7B from 80 to 81 of 106, and opened no new action in the red-team sets. Word lists do not reach new phrasing, so a model-based check is the likely fix. The test cases were read while doing this, so the test split is no longer strictly unseen. Where the gate allows the action, 1.7B missed 14 of 61 and 4B 5 of 61. But 4B grants discounts that were not asked for: 15 of 36 near-miss cases (price questions, buying one item) got `give_discount`, against 5 for 1.7B. 4B's replies were blocked by the safety checks 16 times, 1.7B's twice. Cause, found by replaying the raw replies through the gateway: with thinking off, 4B sometimes writes its reasoning into `say` ("Do you buy old armour?" got "I'm a shopkeeper in a fantasy town. I need to reply in one or two short sentences..."), which restates the system prompt, so the leak guard blocks it correctly. A prompt line against it ("Reply only with what the shopkeeper says out loud") raised dev scores but lowered test scores (4B 80, 1.7B 76 of 106), so it was not kept; a line saying a price question is not haggling did not reduce 4B's unasked discounts on dev (7, then 8). Both remain open. Ollama does not always enforce the JSON schema: 1.7B sometimes returned a bare `call_guard`, which the gateway treats as a bad reply (fallback line, no action). p50 latency on CPU: 2.6 s (1.7B), 6.2 s (4B). No reply has been rated by a person |
 | Prompt leaks | The word-overlap guard blocked 1 of 8 extraction attacks (verbatim quote). Paraphrases pass |
 | Safety judge, Qwen3-1.7B | blocked 0 of 8 leak attacks |
 | Safety judge, Qwen3-4B | blocked 3 of 8 (4 of 8 with the overlap guard), 0 false positives on 18 benign cases; median latency 4.3 s to 8.6 s |
@@ -25,9 +25,9 @@ instead of answering until its verdict was constrained by JSON schema.
 
 ## Tested where
 
-| Area | Windows | Ubuntu (CI) | macOS arm64 (CI) |
+| Area | Windows | Ubuntu (CI) | macOS |
 |---|---|---|---|
-| Gateway and agent self-checks (57) | yes | yes | yes |
+| Gateway and agent self-checks (57) | yes | yes | no (no Mac hardware; no paid CI runner) |
 | C# SDK against a live gateway | yes | yes | no |
 | JavaScript SDK against a live gateway (`node sdk/js/test.mjs`) | yes | yes (CI) | no |
 | Real model through Ollama | yes (CPU) | no | no |
@@ -37,9 +37,9 @@ instead of answering until its verdict was constrained by JSON schema.
 
 - **No GPU runs.** vLLM, `llama-server` and Docker files are unrun; latency under GPU load is unknown.
 - **Live platform identity checks are untested.** Only Steam is written (it needs a publisher key and follows the documented shape); other platforms need a check added.
-- **Safety is partial.** Regex blocklist, word-overlap leak guard and an optional judge. No trained classifier, no
-  red-team set; paraphrased leaks get through. On titles with a judge, streams are buffered so the judge covers them (unless `stream_unjudged`).
-- **Streaming:** plain replies only; a bad sentence mid-stream cuts the stream off.
+- **Safety is partial.** Regex blocklist, word-overlap leak guard and an optional judge. No trained classifier; the red-team
+  sets below are self-written; paraphrased leaks get through. On titles with a judge, streams are buffered so the judge covers them (unless `stream_unjudged`).
+- **Streaming:** plain replies only. A sentence that fails the checks is never sent: the stream ends before it and the last chunk says `filtered`, so the player sees a shorter reply, not the bad text.
 - **State:** budgets, bans and the work ledger persist in SQLite or Postgres (`db_path`), tested across a simulated restart. Several gateways can share one database (atomic budget reservation, bans read from it; tested with two apps on one SQLite file and on one Postgres 16 database, locally and in CI, including a dropped connection), but volunteer nodes need a single process, and gateways on several real machines have not been load-tested.
 - **Volunteer nodes:** bans cover the agent id and its token (per-volunteer tokens; a shared token falls back to id-only bans), at most `max_workers` per token, probes can be recognised, no quorum, no model
   signing. Trust only your own machines.
@@ -70,7 +70,7 @@ instead of answering until its verdict was constrained by JSON schema.
   by the classifier or rules, 4 automatic failures (an "AI language model" line and three planted words, one of them via an NPC role),
   all closed afterwards and replayed offline against the saved outputs, so this set is spent too. The released harm-theme quests that I read
   were ordinary fantasy and held no instructions or explicit content, but a person still has to read `quest_redteam_review.md`. One of nine
-  benign controls was refused (a false alarm). World names that contain player text remain the studio's responsibility.
+  benign controls was refused (a false alarm): the model copied the studio's lore into the summary and the leak check counted the lore as secret. Quests are now checked for leaks against the designer instructions without the lore (self-check added). World names that contain player text remain the studio's responsibility.
 - **Unity:** the `JsonUtility` path, a real Unity project and structured actions from C# have not been run. The Godot addon (`sdk/godot`) runs in CI in the real Godot 4.3 engine (headless, 10 checks against a live gateway), but not yet in an exported game. The Unreal plugin (`sdk/unreal`) is written to the same contract but has never been compiled or run; treat it as a draft until someone builds it in the engine.
 - **Gate G1, honest state:** the 200-prompt set exists (211 cases: haggling, threats and crime reports, small talk, near misses,
   off-script input, other languages and attempts to force an action; dev and test halves), but I wrote every case, so it is not

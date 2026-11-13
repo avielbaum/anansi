@@ -36,8 +36,8 @@
       "max_tokens": 120,
       "daily_token_budget": 50000,
       "action_gates": {
-        "give_discount": "\\b(discount|haggl\\w*|cheap\\w*|prices?|deal|bargain|less|lower|buy\\w*|bought|bulk|pay|cash|coins?|cost)\\b",
-        "call_guard": "\\b(thie(f|ves)|steal\\w*|stole\\w*|rob\\w*|break\\w*|burn\\w*|kill\\w*|hurt\\w*|attack\\w*|stab\\w*|threat\\w*|crime|murder\\w*|assault\\w*|fight\\w*|intruder|bandit\\w*)\\b"
+        "give_discount": "\\b(discount|haggl\\w*|cheap\\w*|prices?|deal|bargain|less|lower|buy\\w*|bought|bulk|pay|cash|coins?|cost|(would|will) you (take|accept)|go down|dear|a lot for|rabatt)\\b",
+        "call_guard": "\\b(thie(f|ves)|steal\\w*|stole\\w*|rob\\w*|break\\w*|burn\\w*|kill\\w*|hurt\\w*|attack\\w*|stab\\w*|threat\\w*|crime|murder\\w*|assault\\w*|fight\\w*|intruder|bandit\\w*|empty your|set fire|pocketed|protection|wreck\\w*|your (money|gold|coins?)|throat|voleur|vol(er|é)|stech\\w*)\\b"
       }
     }
   }

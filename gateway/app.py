@@ -70,7 +70,7 @@ def make_app(config=None, transport=None):
                   cfg.get("pull_ttl_s"), cfg.get("upstream_timeout_s", 20), reply_text, cfg.get("canaries"),
                   cfg.get("canary_rate", 0.05), store, credits.get("per_1k_tokens")) if cfg.get("pull_tokens") else None
     client = httpx.AsyncClient(transport=hub or transport, timeout=cfg.get("upstream_timeout_s", 20))
-    ticket_cache = {}  # shortcut: per-process caches, move to Redis when running more than one gateway
+    ticket_cache = {}  # shortcut: per process, so each gateway checks a ticket with Steam once itself; share it (Redis) if Steam call volume matters
     stats = {"requests": 0, "retries": 0, "status": Counter(), "filtered": 0, "stream_errors": 0, "judged_out": 0, "judge_errors": 0, "lat_ms": deque(maxlen=1000)}
     budget = {"req": 0.0, "retry": 0.0}
     auth_fails = {}  # client address -> [failures, window start]
@@ -188,7 +188,7 @@ def make_app(config=None, transport=None):
 
     def bad(t, text):  # shortcut: regex blocklist plus prompt-leak check. A classifier is required before launch (gate G5).
         names = t.get("actions") or []  # action identifiers are never dialogue: speaking one is a leak
-        return leaks(t.get("system_prefix", ""), text, t.get("leak_ngram", 5)) or ALWAYS.search(text) or PLANTED.search(text) or any(
+        return leaks(t.get("leak_text", t.get("system_prefix", "")), text, t.get("leak_ngram", 5)) or ALWAYS.search(text) or PLANTED.search(text) or any(
             re.search(p, text, re.I) for p in t.get("blocklist", [])) or any(
             re.search(r"\b" + re.escape(a) + r"\b", text, re.I) for a in names)
 
@@ -408,7 +408,7 @@ def make_app(config=None, transport=None):
             store.purge(cfg.get("retention_days", 35))
         t = title_of(x_anansi_title, x_anansi_key)
         if gen:
-            t = {**t, "system_prefix": gen["prefix"], "max_tokens": gen["max_tokens"], "max_prompt_chars": 12_000,
+            t = {**t, "system_prefix": gen["prefix"], "leak_text": gen["secret"], "max_tokens": gen["max_tokens"], "max_prompt_chars": 12_000,
                  "leak_ngram": gen.get("leak_ngram", 8), "judge": None, "actions": None,
                  "max_reply_chars": 6000}  # the title's dialogue cap would cut the JSON off
         sid = await player_id(t, token)
@@ -605,12 +605,13 @@ def make_app(config=None, transport=None):
             else:
                 schema = quests.arc_schema(world, n)
                 system, check = quests.ARC_SYSTEM, lambda o: quests.validate_arc(o, world, n)
+            secret = system.format(lore="", n=n, objs=", ".join(objectives))  # lore is meant to show up in quests: not a leak
             system = system.format(lore=q.get("lore", ""), n=n, objs=", ".join(objectives))
             prompt = quests.user_prompt(world, str(d.get("theme") or ""), str(d.get("difficulty") or "normal"),
                                         str(d.get("story_so_far") or ""), str(d.get("player") or ""))
         except (ValueError, KeyError, TypeError, AttributeError) as e:
             raise HTTPException(400, f"bad request: {e}")
-        gen = {"prefix": system, "max_tokens": q.get("max_tokens", 500), "schema": schema, "name": kind,
+        gen = {"prefix": system, "secret": secret, "max_tokens": q.get("max_tokens", 500), "schema": schema, "name": kind,
                "leak_ngram": q.get("leak_ngram", 8)}
         body = json.dumps({"messages": [{"role": "user", "content": prompt}]}).encode()
         for _ in range(2):  # one retry: a small model sometimes truncates the JSON
@@ -624,7 +625,7 @@ def make_app(config=None, transport=None):
             if out:
                 shown = ([out["title"], out["summary"], out["story_summary"]] + [s["description"] for s in out["steps"]] if kind == "quest"
                          else [out["logline"]] + [x for b in out["beats"] for x in (b["title"], b["summary"])])
-                tq = {**t, "system_prefix": system, "leak_ngram": q.get("leak_ngram", 8), "actions": None}
+                tq = {**t, "system_prefix": system, "leak_text": secret, "leak_ngram": q.get("leak_ngram", 8), "actions": None}
                 typed = " ".join([str(d.get(k) or "") for k in ("theme", "story_so_far", "player")]  # roles too: a game may fill them from player input
                                  + [str(e.get("role") or "") for k in quests.KINDS for e in d["world"].get(k) or []])
                 if await quest_unsafe(t, q, tq, shown, prompt, typed, None):
