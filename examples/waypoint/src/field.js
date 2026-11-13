@@ -2,7 +2,7 @@
 /* global Phaser */
 import { MAPS, STAMPS, TALK, REGIONS, ITEM_SPOTS, SHORT_NAMES } from "./data.js";
 import { G } from "./state.js";
-import { ITEMS, questStep, payQuest } from "./rules.js";
+import { ITEMS, questStep, payQuest, canGift, markGift, resetGifts } from "./rules.js";
 import { W, H, drawWindow, text, talk, choose, say, prompt, waitFor } from "./ui.js";
 import { ask, prefetchQuest, takeQuest } from "./anansi.js";
 
@@ -52,7 +52,6 @@ export class Field extends Phaser.Scene {
     const banner = this.add.text(W / 2, 30, M.name, { fontFamily: "monospace", fontSize: "18px", color: "#fff", stroke: "#000", strokeThickness: 4 }).setOrigin(0.5).setScrollFactor(0).setDepth(9000);
     this.tweens.add({ targets: banner, alpha: 0, delay: 1500, duration: 600, onComplete: () => banner.destroy() });
     if (M.intro && !G.s.flags[M.intro]) { G.s.flags[M.intro] = true; this.run(() => this.lines(TALK[M.intro])); }
-    this.gifted = new Set(); // NPCs who already healed or gave something on this visit
     this.refreshMarker();
     if (!G.s.quest && !G.s.offer) prefetchQuest(); // quests take a while on CPU: start before anyone asks
   }
@@ -130,15 +129,17 @@ export class Field extends Phaser.Scene {
       if (!line) return;
       const r = await waitFor(this, ask(n.qid, line), `${who} is thinking`);
       await say(this, who, r.say);
-      if (r.action === "none" || n.qid === "agent" || this.gifted.has(n.qid)) continue;
+      const gift = `home:${n.qid}`;
+      if (r.action === "none" || n.qid === "agent" || !canGift(G.s, gift)) continue;
       if (r.action === "heal_hero") {
         G.s.party.forEach(h => { if (h.hp > 0) h.hp = h.maxhp; });
+        markGift(G.s, gift); // marked when it happens, not after the player dismisses the message
         await say(this, "", `${who} patches the party up. HP restored.`);
       } else if (r.action === "give_supplies") {
         G.s.items.potion = (G.s.items.potion || 0) + 1;
+        markGift(G.s, gift);
         await say(this, "", `${who} hands you a Potion.`);
-      } else continue;
-      this.gifted.add(n.qid);
+      }
     }
   }
 
@@ -203,6 +204,7 @@ export class Field extends Phaser.Scene {
         G.s.gold -= 10;
         await new Promise(r => { this.cameras.main.fadeOut(400); this.cameras.main.once("camerafadeoutcomplete", r); });
         G.s.party.forEach(h => { h.hp = h.maxhp; h.mp = h.maxmp; });
+        resetGifts(G.s); // a night's rest: everyone is ready to help again
         this.cameras.main.fadeIn(400);
         await say(this, who, "Rested and ready. Mind the tunnels.");
       } else return say(this, who, "Come back any time!");

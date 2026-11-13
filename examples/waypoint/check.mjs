@@ -1,7 +1,8 @@
 // node check.mjs: rules, data and maps agree; every exit, chest, NPC and boss can be reached on foot.
 import assert from "node:assert";
 import { readFileSync, existsSync } from "node:fs";
-import { damage, gainXp, newHero, newGame, atbFill, useItem, xpToNext, ENEMIES, HEROES, SKILLS, questStep, payQuest, questFits, tidyQuest } from "./src/rules.js";
+import { damage, gainXp, newHero, newGame, atbFill, useItem, xpToNext, ENEMIES, HEROES, SKILLS, questStep, payQuest, questFits, tidyQuest, canGift, markGift, resetGifts } from "./src/rules.js";
+import { upgrade } from "./src/state.js";
 import { MAPS, STAMPS, TALK, QUEST_WORLD, REGIONS, ITEM_SPOTS, PERSONAS, FALLBACK_QUESTS, SHORT_NAMES } from "./src/data.js";
 import { pages } from "./src/ui.js";
 
@@ -86,6 +87,17 @@ assert.equal(questStep(st, "fetch", "tram_token"), null, "steps happen in order"
 assert.equal(questStep(st, "explore", "undercroft"), "step");
 assert.equal(questStep(st, "fetch", "tram_token"), "step");
 assert.equal(questStep(st, "talk_to", "ines"), "done");
+// the one-gift-per-NPC limit lives in the save: it survives a reload, and resets on rest or a finished quest
+const gs = newGame("lead_m");
+assert(canGift(gs, "home:ines")); markGift(gs, "home:ines");
+assert(!canGift(gs, "home:ines")); assert(canGift(gs, "home:tobias"), "other NPCs are unaffected");
+assert(!canGift(JSON.parse(JSON.stringify(gs)), "home:ines"), "a saved game remembers the gift");
+resetGifts(gs); assert(canGift(gs, "home:ines"), "resting resets it");
+markGift(gs, "home:ines"); payQuest(gs, FALLBACK_QUESTS[0]); assert(canGift(gs, "home:ines"), "a finished quest resets it");
+// saves from before gifts, cities and quest areas existed still load
+const old = upgrade({ v: 1, map: "town", pos: null, quest: { q: FALLBACK_QUESTS[0], step: 0 }, offer: FALLBACK_QUESTS[1], flags: {} });
+assert.deepEqual([old.gifted, old.cities, old.quest.area, old.offer.area, old.offer.q.title], [{}, {}, "home", "home", FALLBACK_QUESTS[1].title]);
+assert.equal(upgrade({ v: 1, map: "city:Nowhere", pos: { x: 1, y: 1 }, flags: {} }).map, "town", "a city with no saved data falls back to town");
 const save = newGame("lead_m"); const pay = payQuest(save, FALLBACK_QUESTS[1]);
 assert.equal(save.gold, 60 + pay.gold); assert.equal(save.items.potion, 4); assert.equal(save.questsDone, 1); assert(save.story.includes("tram token"));
 console.log("ok");

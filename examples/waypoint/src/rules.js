@@ -72,7 +72,7 @@ export function useItem(item, target) {
 export function newGame(lead) {
   const other = lead === "lead_m" ? "lead_f" : "lead_m";
   return { v: 1, party: [newHero(lead), newHero(other)], items: { potion: 3, ether: 1 }, gold: 60, map: "town", pos: null, flags: {},
-    quest: null, offer: null, story: "", questsDone: 0 };
+    quest: null, offer: null, story: "", questsDone: 0, gifted: {}, cities: {} };
 }
 
 // ---- side quests (from Anansi or the written fallbacks) ------------------------------------------------------------
@@ -94,8 +94,15 @@ export function payQuest(state, q) {
   for (const [id, n] of Object.entries(r.items)) state.items[id] = (state.items[id] || 0) + n;
   state.story = [state.story, q.story_summary].filter(Boolean).join(" ").slice(-800); // the newest part; the gateway cuts story_so_far at 1500 chars
   state.questsDone = (state.questsDone || 0) + 1;
+  resetGifts(state); // a finished job is a reason for people to help again
   return r;
 }
+
+/** One gift (a heal or supplies) per NPC, until the party rests or finishes a quest. It is kept in the save, so it
+ *  survives changing maps and reloading; keys are "<area>:<npc>". */
+export const canGift = (s, key) => !s.gifted?.[key];
+export const markGift = (s, key) => { (s.gifted ||= {})[key] = true; };
+export const resetGifts = s => { s.gifted = {}; };
 
 /** Tidies generated quest text: raw ids become names, and stray CJK characters (a small-model glitch) go. */
 export function tidyQuest(q, names) {
