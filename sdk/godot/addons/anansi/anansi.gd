@@ -119,6 +119,25 @@ func storyline(world: Dictionary, beats := 4, theme := "") -> Dictionary:
 	return {"source": "fallback", "storyline": storyline_fallback.call(world) if storyline_fallback.is_valid() else null}
 
 
+## This player's volunteer credits: {"balance", "pending", "nodes"}, or null when the gateway cannot be reached.
+func credits() -> Variant:
+	var r: Array = await _request(HTTPClient.METHOD_GET, "/v1/credits", null, timeout_s)
+	if r[0] != 200:
+		return null
+	return {"balance": float(r[1].get("balance", 0)), "pending": float(r[1].get("pending", 0)), "nodes": int(r[1].get("nodes", 0))}
+
+
+## Link the machine that printed `code` (the node agent's --link, e.g. ABCD-EFGH) to this player.
+## {"linked": true, "balance", "pending", "nodes"}, or {"linked": false, "reason": "bad_code" | "unavailable"}.
+## Spending is not here: only your game server may spend, with the title's server key.
+func link_node(code: String) -> Dictionary:
+	var r: Array = await _request(HTTPClient.METHOD_POST, "/v1/credits/link", {"code": code}, timeout_s)
+	if r[0] == 200:
+		return {"linked": true, "balance": float(r[1].get("balance", 0)), "pending": float(r[1].get("pending", 0)),
+				"nodes": int(r[1].get("nodes", 0))}
+	return {"linked": false, "reason": "bad_code" if r[0] == 400 or r[0] == 404 else "unavailable"}
+
+
 func _gen_body(world: Dictionary, count: int, theme: String, difficulty: String, story: String, player: String) -> Dictionary:
 	return {"world": world, "steps": count, "theme": theme, "difficulty": difficulty,
 			"story_so_far": story, "player": player}
@@ -138,18 +157,26 @@ func _fallback_reply(messages: Array) -> Dictionary:
 
 ## POST JSON; returns the parsed Dictionary on a 200, otherwise null.
 func _post(path: String, body: Dictionary, timeout: float) -> Variant:
+	var r: Array = await _request(HTTPClient.METHOD_POST, path, body, timeout)
+	return r[1] if r[0] == 200 else null
+
+
+## [response code, parsed Dictionary or {}]; code 0 when the gateway could not be reached or the body is not an object.
+func _request(method: int, path: String, body: Variant, timeout: float) -> Array:
 	var req := HTTPRequest.new()
 	req.timeout = timeout
 	add_child(req)
-	if req.request(_base + path, _headers(), HTTPClient.METHOD_POST, JSON.stringify(body)) != OK:
+	if req.request(_base + path, _headers(), method, JSON.stringify(body) if body != null else "") != OK:
 		req.queue_free()
-		return null
+		return [0, {}]
 	var r: Array = await req.request_completed  # [result, response code, headers, body]
 	req.queue_free()
-	if r[0] != HTTPRequest.RESULT_SUCCESS or r[1] != 200:
-		return null
+	if r[0] != HTTPRequest.RESULT_SUCCESS:
+		return [0, {}]
 	var parsed = JSON.parse_string((r[3] as PackedByteArray).get_string_from_utf8())
-	return parsed if parsed is Dictionary else null
+	if r[1] == 200 and not parsed is Dictionary:
+		return [0, {}]
+	return [r[1], parsed if parsed is Dictionary else {}]
 
 
 ## Connects, sends the request and waits for the response headers. True if a 200 stream is ready to read.

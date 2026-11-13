@@ -64,6 +64,11 @@ try {
   $r = $bad.StreamAsync($msgs, $on, "smith").GetAwaiter().GetResult()
   Check ($r.Source -eq "fallback" -and $got.Count -eq 1 -and $got[0] -eq "(local line)") "stream falls back once on bad key"
 
+  $cr = $c.CreditsAsync().GetAwaiter().GetResult()
+  Check ($cr -ne $null -and $cr.nodes -eq 0) "credits answer"
+  $ln = $c.LinkNodeAsync("ABCD-EFGH").GetAwaiter().GetResult()
+  Check ((-not $ln.Linked) -and $ln.Reason -eq "bad_code") "unknown link code is reported as bad_code"
+
   $procs[2] | Stop-Process -Force; Start-Sleep 1
   $r = $c.ChatAsync($msgs, "smith", $false).GetAwaiter().GetResult()
   Check ($r.Source -eq "fallback") "gateway down falls back"
@@ -76,4 +81,6 @@ try {
   Check ($r.Source -eq "fallback" -and $got.Count -eq 1 -and $got[0] -eq "(local line)") "stream with gateway down falls back"
   $q = $c.QuestAsync([Anansi.TestHooks]::World, 2, "mining", "normal", $null, $null).GetAwaiter().GetResult()
   Check ($q.Source -eq "fallback" -and $q.Quest -eq $null) "quest with gateway down: no quest, no crash"
+  $ln = $c.LinkNodeAsync("ABCD-EFGH").GetAwaiter().GetResult()
+  Check ((-not $ln.Linked) -and $ln.Reason -eq "unavailable" -and $c.CreditsAsync().GetAwaiter().GetResult() -eq $null) "gateway down: unavailable, no credits"
 } finally { $procs | ForEach-Object { if (-not $_.HasExited) { Stop-Process -Id $_.Id -Force } } }

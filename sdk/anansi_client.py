@@ -66,6 +66,32 @@ class Anansi:
         """A story arc: {"source", "storyline": {"logline", "beats": [{title, summary, npc_id, location_id}]} or None}."""
         return self._generate("storyline", fallback, world=world, steps=beats, theme=theme)
 
+    def credits(self):
+        """Volunteer credits of this player: {"balance", "pending", "nodes"}, or None when the gateway cannot be reached."""
+        try:
+            r = self.http.get(self.base + "/v1/credits", headers=self.headers, timeout=self.timeout)
+            if r.status_code == 200:
+                d = r.json()
+                return {k: d[k] for k in ("balance", "pending", "nodes")}
+        except (httpx.HTTPError, ValueError, KeyError):
+            pass
+        return None
+
+    def link_node(self, code):
+        """Link the machine that printed `code` (the node agent's --link) to this player. {"linked": True, balance, pending,
+        nodes}, or {"linked": False, "reason": "bad_code" (unknown, used or expired) | "unavailable"}. Spending is not here:
+        only the game's server may spend, with the title's server key."""
+        try:
+            r = self.http.post(self.base + "/v1/credits/link", json={"code": str(code)}, headers=self.headers, timeout=self.timeout)
+            if r.status_code == 200:
+                d = r.json()
+                return {"linked": True, **{k: d[k] for k in ("balance", "pending", "nodes")}}
+            if r.status_code in (400, 404):
+                return {"linked": False, "reason": "bad_code"}
+        except (httpx.HTTPError, ValueError, KeyError):
+            pass
+        return {"linked": False, "reason": "unavailable"}
+
     def _generate(self, kind, fallback, **body):
         try:  # generation is slow (tens of seconds on a small GPU), so it has its own, longer timeout
             r = self.http.post(self.base + "/v1/" + kind, json=body, headers=self.headers, timeout=self.gen_timeout)

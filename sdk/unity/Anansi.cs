@@ -46,6 +46,16 @@ namespace Anansi
     public class QuestResult { public Quest Quest; public string Source; }      // Source: "gateway" or "fallback"; Quest is null on fallback unless you set QuestFallback
     public class StorylineResult { public Storyline Storyline; public string Source; }
 
+    // Volunteer credits (GET /v1/credits, POST /v1/credits/link). Spending is not here: only your game server may spend.
+    [Serializable] public class Credits { public double balance; public double pending; public int nodes; }
+    [Serializable] public class LinkRequest { public string code; }
+    public class LinkResult
+    {
+        public bool Linked;
+        public string Reason;    // when not linked: "bad_code" (unknown, used or expired) or "unavailable"
+        public Credits Credits;  // the player's credits after linking
+    }
+
     public class Reply
     {
         public string Say;
@@ -169,6 +179,47 @@ namespace Anansi
             }
             catch (Exception) { } // timeout, 502 (no valid quest), bad JSON: the caller falls back
             return null;
+        }
+
+        HttpRequestMessage Req(HttpMethod method, string path, string json)
+        {
+            var req = new HttpRequestMessage(method, baseUrlTrimmed + path);
+            if (json != null) req.Content = new StringContent(json, Encoding.UTF8, "application/json");
+            req.Headers.Add("X-Anansi-Title", title);
+            req.Headers.Add("X-Anansi-Key", key);
+            req.Headers.Add("X-Player-Token", playerToken());
+            return req;
+        }
+
+        // This player's volunteer credits, or null when the gateway cannot be reached.
+        public async Task<Credits> CreditsAsync()
+        {
+            try
+            {
+                using (var resp = await http.SendAsync(Req(HttpMethod.Get, "/v1/credits", null)).ConfigureAwait(false))
+                    if (resp.IsSuccessStatusCode)
+                        return Json.From<Credits>(await resp.Content.ReadAsStringAsync().ConfigureAwait(false));
+            }
+            catch (Exception) { }
+            return null;
+        }
+
+        // Link the machine that printed `code` (the node agent's --link, e.g. ABCD-EFGH) to this player.
+        public async Task<LinkResult> LinkNodeAsync(string code)
+        {
+            try
+            {
+                var body = Json.To(new LinkRequest { code = code ?? "" });
+                using (var resp = await http.SendAsync(Req(HttpMethod.Post, "/v1/credits/link", body)).ConfigureAwait(false))
+                {
+                    if (resp.IsSuccessStatusCode)
+                        return new LinkResult { Linked = true, Credits = Json.From<Credits>(await resp.Content.ReadAsStringAsync().ConfigureAwait(false)) };
+                    var s = (int)resp.StatusCode;
+                    if (s == 400 || s == 404) return new LinkResult { Linked = false, Reason = "bad_code" };
+                }
+            }
+            catch (Exception) { }
+            return new LinkResult { Linked = false, Reason = "unavailable" };
         }
 
         public async Task<Reply> ChatAsync(List<Message> messages, string npcId = null, bool structured = false)

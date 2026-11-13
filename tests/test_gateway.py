@@ -818,7 +818,7 @@ def t_sdk_quest():
 
     def make(code, payload):
         def handler(req):
-            seen.append((req.url.path, json.loads(req.content)))
+            seen.append((req.url.path, json.loads(req.content or b"null")))
             return httpx.Response(code, json=payload)
         return Anansi("http://gw", "demo", "k", "dev:1", transport=httpx.MockTransport(handler))
     quest = {"title": "T", "steps": [{"objective": "talk_to", "target_id": "brom", "description": "x"}]}
@@ -832,6 +832,12 @@ def t_sdk_quest():
     arc = {"logline": "L", "beats": []}
     assert make(200, {"storyline": arc}).storyline(WORLD, beats=3) == {"source": "gateway", "storyline": arc}
     assert seen[-1][0] == "/v1/storyline" and seen[-1][1]["steps"] == 3
+    bal = {"balance": 1.5, "pending": 2.0, "nodes": 1}
+    assert make(200, bal).credits() == bal and make(503, {}).credits() is None
+    assert make(200, {"linked": True, **bal}).link_node("ABCD-EFGH") == {"linked": True, **bal}
+    assert seen[-1] == ("/v1/credits/link", {"code": "ABCD-EFGH"})
+    assert make(404, {}).link_node("x") == {"linked": False, "reason": "bad_code"}
+    assert make(503, {}).link_node("x") == {"linked": False, "reason": "unavailable"}
 
 
 def t_store():

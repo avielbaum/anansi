@@ -75,5 +75,13 @@ func run() -> void:
 	plain.timeout_s = 1.0
 	r = await plain.chat(msgs)
 	check(r.source == "fallback" and r.say == "...", "default fallback line")
+	var fresh = make()
+	fresh.setup(URL, "demo", "change-me", "dev:sdk-credits-gd")
+	var cr = await fresh.credits()
+	check(cr != null and cr.balance == 0.0 and cr.nodes == 0, "credits of a new player are zero")
+	var ln: Dictionary = await c.link_node("ABCD-EFGH")
+	check(not ln.linked and ln.reason == "bad_code", "unknown link code is reported as bad_code")
+	ln = await plain.link_node("ABCD-EFGH")
+	check(not ln.linked and ln.reason == "unavailable" and (await plain.credits()) == null, "gateway down: unavailable, no credits")
 	print("%d passed, %d failed" % [passes, failures])
 	quit(failures)

@@ -55,6 +55,21 @@ If the gateway cannot produce a valid quest (a `502`), times out or is unreachab
 fallback quest, or `None`/`null` if you did not give one. The reward is a tier (`small`, `medium`, `large`): map it to
 your own loot.
 
+## Volunteer credits
+
+A player who runs the node agent links that machine to their account by typing the code the agent prints (see
+[nodes.md](nodes.md#credits)). Every SDK except Unreal has two calls for it:
+
+| | Python | C# | JavaScript | Godot |
+|---|---|---|---|---|
+| Balance | `credits()` | `CreditsAsync()` | `credits()` | `credits()` |
+| Link a machine | `link_node(code)` | `LinkNodeAsync(code)` | `linkNode(code)` | `link_node(code)` |
+
+Balance gives `balance` (spendable), `pending` (still in the hold) and `nodes` (linked machines), or `None`/`null` when the
+gateway cannot be reached. Linking gives the same numbers on success, or `linked: false` with `reason` `"bad_code"` (unknown,
+used or expired code: ask the player to run `--link` again) or `"unavailable"` (try later). Spending is deliberately not in the
+SDKs: your game **server** calls `POST /v1/credits/spend` with the title's `server_key`, which must never ship in the client.
+
 ## JavaScript and TypeScript (`sdk/js`)
 
 One ES module (`anansi.mjs`) with types (`anansi.d.ts`) for browsers, Node 18+, Electron, Deno and Bun. No dependencies.

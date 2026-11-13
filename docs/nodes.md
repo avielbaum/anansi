@@ -115,8 +115,8 @@ Volunteers earn credits that games can turn into in-game items. No cash and no c
    and recorded in the ledger, but earns nothing. The check and the credit are one transaction, so gateways crediting one
    wallet at once cannot pass it (tested with 16 simultaneous credits).
 
-Not built: what an item costs (each studio decides), Steam Inventory grants, SDK methods for these three routes (plain HTTP
-for now) and the DESIGN.md rule that a brand-new node earns nothing for 24 hours (the 7-day hold covers the audit window).
+Not built: what an item costs (each studio decides), Steam Inventory grants, an Unreal SDK method for credits (the other SDKs have
+`credits` and `link_node`, see [sdk.md](sdk.md#volunteer-credits)) and the DESIGN.md rule that a brand-new node earns nothing for 24 hours (the 7-day hold covers the audit window).
 
 ### What this does not give you
 

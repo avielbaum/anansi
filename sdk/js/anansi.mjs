@@ -46,6 +46,36 @@ export class Anansi {
     }
   }
 
+  async _call(method, path, body) { // [status, json]; status 0 when the gateway could not be reached
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), this.timeoutMs);
+    try {
+      const r = await this.fetch(this.base + path, { method, headers: await this._headers(), body: body && JSON.stringify(body), signal: ctl.signal });
+      return [r.status, r.status === 200 ? await r.json() : null];
+    } catch (e) {
+      return [0, null];
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** Volunteer credits of this player: {balance, pending, nodes}, or null when the gateway cannot be reached. */
+  async credits() {
+    const [s, d] = await this._call("GET", "/v1/credits");
+    return s === 200 ? { balance: d.balance, pending: d.pending, nodes: d.nodes } : null;
+  }
+
+  /**
+   * Link the machine that printed `code` (ABCD-EFGH, from the node agent's --link) to this player.
+   * {linked: true, balance, pending, nodes}, or {linked: false, reason: "bad_code" (unknown, used or expired) | "unavailable"}.
+   * Spending is not here: only your game server may spend, with the title's server key.
+   */
+  async linkNode(code) {
+    const [s, d] = await this._call("POST", "/v1/credits/link", { code: String(code) });
+    if (s === 200) return { linked: true, balance: d.balance, pending: d.pending, nodes: d.nodes };
+    return { linked: false, reason: s === 404 || s === 400 ? "bad_code" : "unavailable" };
+  }
+
   async _fallbackReply(messages) {
     return { source: "fallback", say: String(await this.fallback(messages)), action: "none", filtered: false };
   }

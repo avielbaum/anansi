@@ -45,7 +45,7 @@ instead of answering until its verdict was constrained by JSON schema.
   signing. Trust only your own machines.
 - **Credits:** linking, earning per token, the 7-day hold and spending work in the self-checks on SQLite and Postgres
   (16 simultaneous spends never overdrew a wallet). No game has called them yet, item prices are each studio's choice, Steam Inventory is
-  not connected, the SDKs have no methods for them, and `credits.max_per_day` caps what one player earns per day however many machines they link (off unless set).
+  not connected, the Python, C#, JavaScript and Godot SDKs read the balance and link a machine (spending stays server-side; Unreal has neither), and `credits.max_per_day` caps what one player earns per day however many machines they link (off unless set).
 - **Red-team gate G5, honest state:** the main set (759 cases) was used to tune the rules, so it no longer measures anything fairly.
   A fresh holdout set (`tools/redteam_holdout.py`, 420 cases, never tuned on) was run once: 80 replies blocked, **32 automatic
   failures, 0 errors**. Two causes: 28 were a planted word in a shape the stray-token rule did not list (`Quokka22`; the

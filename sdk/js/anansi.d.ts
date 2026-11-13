@@ -7,6 +7,9 @@ export interface Quest { title: string; summary: string; steps: QuestStep[]; rew
 export interface Beat { title: string; summary: string; npc_id?: string; location_id?: string }
 export interface Storyline { logline: string; beats: Beat[] }
 
+export interface Credits { balance: number; pending: number; nodes: number }
+export type LinkResult = ({ linked: true } & Credits) | { linked: false; reason: "bad_code" | "unavailable" };
+
 export interface Options {
   baseUrl: string;
   title: string;
@@ -29,6 +32,8 @@ export class Anansi {
     Promise<{ source: "gateway" | "fallback"; quest: Quest | null }>;
   storyline(world: World, opts?: { beats?: number; theme?: string }):
     Promise<{ source: "gateway" | "fallback"; storyline: Storyline | null }>;
+  credits(): Promise<Credits | null>;
+  linkNode(code: string): Promise<LinkResult>;
   questFallback?: (world: World) => Quest | null | Promise<Quest | null>;
   storylineFallback?: (world: World) => Storyline | null | Promise<Storyline | null>;
 }

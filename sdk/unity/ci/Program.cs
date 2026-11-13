@@ -58,6 +58,14 @@ static class Program
         Check(r.Source == "fallback" && got.Count == 1, "stream with gateway unreachable falls back");
         r = new Client("http://127.0.0.1:9", "demo", "change-me", ticket, null, 1).ChatAsync(msgs).GetAwaiter().GetResult();
         Check(r.Source == "fallback" && r.Say == "...", "default fallback line");
+
+        var cr = new Client(url, "demo", "change-me", () => "dev:sdk-credits-cs").CreditsAsync().GetAwaiter().GetResult();
+        Check(cr != null && cr.balance == 0 && cr.pending == 0 && cr.nodes == 0, "credits of a new player are zero");
+        var ln = c.LinkNodeAsync("ABCD-EFGH").GetAwaiter().GetResult();
+        Check(!ln.Linked && ln.Reason == "bad_code", "unknown link code is reported as bad_code");
+        var down = new Client("http://127.0.0.1:9", "demo", "change-me", ticket, null, 1);
+        ln = down.LinkNodeAsync("ABCD-EFGH").GetAwaiter().GetResult();
+        Check(!ln.Linked && ln.Reason == "unavailable" && down.CreditsAsync().GetAwaiter().GetResult() == null, "gateway down: unavailable, no credits");
         return failures == 0 ? 0 : 1;
     }
 }

@@ -43,4 +43,11 @@ r = await mk({ baseUrl: "http://127.0.0.1:9", timeoutMs: 1000, fallback: undefin
 check(r.source === "fallback" && r.say === "...", "default fallback line");
 check((await mk({ playerToken: "dev:p1" }).chat(msgs)).source === "gateway", "plain string token works");
 
+const cr = await mk({ playerToken: "dev:sdk-credits" }).credits();
+check(cr && cr.balance === 0 && cr.pending === 0 && cr.nodes === 0, "credits of a new player are zero");
+let ln = await c.linkNode("ABCD-EFGH");
+check(!ln.linked && ln.reason === "bad_code", "unknown link code is reported as bad_code");
+ln = await down.linkNode("ABCD-EFGH");
+check(!ln.linked && ln.reason === "unavailable" && (await down.credits()) === null, "gateway down: unavailable, no credits");
+
 process.exit(failures ? 1 : 0);
