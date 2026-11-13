@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Waypoint</title>
+<style>
+  :root { --ink: #eef1f6; --panel: #141826; --edge: #7fd1c7; --hi: #ffcf5a; }
+  body { margin: 0; background: #07090f; color: var(--ink); font: 16px/1.4 "Courier New", monospace; display: grid; place-items: center; align-content: center; min-height: 100vh; }
+  #wrap { position: relative; width: 640px; max-width: 100vw; }
+  canvas { width: 100%; image-rendering: pixelated; display: block; border: 3px solid var(--edge); box-sizing: border-box; outline: none; }
+  .box { position: absolute; left: 8px; right: 8px; background: var(--panel); border: 2px solid var(--edge); border-radius: 6px; padding: 10px 12px; }
+  .hidden { display: none !important; }
+  #hud { position: static; box-sizing: border-box; width: 640px; max-width: 100vw; margin-top: 6px; font-size: 13px; padding: 6px 10px; }
+  #hud b { color: var(--hi); }
+  #dialog, #battle { bottom: 8px; }
+  #log { max-height: 140px; overflow-y: auto; margin-bottom: 8px; }
+  #log p { margin: 4px 0; } #log .npc { color: var(--hi); } #log .you { color: #9fd3ff; } #log .agent { color: #ff7a7a; }
+  form { display: flex; gap: 6px; }
+  input { flex: 1; min-width: 0; font: inherit; background: #07090f; color: var(--ink); border: 1px solid var(--edge); padding: 4px 6px; }
+  button { font: inherit; background: #1f2b44; color: var(--ink); border: 1px solid var(--edge); padding: 4px 10px; cursor: pointer; }
+  button:hover, button:focus-visible { background: #2f4670; }
+  #screen { inset: 8px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; gap: 8px; overflow-y: auto; }
+  #screen h1 { margin: 0; color: var(--hi); letter-spacing: 4px; }
+  #screen p { margin: 2px 0; max-width: 520px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+  .agent-msg { color: #ff7a7a; font-style: italic; }
+  #battle .row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .src { font-size: 11px; opacity: .6; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" tabindex="0" width="640" height="384" aria-label="City map"></canvas>
+  <div id="dialog" class="box hidden" role="dialog" aria-label="Conversation">
+    <div id="log"></div>
+    <form id="say"><input id="line" autocomplete="off" placeholder="Say something..." aria-label="Your line"><button>Say</button><button type="button" id="bye">Leave</button></form>
+  </div>
+  <div id="battle" class="box hidden" role="dialog" aria-label="Battle">
+    <div id="blog" aria-live="polite"></div>
+    <div class="row"><button data-act="attack">1 Strike</button><button data-act="blink">2 Blink-strike (1 EN)</button><button data-act="heal">3 Supplies</button><button data-act="port">4 Teleport out (1 EN)</button></div>
+  </div>
+  <div id="screen" class="box"></div>
+</div>
+<div id="hud" class="box hidden" aria-live="polite"></div>
+<script type="module">
+import { Anansi } from "../../../sdk/js/anansi.mjs";
+import { SOLID, AGENT, cleanDest, atlasPrompt, parseAtlas, buildWorld, fallbackQuest, genMap, zoneAt } from "./world.mjs";
+
+// shortcut: title keys sit in the page, fine for a local dev gateway; a shipped game proxies through its own server.
+const params = new URLSearchParams(location.search);
+const pid = (() => { try { return localStorage.wpPid ||= Math.random().toString(36).slice(2); } catch { return "guest"; } })();
+const opts = { baseUrl: params.get("gateway") || "http://localhost:8080", key: params.get("key") || "change-me", playerToken: "dev:" + pid,
+  timeoutMs: 45000, generationTimeoutMs: 120000 }; // CPU-only models are slow
+const anansi = new Anansi({ ...opts, title: "waypoint", questFallback: () => fallbackQuest(here, chapter - 1) });
+const atlas = new Anansi({ ...opts, title: "waypoint-atlas" }); // what the model knows about a destination, as plain lines
+
+const JUMPS = 3;
+const SUGGEST = ["Kyoto", "Marrakech", "Reykjavík", "Buenos Aires", "Istanbul", "Cape Town", "New Orleans", "Hanoi"];
+const REWARD = { small: 1, medium: 2, large: 3 }; // supplies
+const $ = id => document.getElementById(id);
+const ctx = $("c").getContext("2d");
+const T = 32;
+
+const hero = { x: 1, y: 5, face: [1, 0], hp: 40, max: 40, atk: [5, 9], en: 3, supplies: 2, lvl: 1, xp: 0 };
+let chapter = 0, here = null, map = null, quest = null, questSrc = "", stepIdx = 0, story = "", visited = [];
+let mode = "title", talking = null, foe = null, lastMove = 0, flash = 0;
+const history = {};
+
+const rnd = ([a, b]) => a + Math.floor(Math.random() * (b - a + 1));
+const step = () => quest?.steps[stepIdx];
+const ent = id => Object.values(here.world).flat().find(e => e.id === id);
+const esc = s => String(s).replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`);
+
+function screen(html) { $("screen").innerHTML = html; $("screen").classList.toggle("hidden", !html); $("screen").querySelector("input,button")?.focus(); }
+function hud() {
+  const s = step();
+  $("hud").innerHTML = `Jump ${chapter}/${JUMPS} · <b>${esc(here.dest)}</b><br><b>${esc(quest?.title || "")}</b><br>${s ? "▶ " + esc(s.description) : ""}<br>` +
+    `HP ${hero.hp}/${hero.max} · EN ${hero.en}/3 · Lv ${hero.lvl} · ${hero.supplies} supplies`;
+}
+
+// ---- the jump: destination -> atlas -> world + map -> quest ------------------------------------------------
+function chooseDestination(before = "") {
+  mode = "title"; $("hud").classList.add("hidden");
+  screen(`${before}<p>Close your eyes. Picture a real place on Earth.</p>
+    <form id="dform"><input id="dest" maxlength="50" placeholder="City, landmark or region" aria-label="Destination"><button>Teleport</button></form>
+    <div class="chips">${SUGGEST.filter(s => !visited.includes(s)).slice(0, 6).map(s => `<button type="button" data-d="${s}">${s}</button>`).join("")}</div>`);
+  $("dform").onsubmit = e => { e.preventDefault(); const d = cleanDest($("dest").value); if (d) jump(d); };
+  $("screen").querySelectorAll("[data-d]").forEach(b => (b.onclick = () => jump(b.dataset.d)));
+}
+
+async function jump(dest) {
+  chapter++; visited.push(dest); mode = "loading";
+  screen(`<h1>✦ ${esc(dest)} ✦</h1><p>Folding space…</p><p class="src">Asking Anansi what ${esc(dest)} is like</p>`);
+  const a = await atlas.chat([{ role: "user", content: atlasPrompt(dest) }]);
+  here = buildWorld(dest, parseAtlas(a.say));
+  map = genMap(dest, here.world);
+  Object.keys(history).forEach(k => delete history[k]);
+  screen(`<h1>✦ ${esc(dest)} ✦</h1><p>${esc(here.vibe)}</p><p class="src">Weaving a quest from ${here.world.locations.map(l => esc(l.name)).join(", ")} (this can take a minute on CPU)</p>`);
+  const last = chapter === JUMPS;
+  const r = await anansi.quest(here.world, { steps: 3, difficulty: last ? "hard" : "normal", storySoFar: story, player: `level ${hero.lvl} teleporter on the run`,
+    theme: `the hero teleported to ${dest}; the Directorate is closing in${last ? " for a final confrontation with the Director" : ""}` });
+  quest = r.quest; questSrc = r.source; stepIdx = 0;
+  Object.assign(hero, map.start); hero.en = 3;
+  screen(`<h1>${esc(quest.title)}</h1><p>${esc(quest.summary)}</p><ol style="text-align:left">${quest.steps.map(s => `<li>${esc(s.description)}</li>`).join("")}</ol>
+    <p class="src">destination: ${a.source} · quest: ${questSrc}</p><button id="go">Arrive</button>`);
+  $("go").onclick = () => { screen(""); mode = "walk"; $("hud").classList.remove("hidden"); hud(); $("c").focus(); };
+}
+
+function advance(kind, id) {
+  const s = step();
+  if (!s || s.objective !== kind || s.target_id !== id) return;
+  stepIdx++; toast(`✔ ${s.description}`);
+  if (stepIdx < quest.steps.length) return hud();
+  hero.supplies += REWARD[quest.reward_tier] || 1;
+  story = [story, quest.story_summary].filter(Boolean).join(" ").slice(-600);
+  hud();
+  if (chapter === JUMPS) return startBattle({ name: "The Director", hp: 70, max: 70, atk: [6, 11], boss: true });
+  setTimeout(intercept, 500);
+}
+
+async function intercept() { // the Directorate answers every escape
+  mode = "loading";
+  screen(`<h1>Escaped</h1><p>${esc(quest.story_summary)}</p><p>+${REWARD[quest.reward_tier] || 1} supplies</p><p class="src">Incoming transmission…</p>`);
+  const r = await anansi.chat([{ role: "system", content: persona("agent") },
+    { role: "user", content: `[The hero has just teleported out of ${here.dest} and escaped you. Leave them a short voice message.]` }], { npcId: "agent", structured: true });
+  const msg = r.source === "gateway" ? r.say : `You can't blink forever. We found you in ${here.dest}. We'll find you wherever you go next.`;
+  chooseDestination(`<h1>Escaped</h1><p>${esc(quest.story_summary)}</p><p class="src">INTERCEPTED · Agent Kessler</p><p class="agent-msg">“${esc(msg)}”</p>`);
+}
+
+let toastMsg = "", toastUntil = 0;
+function toast(m) { toastMsg = m; toastUntil = performance.now() + 2500; }
+
+// ---- dialogue -----------------------------------------------------------------------------------------------
+function persona(id) {
+  const s = step(), task = s ? `The hero's current goal: ${s.description}` : "The hero is about to leave.";
+  const known = `Places here: ${here.world.locations.map(l => l.name).join(", ")}.`;
+  if (id === "agent") return `You are Agent Kessler of the Directorate, a shadowy government agency. You have tracked the teleporting hero to ${here.dest}. ` +
+    `You are calm, polite and menacing. Pressure the hero to join the Directorate and use their power for its operations, and remind them they cannot run forever. ` +
+    `Never help them. Story so far: ${story || "this is the first time you have caught up with them"}.`;
+  const n = ent(id);
+  return `You are ${n.name}, a ${n.role} in ${here.dest}. ${known} A stranger just appeared out of thin air near you; they are on the run from the Directorate, ` +
+    `a feared government agency. You are wary but kind. ${task}. Help them in your own words with real details about ${here.dest}. ` +
+    `The hero has ${hero.hp} of ${hero.max} health.`;
+}
+function say(cls, who, text) { const p = document.createElement("p"); p.className = cls; p.textContent = `${who}: ${text}`; $("log").append(p); $("log").scrollTop = 1e9; return p; }
+
+async function talk(id) {
+  advance("talk_to", id);
+  if (stepIdx >= quest.steps.length) return; // that talk finished the quest
+  talking = id; mode = "talk";
+  $("log").innerHTML = ""; $("dialog").classList.remove("hidden");
+  await reply(id, id === "agent" ? "What do you want from me?" : "Hi, sorry, I'm not from around here. Can you help me?");
+  $("line").focus();
+}
+async function reply(id, text) {
+  const h = (history[id] ||= []), n = ent(id);
+  h.push({ role: "user", content: text });
+  const p = say(id === "agent" ? "agent" : "npc", n.name, "…");
+  anansi.fallback = () => id === "agent" ? "Think about our offer. The Directorate is patient. Mostly." : "Keep your head down. Those suits have been asking questions all morning.";
+  const r = await anansi.chat([{ role: "system", content: persona(id) }, ...h.slice(-8)], { npcId: id, structured: true });
+  h.push({ role: "assistant", content: r.say });
+  p.textContent = `${n.name}: ${r.say}`;
+  if (id !== "agent" && r.action === "heal_hero") { hero.hp = hero.max; say("", "✦", `${n.name} patches you up. HP restored.`); }
+  if (id !== "agent" && r.action === "give_supplies") { hero.supplies++; say("", "✦", `${n.name} slips you some supplies.`); }
+  hud();
+}
+$("say").onsubmit = e => { e.preventDefault(); const t = $("line").value.trim().slice(0, 300); if (!t || !talking) return; $("line").value = ""; say("you", "You", t); reply(talking, t); };
+$("bye").onclick = () => { $("dialog").classList.add("hidden"); talking = null; mode = "walk"; $("c").focus(); };
+
+// ---- battle -------------------------------------------------------------------------------------------------
+const FOES = [{ name: "Directorate Agent", hp: 16, atk: [3, 5] }, { name: "Field Operative", hp: 20, atk: [3, 6] }, { name: "Tracker Drone", hp: 12, atk: [4, 6] }];
+function startBattle(f) { foe = { max: f.hp, ...f }; mode = "battle"; $("battle").classList.remove("hidden"); blog(f.boss ? "The Director steps out of the crowd. “Enough running.”" : `A ${f.name} has found you!`); $("battle").querySelector("button").focus(); }
+function blog(m) { $("blog").textContent = `${foe.name} HP ${foe.hp}/${foe.max} · You HP ${hero.hp}/${hero.max} EN ${hero.en} · ${m}`; }
+function act(a) {
+  if (mode !== "battle") return;
+  let m = "";
+  if (a === "port") { if (foe.boss) return foeTurn("Something here pins you in place. You can't teleport!"); if (!hero.en) return blog("No energy to teleport!");
+    hero.en--; flash = performance.now(); return endBattle("You blink a few streets away."); }
+  if (a === "heal") { if (!hero.supplies) return blog("No supplies left!"); hero.supplies--; hero.hp = Math.min(hero.max, hero.hp + 20); m = "You eat and bandage up (+20)."; }
+  if (a === "blink") { if (!hero.en) return blog("No energy!"); hero.en--; flash = performance.now(); const d = rnd(hero.atk) * 2; foe.hp = Math.max(0, foe.hp - d); m = `You blink behind them and strike for ${d}!`; }
+  if (a === "attack") { const d = rnd(hero.atk); foe.hp = Math.max(0, foe.hp - d); m = `You strike for ${d}.`; }
+  if (foe.hp <= 0) {
+    if (!foe.boss) { hero.xp += 6; hero.en = Math.min(3, hero.en + 1); }
+    if (hero.xp >= hero.lvl * 12) { hero.xp = 0; hero.lvl++; hero.max += 8; hero.hp = hero.max; hero.atk = hero.atk.map(v => v + 2); m += " Level up!"; }
+    return endBattle(`${m} The ${foe.name} goes down!`);
+  }
+  foeTurn(m);
+}
+function foeTurn(m) {
+  const d = rnd(foe.atk); hero.hp = Math.max(0, hero.hp - d);
+  blog(`${m} The ${foe.name} hits for ${d}.`); hud();
+  if (hero.hp <= 0) mode = "wait", setTimeout(() => endBattle("Everything goes dark… you wake on a side street, bruised, supplies gone.", true), 900);
+}
+function endBattle(m, lost) {
+  blog(m); mode = "wait"; // no more turns while the result shows
+  const boss = foe.boss;
+  if (lost) { hero.hp = hero.max; hero.supplies = Math.max(0, hero.supplies - 1); Object.assign(hero, map.start); }
+  setTimeout(() => {
+    $("battle").classList.add("hidden"); foe = null; hud();
+    if (boss && lost) return startBattle({ name: "The Director", hp: 70, atk: [6, 11], boss: true });
+    if (boss) { mode = "end"; $("hud").classList.add("hidden");
+      return screen(`<h1>FREE</h1><p>The Director falls. The Directorate's files on you burn with their headquarters' servers.</p><p>${esc(story)}</p>
+        <p class="src">Route: ${visited.map(esc).join(" → ")} · Level ${hero.lvl}</p><button onclick="location.reload()">Jump again</button>`); }
+    mode = "walk"; $("c").focus();
+  }, 1200);
+}
+$("battle").onclick = e => e.target.dataset.act && act(e.target.dataset.act);
+
+// ---- the city -----------------------------------------------------------------------------------------------
+const npcNear = () => here.world.npcs.find(n => { const p = map.npcPos[n.id]; return Math.abs(p.x - hero.x) + Math.abs(p.y - hero.y) <= 1; });
+function arrive(x, y) {
+  hero.x = x; hero.y = y;
+  advance("explore", here.world.locations[zoneAt(x)].id);
+  const s = step();
+  if (s?.objective === "fetch") { const p = map.itemPos[s.target_id]; if (p.x === x && p.y === y) advance("fetch", s.target_id); }
+  if (mode === "walk" && map.map[y][x] !== "," && Math.random() < 1 / 12) startBattle(FOES[Math.floor(Math.random() * FOES.length)]);
+}
+function move(dx, dy) {
+  hero.face = [dx, dy];
+  if (!SOLID.has(map.map[hero.y + dy][hero.x + dx])) arrive(hero.x + dx, hero.y + dy);
+}
+function blinkHop() { // teleport up to 3 tiles ahead, through walls and water
+  for (let k = 3; k >= 2; k--) {
+    const x = hero.x + hero.face[0] * k, y = hero.y + hero.face[1] * k;
+    if (map.map[y]?.[x] && !SOLID.has(map.map[y][x])) { flash = performance.now(); return arrive(x, y); }
+  }
+  toast("Nowhere to land.");
+}
+const DIRS = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0], w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0] };
+const held = new Set();
+addEventListener("keydown", e => {
+  if (mode === "battle" && ["1", "2", "3", "4"].includes(e.key)) return act(["attack", "blink", "heal", "port"][e.key - 1]);
+  if (mode === "talk" && e.key === "Escape") return $("bye").click();
+  if (mode !== "walk") return;
+  if (DIRS[e.key]) { e.preventDefault(); held.add(e.key); if (!e.repeat) { move(...DIRS[e.key]); lastMove = performance.now(); } }
+  if (e.key === "t" || e.key === "q") blinkHop();
+  if (e.key === "e" || e.key === " " || e.key === "Enter") { e.preventDefault(); const n = npcNear(); if (n) talk(n.id); }
+});
+addEventListener("keyup", e => held.delete(e.key));
+
+function person(x, y, body, s = 1) {
+  ctx.fillStyle = body; ctx.fillRect(x + 8 * s, y + 12 * s, 16 * s, 16 * s);
+  ctx.fillStyle = "#e9c29b"; ctx.beginPath(); ctx.arc(x + 16 * s, y + 9 * s, 6 * s, 0, 7); ctx.fill();
+}
+function draw(now) {
+  requestAnimationFrame(draw);
+  if (!map) return;
+  if (mode === "walk" && held.size && now - lastMove > 140) { move(...DIRS[[...held].pop()]); lastMove = now; }
+  const h = map.hue, col = { ".": `hsl(${h} 30% 42%)`, ",": `hsl(${h} 20% 68%)`, B: `hsl(${(h + 180) % 360} 22% 32%)`, T: `hsl(${(h + 90) % 360} 40% 26%)`, "~": "hsl(205 55% 40%)", "#": "#10131c" };
+  map.map.forEach((row, y) => [...row].forEach((ch, x) => {
+    ctx.fillStyle = col[ch]; ctx.fillRect(x * T, y * T, T, T);
+    if (ch === "B") { ctx.fillStyle = "#ffe9a8"; ctx.fillRect(x * T + 8, y * T + 10, 5, 5); ctx.fillRect(x * T + 19, y * T + 10, 5, 5); }
+    if (ch === "T") { ctx.fillStyle = `hsl(${(h + 90) % 360} 45% 34%)`; ctx.beginPath(); ctx.arc(x * T + 16, y * T + 14, 11, 0, 7); ctx.fill(); }
+  }));
+  ctx.font = "11px monospace"; ctx.fillStyle = "#cfd8e8";
+  here.world.locations.forEach((l, i) => ctx.fillText(l.name.slice(0, 24), [8, 232, 424][i], 12));
+  const s = step();
+  if (s?.objective === "fetch") { const p = map.itemPos[s.target_id]; ctx.fillStyle = `hsl(48 100% ${60 + 15 * Math.sin(now / 200)}%)`;
+    ctx.beginPath(); ctx.arc(p.x * T + 16, p.y * T + 16, 7, 0, 7); ctx.fill(); }
+  for (const n of here.world.npcs) {
+    const p = map.npcPos[n.id];
+    person(p.x * T, p.y * T, n.id === "agent" ? "#2b2f38" : `hsl(${(h + 40 * +n.id.slice(1)) % 360} 60% 55%)`);
+    if (n.id === "agent") { ctx.fillStyle = "#000"; ctx.fillRect(p.x * T + 10, p.y * T + 7, 12, 3); }
+    if (s?.objective === "talk_to" && s.target_id === n.id) { ctx.fillStyle = "#ffcf5a"; ctx.font = "bold 18px monospace"; ctx.fillText("!", p.x * T + 12, p.y * T - 2); }
+  }
+  person(hero.x * T, hero.y * T, "#3fd0c0");
+  if (foe) { // battle scene over the map
+    ctx.fillStyle = "#07090fe8"; ctx.fillRect(0, 0, 640, 384);
+    const bob = Math.sin(now / 300) * 4, sc = foe.boss ? 5 : 3.5;
+    if (foe.name === "Tracker Drone") { ctx.fillStyle = "#555c6e"; ctx.fillRect(170, 110 + bob, 100, 30); ctx.fillStyle = "#f33"; ctx.beginPath(); ctx.arc(220, 125 + bob, 7, 0, 7); ctx.fill(); }
+    else { person(220 - 16 * sc, 70 + bob, foe.boss ? "#5a2a66" : "#3a4150", sc); ctx.fillStyle = "#000"; ctx.fillRect(220 - 6 * sc, 70 + bob + 7 * sc, 12 * sc, 3 * sc); }
+    ctx.fillStyle = "#c33"; ctx.fillRect(160, 50, 120 * foe.hp / foe.max, 6);
+    person(420, 120, "#3fd0c0", 2.5);
+  }
+  const f = now - flash; // teleport shimmer
+  if (f < 250) { ctx.fillStyle = `rgba(127,209,199,${0.5 * (1 - f / 250)})`; ctx.fillRect(0, 0, 640, 384); }
+  if (now < toastUntil) { ctx.fillStyle = "#000a"; ctx.fillRect(100, 340, 440, 30); ctx.fillStyle = "#ffcf5a"; ctx.font = "13px monospace"; ctx.textAlign = "center"; ctx.fillText(toastMsg.slice(0, 54), 320, 360); ctx.textAlign = "start"; }
+}
+
+screen(`<h1>WAYPOINT</h1><p>You can be anywhere you can picture.</p><p>The Directorate knows. Their agents want your gift for their own operations, and they are done asking nicely.</p>
+  <p>Three jumps to lose them for good.</p><p class="src">Arrows/WASD move · T blink · E talk · 1-4 in battle<br>Destinations, people, quests and dialogue by Anansi</p><button id="go">Begin</button>`);
+$("go").onclick = () => chooseDestination("<h1>Jump 1</h1>");
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+{
+  "_doc": "LPC characters for build_sprites.py. layers: [sheet_definitions path, colour]. The colour is a variant file name or a palette entry.",
+  "lead_m": { "name": "Kai", "body": "male", "layers": [
+    ["body/body.json", "olive"],
+    ["head/heads/human/heads_human_male.json", "olive"],
+    ["hair/short/hair_messy1.json", "chestnut"],
+    ["torso/shirts/shortsleeve/torso_clothes_tshirt.json", "white"],
+    ["torso/jacket/torso_jacket_trench.json", "dark gray"],
+    ["legs/pants/legs_pants2.json", "navy"],
+    ["feet/boots/feet_boots_basic.json", "brown"]
+  ]},
+  "lead_f": { "name": "Mira", "body": "female", "layers": [
+    ["body/body.json", "bronze"],
+    ["head/heads/human/heads_human_female.json", "bronze"],
+    ["hair/braids/hair_ponytail.json", "blonde"],
+    ["torso/shirts/torso_clothes_blouse_longsleeve.json", "forest"],
+    ["legs/pants/legs_pants2.json", "charcoal"],
+    ["feet/shoes/feet_shoes_basic.json", "brown"]
+  ]},
+  "agent": { "name": "Directorate agent", "body": "male", "layers": [
+    ["body/body.json", "light"],
+    ["head/heads/human/heads_human_male.json", "light"],
+    ["hair/short/hair_messy1.json", "black"],
+    ["torso/shirts/longsleeve/torso_clothes_longsleeve2_buttoned.json", "white"],
+    ["torso/jacket/torso_jacket_collared.json", "black"],
+    ["headwear/neck/neck_necktie.json", "red"],
+    ["legs/pants/legs_pants2.json", "black"],
+    ["feet/shoes/feet_shoes_basic.json", "black"],
+    ["headwear/accessories/glasses/facial_glasses_sunglasses.json", "black"]
+  ]},
+  "local_f": { "name": "Ines", "body": "female", "layers": [
+    ["body/body.json", "light"],
+    ["head/heads/human/heads_human_female.json", "light"],
+    ["hair/bob/hair_bob.json", "dark_brown"],
+    ["torso/shirts/shortsleeve/torso_clothes_tshirt.json", "red"],
+    ["legs/pants/legs_pants2.json", "blue"],
+    ["feet/shoes/feet_shoes_basic.json", "brown"]
+  ]},
+  "shopkeeper": { "name": "Shopkeeper", "body": "male", "layers": [
+    ["body/body.json", "light"],
+    ["head/heads/human/heads_human_male_elderly.json", "light"],
+    ["hair/bald/hair_balding.json", "gray"],
+    ["hair/beards/beards_beard.json", "gray"],
+    ["torso/shirts/shortsleeve/torso_clothes_tshirt.json", "blue"],
+    ["torso/aprons/torso_aprons_apron.json", "leather"],
+    ["legs/pants/legs_pants2.json", "brown"],
+    ["feet/shoes/feet_shoes_basic.json", "black"]
+  ]}
+}
