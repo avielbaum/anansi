@@ -5,8 +5,8 @@ this table, from the top.
 
 | Path | Licence | In short |
 |---|---|---|
-| `examples/*/assets/` | Each file's own licence (CC-BY-SA 3.0 or CC0); see [examples/jrpg/assets/LICENSE.md](examples/jrpg/assets/LICENSE.md) | Third-party art. Credit the authors and share changes to the art alike. |
-| `examples/` | [MIT](examples/jrpg/LICENSE-MIT) OR [Apache-2.0](examples/jrpg/LICENSE-APACHE), your choice | Example games: copy them into any project. |
+| `examples/*/assets/` | The art's own licence, given in each example's `assets/LICENSE.md` (for example [Waypoint's](examples/waypoint/assets/LICENSE.md): CC-BY-SA 3.0 and CC0) | Third-party art. Credit the authors and follow its terms. |
+| `examples/` | MIT OR Apache-2.0, your choice; each example carries `LICENSE-MIT` and `LICENSE-APACHE` | Example games: copy them into any project. |
 | `sdk/` | [MIT](sdk/LICENSE-MIT) OR [Apache-2.0](sdk/LICENSE-APACHE), your choice | Ship the SDKs inside any game, free or paid, open or closed. |
 | `tools/` | [MIT](tools/LICENSE-MIT) OR [Apache-2.0](tools/LICENSE-APACHE), your choice | Evaluation, red-team and helper scripts. |
 | `docs/`, `README.md`, `DESIGN.md`, `LICENSING.md` | [MIT](docs/LICENSE-MIT) OR [Apache-2.0](docs/LICENSE-APACHE), your choice | Documentation. |

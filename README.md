@@ -144,6 +144,7 @@ No model installed? Use the mock nodes: [docs/quickstart.md](docs/quickstart.md)
 | `node/agent.py` | Volunteer node agent |
 | `sdk/` | Python client; C# client for Unity and .NET, with a cross-platform CI test; JavaScript/TypeScript client (`sdk/js`); Unreal plugin (`sdk/unreal`); Godot addon (`sdk/godot`) |
 | `tools/` | Mock node, load test, action-accuracy eval, blind-rating sheets for gate G1, prompt-leak eval |
+| `examples/` | Example games, one folder each, built on the SDKs; see [examples/README.md](examples/README.md) |
 | `evals/` | Labelled test prompts |
 | `tests/` | Self-checks |
 | `deploy/`, `config.*.json` | Dockerfile, compose file, systemd unit, example configs |
@@ -158,4 +159,4 @@ Different parts of the repository use different licences; [LICENSING.md](LICENSI
   personal use, research, study, hobby projects and other noncommercial purposes. **Running it commercially, for
   example as a paid service or as the backend of a monetised game, needs a separate commercial licence from the
   licensor.** This part is source-available, not open source by the OSI definition.
-- **Art in `examples/`:** its own licence (CC-BY-SA 3.0 or CC0); see [examples/jrpg/assets/LICENSE.md](examples/jrpg/assets/LICENSE.md).
+- **Art in `examples/`:** its own licence, given in each example's `assets/LICENSE.md` (Waypoint: CC-BY-SA 3.0 and CC0, see [its licence file](examples/waypoint/assets/LICENSE.md)).

@@ -1,6 +1,6 @@
 # Licence of the files in this folder
 
-The example's code (`examples/jrpg/src`, `tools`, `check.mjs`) is MIT or Apache-2.0 (see `examples/jrpg/LICENSE-MIT` and `LICENSE-APACHE`).
+The example's code (`examples/waypoint/src`, `tools`, `check.mjs`) is MIT or Apache-2.0 (see `examples/waypoint/LICENSE-MIT` and `LICENSE-APACHE`).
 **The art in this folder is not.** It comes from other artists and keeps their licences. You may use, share and
 change it, also commercially, as long as you follow the terms below.
 

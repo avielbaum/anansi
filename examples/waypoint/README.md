@@ -30,7 +30,7 @@ From the `anansi` folder:
 python -m http.server 8000
 ```
 
-Open http://localhost:8000/examples/jrpg/ . Self-check: `node examples/jrpg/check.mjs`.
+Open http://localhost:8000/examples/waypoint/ . Self-check: `node examples/waypoint/check.mjs`.
 
 ## Characters
 

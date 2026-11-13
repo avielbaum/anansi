@@ -23,16 +23,16 @@ on generic districts and authored quests.
 From the `anansi` folder, with Ollama running and `qwen3:1.7b` pulled:
 
 ```bash
-ANANSI_CONFIG=examples/jrpg/prototype/config.jrpg.json python -m uvicorn gateway.app:make_app --factory --port 8080
+ANANSI_CONFIG=examples/waypoint/prototype/config.waypoint.json python -m uvicorn gateway.app:make_app --factory --port 8080
 ```
 
 ```bash
 python -m http.server 8000
 ```
 
-Open http://localhost:8000/examples/jrpg/prototype/ . Optional query parameters: `?gateway=URL&key=KEY`.
+Open http://localhost:8000/examples/waypoint/prototype/ . Optional query parameters: `?gateway=URL&key=KEY`.
 
-Controls: arrows or WASD to move, T to blink, E to talk, 1 to 4 in battle. Self-check: `node examples/jrpg/prototype/check.mjs`.
+Controls: arrows or WASD to move, T to blink, E to talk, 1 to 4 in battle. Self-check: `node examples/waypoint/prototype/check.mjs`.
 
 On CPU, each jump takes about a minute (atlas, then quest). A 1.7B model knows famous cities well and small ones
 poorly, and sometimes misspells names. The title keys are in the page, which is fine for a local dev gateway but not
