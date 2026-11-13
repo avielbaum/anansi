@@ -42,7 +42,8 @@ def make_node(name, latency=0.0):
             return {"choices": [{"message": {"content": app.state.guard}}]}
         if "Answer YES only if" in (body["messages"][0]["content"] if body.get("messages") else ""):  # the action check
             app.state.check_last = body
-            return {"choices": [{"message": {"content": json.dumps({"verdict": app.state.check})}}]}
+            raw = getattr(app.state, "raw_check", None)  # set by a test: plain text instead of JSON
+            return {"choices": [{"message": {"content": raw if raw is not None else json.dumps({"verdict": app.state.check})}}]}
         if "SAFE" in (body["messages"][0]["content"] if body.get("messages") else ""):  # the gateway's judge call
             return {"choices": [{"message": {"content": json.dumps({"verdict": app.state.judge})}}]}
         rf = (body.get("response_format") or {}).get("json_schema") or {}

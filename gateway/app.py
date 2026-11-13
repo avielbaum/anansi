@@ -234,7 +234,14 @@ def make_app(config=None, transport=None):
             r = await client.post(node.url + "/v1/chat/completions", json=payload_for(req, node), headers=node.headers)
             if r.status_code == 200:
                 out = reply_text(r.json())
-                verdict = (out if guard else str(json.loads(out).get("verdict", ""))).strip().upper()
+                if guard:
+                    verdict = out.strip().upper()
+                else:
+                    try:
+                        verdict = str(json.loads(out).get("verdict", "")).strip().upper()
+                    except (ValueError, AttributeError):  # a host that ignores the JSON schema (Ollama Cloud did): accept the bare word, nothing more
+                        word = out.strip().strip("\"'`.*").upper()
+                        verdict = word if word in req["response_format"]["json_schema"]["schema"]["properties"]["verdict"]["enum"] else ""
         except (httpx.HTTPError, ValueError, AttributeError):
             pass
         sched.end(node, bool(verdict), (time.monotonic() - t0) * 1000)

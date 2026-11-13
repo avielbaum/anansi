@@ -72,6 +72,13 @@ model call. `/admin/stats` counts `action_checks_no` and `action_check_errors`. 
 dev split a question listing exceptions ("asking a price is not haggling") confirmed 8 of 21 haggles, the short one above
 18 of 21, both with no false YES. Qwen3-1.7B as the checker confirmed only 9 of 21; use 4B or larger.
 
+### Hosts that ignore the JSON schema
+
+Ollama Cloud ignored `response_format` (and Ollama's own `format`) in a test, so the model answered in free text. On such a
+host, say in the title's `system_prefix` that the reply must be only `{"say": ..., "action": ...}`; with that, every G1
+reply from gemma4:31b was valid JSON. Judge and action-check answers that come back as a bare word are accepted when the
+word is exactly one of the allowed verdicts (`YES`, `"SAFE".`), and anything longer still fails closed.
+
 ### Escalation (`escalate`)
 
 Optional per title: `{"model": "npc-large"}` (a logical model your nodes serve). When the small model's reply is blocked by
