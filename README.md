@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://github.com/avielbaum/anansi/actions/workflows/ci.yml"><img src="https://github.com/avielbaum/anansi/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/status-phase%201%20prototype-orange" alt="Status: Phase 1 prototype">
-  <img src="https://img.shields.io/badge/licence-PolyForm%20Noncommercial-blue" alt="Licence: PolyForm Noncommercial 1.0.0">
+  <img src="https://img.shields.io/badge/licence-PolyForm%20NC%20core%20%C2%B7%20MIT%2FApache%20SDKs-blue" alt="Licence: PolyForm Noncommercial for the core, MIT or Apache-2.0 for SDKs, tools and docs">
 </p>
 
 <p align="center">
@@ -150,7 +150,12 @@ No model installed? Use the mock nodes: [docs/quickstart.md](docs/quickstart.md)
 
 ## Licence
 
-[PolyForm Noncommercial 1.0.0](LICENSE). Free for personal use, research, study, hobby projects and other
-noncommercial purposes. **Commercial use, including shipping it inside a paid or monetised game or running it as a
-paid service, needs a separate commercial licence from the licensor.** This is source-available, not open source by
-the OSI definition.
+Different parts of the repository use different licences; [LICENSING.md](LICENSING.md) has the full table.
+
+- **SDKs, tools, docs and examples:** MIT or Apache-2.0, your choice. Ship the SDKs in any game, free or paid,
+  open or closed.
+- **The core service** (`gateway/`, `node/` and the deployment files): [PolyForm Noncommercial 1.0.0](LICENSE). Free for
+  personal use, research, study, hobby projects and other noncommercial purposes. **Running it commercially, for
+  example as a paid service or as the backend of a monetised game, needs a separate commercial licence from the
+  licensor.** This part is source-available, not open source by the OSI definition.
+- **Art in `examples/`:** its own licence (CC-BY-SA 3.0 or CC0); see [examples/jrpg/assets/LICENSE.md](examples/jrpg/assets/LICENSE.md).

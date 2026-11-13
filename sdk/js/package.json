@@ -6,5 +6,5 @@
   "main": "anansi.mjs",
   "types": "anansi.d.ts",
   "scripts": { "test": "node test.mjs" },
-  "license": "PolyForm-Noncommercial-1.0.0"
+  "license": "MIT OR Apache-2.0"
 }
