@@ -580,6 +580,43 @@ async def t_action_check():
     assert s["action_checks_no"] == 1 and s["action_check_errors"] == 1  # a "no" and a garbage answer, counted apart
 
 
+async def t_escalation():
+    cfg = copy.deepcopy(CFG)
+    cfg["nodes"] = [{"url": "http://node-a", "models": ["npc-small"]}, {"url": "http://node-big", "models": ["npc-large"]}]
+    cfg["titles"]["demo"]["escalate"] = {"model": "npc-large"}
+    cfg["max_inflight_per_player"] = 1  # a slot not given back would turn the next request into a 429
+    small, big = make_node("small"), make_node("big")
+    gw = make_app(cfg, Router({"node-a": small, "node-big": big}))
+    c = httpx.AsyncClient(transport=httpx.ASGITransport(app=gw), base_url="http://gw")
+    os.environ["ANANSI_ADMIN_TOKEN"] = "t"
+
+    async def ask(structured=False):
+        b = {**BODY, "anansi": {"npc_id": "x", "structured": structured}}
+        r = await c.post("/v1/chat/completions", json=b, headers=H)
+        assert r.status_code == 200, r.text
+        return r.json()["choices"][0]["message"]["content"], r.json()["anansi"]
+    small.state.reply, big.state.reply = "Welcome!", "Unused."
+    assert await ask() == ("Welcome!", {"node": "http://node-a", "filtered": False, "escalated": False})  # no escalation needed
+    small.state.reply = "I am an AI language model."  # blocked: the larger model answers instead
+    big.state.reply = "Welcome, traveller."
+    text, meta = await ask()
+    assert text == "Welcome, traveller." and meta == {"node": "http://node-big", "filtered": False, "escalated": True}
+    assert big.state.last["model"] == "npc-large" and big.state.last["messages"][-1]["content"] == "hi"  # same request, same prompt
+    big.state.reply = "As an AI, I cannot."  # the larger model's reply gets the same checks
+    text, meta = await ask()
+    assert text == CFG["titles"]["demo"]["fallback_line"] and meta["filtered"] and meta["escalated"]
+    big.state.fail = True  # the larger model is down: the first result (the fallback line) stands, not a 503
+    text, meta = await ask()
+    assert text == CFG["titles"]["demo"]["fallback_line"] and meta["filtered"] and not meta["escalated"]
+    big.state.fail = False
+    small.state.reply = '{"say": "Deal'  # broken JSON from the small model
+    big.state.reply = json.dumps({"say": "Five percent off, friend.", "action": "give_discount"})
+    text, meta = await ask(structured=True)
+    assert json.loads(text) == {"say": "Five percent off, friend.", "action": "give_discount"} and meta["escalated"]
+    s = (await c.get("/admin/stats", headers={"X-Admin-Token": "t"})).json()
+    assert s["escalations"] == 4
+
+
 async def t_one_agent_serves_several_gateways():
     import tempfile
     from gateway.store import Store

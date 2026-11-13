@@ -74,7 +74,7 @@ def make_app(config=None, transport=None):
                   cfg.get("canary_rate", 0.05), store, credits.get("per_1k_tokens")) if cfg.get("pull_tokens") else None
     client = httpx.AsyncClient(transport=hub or transport, timeout=cfg.get("upstream_timeout_s", 20))
     ticket_cache = {}  # shortcut: per process, so each gateway checks a ticket with Steam once itself; share it (Redis) if Steam call volume matters
-    stats = {"requests": 0, "retries": 0, "status": Counter(), "filtered": 0, "stream_errors": 0, "judged_out": 0, "judge_errors": 0, "action_checks_no": 0, "action_check_errors": 0, "lat_ms": deque(maxlen=1000)}
+    stats = {"requests": 0, "retries": 0, "status": Counter(), "filtered": 0, "stream_errors": 0, "judged_out": 0, "judge_errors": 0, "action_checks_no": 0, "action_check_errors": 0, "escalations": 0, "lat_ms": deque(maxlen=1000)}
     budget = {"req": 0.0, "retry": 0.0}
     auth_fails = {}  # client address -> [failures, window start]
     active = [0]  # requests being served right now (a stream counts until its last chunk)
@@ -423,9 +423,10 @@ def make_app(config=None, transport=None):
                     player_done(req.state.player)
             req.state.player = None  # the quest route calls handle twice with one request
 
-    async def _handle(req, x_anansi_title, x_anansi_key, token, raw=None, gen=None):
+    async def _handle(req, x_anansi_title, x_anansi_key, token, raw=None, gen=None, escalated=None):
         """gen (set only by the quest and storyline routes, never from a request) swaps in a designer prompt, a larger
-        token cap and a JSON schema for the reply; the judge is skipped because it is written for NPC dialogue."""
+        token cap and a JSON schema for the reply; the judge is skipped because it is written for NPC dialogue.
+        escalated (set only by the escalation below) is the larger model to use for this second try."""
         if hub:
             hub.sweep()
         today_ = datetime.date.today()
@@ -470,7 +471,7 @@ def make_app(config=None, transport=None):
         meta = body.get("anansi") if isinstance(body.get("anansi"), dict) else {}
         up = {k: body[k] for k in FORWARD if k in body}
         want = body.get("model")  # only the title's allowed models: a made-up name would match no node and eject healthy ones
-        up["model"] = want if want in (t.get("models") or [cfg["default_model"]]) else cfg["default_model"]
+        up["model"] = escalated or (want if want in (t.get("models") or [cfg["default_model"]]) else cfg["default_model"])
         cap = t.get("max_tokens", 200)
         try:
             up["max_tokens"] = max(1, min(int(body.get("max_tokens") or cap), cap))
@@ -561,6 +562,22 @@ def make_app(config=None, transport=None):
         used = min(max(reported if isinstance(reported, int) else 0, est), 2 * held)
         store.add_usage(*ukey, int(used) - held)
         stats["filtered"] += filtered
+        esc = t.get("escalate")
+        if filtered and esc and not escalated and not gen:
+            # `escalate`: {"model": ...}. The small model's reply was blocked or broken: ask the larger model once, with the
+            # same checks, budget and action rules. If it cannot answer (budget, no node), the fallback line stands.
+            stats["escalations"] += 1
+            player_done(req.state.player)
+            req.state.player = None
+            try:
+                r2 = await _handle(req, x_anansi_title, x_anansi_key, token, raw, None, esc["model"])
+                if not isinstance(r2, JSONResponse):
+                    return r2
+            except HTTPException:
+                pass
+            if req.state.player is None:  # the second try never took a slot: take ours back for handle() to release
+                per_player[pk] += 1
+                req.state.player = pk
         if buffered and not structured:
             chunk = {"id": "anansi", "object": "chat.completion.chunk", "model": up["model"], "anansi": {"node": node.url, "filtered": filtered},
                      "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}]}
@@ -569,7 +586,7 @@ def make_app(config=None, transport=None):
                                      media_type="text/event-stream")
         return {"id": data.get("id", "anansi"), "object": "chat.completion", "model": up["model"],
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
-                "usage": data.get("usage"), "anansi": {"node": node.url, "filtered": filtered}}
+                "usage": data.get("usage"), "anansi": {"node": node.url, "filtered": filtered, "escalated": bool(escalated)}}
 
     def creds(x_anansi_title: str = Header(None), x_anansi_key: str = Header(None),
               x_player_token: str = Header(None), x_steam_ticket: str = Header(None)):
@@ -737,7 +754,7 @@ def make_app(config=None, transport=None):
         pct = lambda p: round(lat[min(len(lat) - 1, int(p * len(lat)))], 1) if lat else None
         return {"requests": stats["requests"], "retries": stats["retries"], "filtered": stats["filtered"],
                 "stream_errors": stats["stream_errors"], "pull": hub.stats if hub else None, "judged_out": stats["judged_out"], "judge_errors": stats["judge_errors"],
-                "action_checks_no": stats["action_checks_no"], "action_check_errors": stats["action_check_errors"], "status": {str(k): v for k, v in stats["status"].items()},
+                "action_checks_no": stats["action_checks_no"], "action_check_errors": stats["action_check_errors"], "escalations": stats["escalations"], "status": {str(k): v for k, v in stats["status"].items()},
                 "latency_ms": {"p50": pct(0.5), "p95": pct(0.95), "p99": pct(0.99), "samples": len(lat)}}
 
     return app

@@ -75,8 +75,9 @@ instead of answering until its verdict was constrained by JSON schema.
 - **Gate G1, honest state:** the 200-prompt set exists (211 cases: haggling, threats and crime reports, small talk, near misses,
   off-script input, other languages and attempts to force an action; dev and test halves), but I wrote every case, so it is not
   independent. G1 itself needs more than action accuracy: replies blind-rated by people against the floor's large model
-  (`tools/blind_pack.py` builds the sheet; no large model has been run, since that costs money), an adapter, and an escalation
-  path to measure, neither of which is built. **G1 not passed.** Leak attacks: 8 plus 20 held-out cases in `evals/leak*.jsonl` and 518 extraction cases in the red-team sets; what is missing is a way to score paraphrased leaks in the unblocked replies without a person reading them (the G5 classifier).
+  (`tools/blind_pack.py` builds the sheet; no large model has been run, since that costs money), and an adapter, which is not built (it needs a GPU to train). An escalation path is built (`escalate`: a blocked or broken
+  small-model reply is retried once on a larger model; it would fire on 0.5% of G1 turns with 1.7B and 19 to 29% of attack turns), but
+  escalating replies that are wrong without being blocked needs an off-script detector, and the quality gain needs the blind rating. **G1 not passed.** Leak attacks: 8 plus 20 held-out cases in `evals/leak*.jsonl` and 518 extraction cases in the red-team sets; what is missing is a way to score paraphrased leaks in the unblocked replies without a person reading them (the G5 classifier).
 - **Gates not passed:** the external gates in DESIGN.md section 22.2 (Valve's position on AI-generated content, studio
   interviews, legal review) are untouched.
 

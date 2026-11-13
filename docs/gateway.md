@@ -72,6 +72,17 @@ model call. `/admin/stats` counts `action_checks_no` and `action_check_errors`. 
 dev split a question listing exceptions ("asking a price is not haggling") confirmed 8 of 21 haggles, the short one above
 18 of 21, both with no false YES. Qwen3-1.7B as the checker confirmed only 9 of 21; use 4B or larger.
 
+### Escalation (`escalate`)
+
+Optional per title: `{"model": "npc-large"}` (a logical model your nodes serve). When the small model's reply is blocked by
+the output checks or is not valid JSON, the gateway asks that model once, with the same prompt, checks, action rules and
+player budget, and returns its reply instead of the fallback line; the response says `"escalated": true`. If the larger
+model cannot answer (no node, budget used), the fallback line stands. Plain streams that are not judged are never
+escalated (their sentences have already gone out). `/admin/stats` counts `escalations`. How often it fires, from recorded
+replies: 1 of 211 G1 turns with Qwen3-1.7B as the NPC (0.5%), 5 of 211 with 4B (2.4%), and 19 to 29% of red-team attack
+turns, which therefore cost two calls each (both charged to the attacker's budget). Not built: escalating turns the small
+model gets wrong without being blocked (off-script input, low confidence); that needs a detector on every turn.
+
 ## Quests and storylines
 
 Enable per title with a `quest` block: `{"lore": "...", "max_steps": 4, "max_tokens": 500, "objectives": {"talk_to": "npcs", "explore": "locations", "fetch": "items"}}`
