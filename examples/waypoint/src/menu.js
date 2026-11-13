@@ -77,10 +77,17 @@ export class Menu extends Phaser.Scene {
     const p = G.s.plot;
     const lines = [ACTS[p.act] || ACTS[1], "", objective(p)];
     if (p.act === 2) lines.push("", `Relays destroyed: ${p.relays.length ? p.relays.join(", ") : "none yet"}`);
+    await this.page(lines.join("\n"));
+  }
+
+  /** A full-width page of text until Back. The party summary is hidden meanwhile: text is drawn above every window, so it would show through. */
+  async page(body) {
+    this.summary.setVisible(false);
     const win = drawWindow(this, 8, 8, 470, H - 16);
-    const body = text(this, 26, 24, lines.join("\n"), { wordWrap: { width: 430 }, lineSpacing: 6 });
+    const t = text(this, 26, 24, body, { wordWrap: { width: 430 }, lineSpacing: 6 });
     await choose(this, 486, H - 140, 146, ["Back"]);
-    win.destroy(); body.destroy();
+    win.destroy(); t.destroy();
+    this.summary.setVisible(true);
   }
 
   async quests() {
@@ -89,10 +96,7 @@ export class Menu extends Phaser.Scene {
     const spots = areaOf(a.area).itemSpots;
     const where = s => (s.objective === "fetch" && spots[s.target_id] ? ` (${mapFor(spots[s.target_id][0]).name})` : "");
     const steps = a.q.steps.map((s, i) => `${i < a.step ? "✔" : i === a.step ? "▶" : "·"} ${s.description}${where(s)}`).join("\n");
-    const win = drawWindow(this, 8, 8, 470, H - 16);
-    const body = text(this, 26, 24, `${a.q.title} (${areaLabel(a.area)})\n\n${a.q.summary}\n\n${steps}`, { wordWrap: { width: 430 }, lineSpacing: 5 });
-    await choose(this, 486, H - 140, 146, ["Back"]);
-    win.destroy(); body.destroy();
+    await this.page(`${a.q.title} (${areaLabel(a.area)})\n\n${a.q.summary}\n\n${steps}`);
   }
 
   /** Teleport: to Old Town, a city you have been to, or a new place named by the player. Returns true if the party left. */
