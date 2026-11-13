@@ -5,7 +5,7 @@ import { mapFor, areaOf, areaLabel } from "./world.js";
 import { G } from "./state.js";
 import { ITEMS, questStep, payQuest, canGift, markGift, resetGifts } from "./rules.js";
 import { W, H, drawWindow, text, talk, choose, say, prompt, waitFor } from "./ui.js";
-import { ask, prefetchQuest, takeQuest } from "./anansi.js";
+import { ask, prefetchQuest, takeQuest, warmAtlases, suggestions } from "./anansi.js";
 
 const T = 32, DIRS = ["up", "left", "down", "right"], SPEED = 110;
 const VEC = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
@@ -60,6 +60,7 @@ export class Field extends Phaser.Scene {
     this.refreshMarker();
     // quests take a while on CPU: start before anyone asks, but not the instant you land in a new city (you may only be passing through)
     if (!G.s.quest && G.s.offer?.area !== this.area.key) this.time.delayedCall(this.area.key === "home" ? 0 : 15000, () => prefetchQuest(this.area));
+    this.time.delayedCall(30000, () => warmAtlases(suggestions().slice(0, 3))); // so that Teleport can answer from the cache
   }
 
   addStamp(key, tx, ty, opt) {

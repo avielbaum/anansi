@@ -2,7 +2,7 @@
 /* global Phaser */
 import { G, save } from "./state.js";
 import { mapFor, areaOf, areaLabel, cityId } from "./world.js";
-import { fetchAtlas } from "./anansi.js";
+import { fetchAtlas, atlasCached, suggestions } from "./anansi.js";
 import { cleanDest } from "./atlas.js";
 import { ITEMS, SKILLS, HEROES, xpToNext, useItem } from "./rules.js";
 import { W, H, drawWindow, text, choose, say, prompt, waitFor } from "./ui.js";
@@ -73,13 +73,14 @@ export class Menu extends Phaser.Scene {
   /** Teleport: to Old Town, a city you have been to, or a new place named by the player. Returns true if the party left. */
   async teleport() {
     const here = G.s.map;
-    const entries = [{ label: "New destination…" }, ...(here === "town" ? [] : [{ label: "Old Town", map: "town" }]),
-      ...Object.keys(G.s.cities).filter(d => cityId(d) !== here).slice(-8).map(d => ({ label: d.slice(0, 20), map: cityId(d) }))];
+    const entries = [{ label: "Type a place…" }, ...suggestions().map(d => ({ label: d + (atlasCached(d) ? " ✦" : ""), dest: d })), // ✦: ready, no waiting
+      ...(here === "town" ? [] : [{ label: "Old Town", map: "town" }]),
+      ...Object.keys(G.s.cities).filter(d => cityId(d) !== here).slice(-6).map(d => ({ label: d.slice(0, 20), map: cityId(d) }))];
     const k = await choose(this, 250, 40, 220, entries.map(e => e.label));
     if (k < 0) return false;
     let map = entries[k].map;
     if (!map) {
-      const dest = cleanDest((await prompt(this, "Where to? Any real place on Earth:")) || "");
+      const dest = entries[k].dest || cleanDest((await prompt(this, "Where to? Any real place on Earth:")) || "");
       if (!dest) return false;
       const known = Object.keys(G.s.cities).find(d => d.toLowerCase() === dest.toLowerCase());
       if (known && !G.s.cities[known].generic) map = cityId(known);

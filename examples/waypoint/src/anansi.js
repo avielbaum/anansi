@@ -2,7 +2,7 @@
 // The SDK answers from the fallbacks when the gateway is down or slow, so the game never waits on it for long.
 import { Anansi } from "../../../sdk/js/anansi.mjs";
 import { questFits, tidyQuest } from "./rules.js";
-import { cityPrompt, parseAtlas, parseClimate } from "./atlas.js";
+import { cityPrompt, parseAtlas, parseClimate, suggest } from "./atlas.js";
 import { G } from "./state.js";
 
 // shortcut: the title keys sit in the page, fine for a local dev gateway; a shipped game proxies through its own server.
@@ -48,14 +48,38 @@ export async function fetchAtlas(dest) {
   return { ...out, source: r.source };
 }
 
+export const atlasCached = dest => { try { return !!JSON.parse(localStorage.getItem(atlasKey(dest)))?.atlas; } catch { return false; } };
+/** The places Teleport suggests: ones not visited yet, a different handful after each trip. */
+export const suggestions = () => { const n = Object.keys(G.s.cities).length; return suggest(Object.keys(G.s.cities), 5, n * 3); };
+
+let warming = false;
+/**
+ * Fetches the atlases of places the player may pick next, one at a time and only while no quest is being written, so
+ * choosing one in Teleport answers from the cache. It stops at the first miss (no gateway).
+ */
+export async function warmAtlases(dests) {
+  if (warming) return;
+  warming = true;
+  try {
+    for (const d of dests) {
+      if (atlasCached(d)) continue;
+      while (inflight) await new Promise(r => setTimeout(r, 5000));
+      if ((await fetchAtlas(d)).source === "fallback") break;
+    }
+  } finally { warming = false; }
+}
+
+let inflight = 0; // quests being written right now
 const pending = {}; // area key -> the quest being generated
 /** Starts generating the next side quest for an area in the background (30-60 s on CPU). */
 export function prefetchQuest(area) {
-  return (pending[area.key] ||= client.quest(area.world, {
+  if (pending[area.key]) return pending[area.key];
+  inflight++;
+  return (pending[area.key] = client.quest(area.world, {
     steps: 3, theme: area.theme, storySoFar: G.s.story || "", player: `${G.s.party[0].name}, a level ${G.s.party[0].lvl} teleporter`,
   }).then(r => (questFits(r.quest, area.world)
     ? { source: r.source, quest: tidyQuest(r.quest, area.names) }
-    : { source: "fallback", quest: area.fallbackQuests[(G.s.questsDone || 0) % area.fallbackQuests.length] })));
+    : { source: "fallback", quest: area.fallbackQuests[(G.s.questsDone || 0) % area.fallbackQuests.length] })).finally(() => { inflight--; }));
 }
 /** The prefetched quest for an area (waits for it if needed); the next call starts a new one. */
 export function takeQuest(area) { const p = prefetchQuest(area); delete pending[area.key]; return p; }

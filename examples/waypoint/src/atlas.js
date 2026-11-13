@@ -63,6 +63,14 @@ export function buildWorld(dest, atlas) {
 
 export const CLIMATES = ["temperate", "desert", "snow", "tropical"];
 
+export const DESTINATIONS = ["Kyoto", "Marrakech", "Reykjavik", "Buenos Aires", "Istanbul", "Cape Town", "New Orleans", "Hanoi", "Lisbon",
+  "Mexico City", "Mumbai", "Sydney", "Cairo", "Oslo", "Singapore", "Nairobi"];
+/** n places the player has not been to, starting at a moving offset so the list changes as they travel. */
+export function suggest(visited, n = 5, offset = 0) {
+  const seen = new Set(visited.map(v => v.toLowerCase())), pool = DESTINATIONS.filter(d => !seen.has(d.toLowerCase()));
+  return Array.from({ length: Math.min(n, pool.length) }, (_, i) => pool[(offset + i) % pool.length]);
+}
+
 // Examples with different climates: with one example a small model copies its climate for every place.
 export const cityPrompt = dest =>
   `List real things a visitor finds in ${dest}. Answer in exactly five lines, like these examples. PEOPLE are first names with a job in brackets. CLIMATE is one of temperate, desert, snow, tropical.

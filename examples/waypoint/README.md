@@ -32,10 +32,12 @@ prototype, with real-world destinations, is in `prototype/`.
 
 **Milestone 3, real-world cities:**
 
-- **Teleport** (in the menu): to Old Town, to a city you have been to, or to any real place you type. The
-  `waypoint-atlas` gateway title answers with real landmarks, local first names and jobs, local things, a one-line
-  vibe and a climate (temperate, desert, snow or tropical). That takes about 10 s on CPU; a gateway answer is cached in
-  the browser, so going back to a place is instant.
+- **Teleport** (in the menu): to a suggested place, to Old Town, to a city you have been to, or to any real place you
+  type. The `waypoint-atlas` gateway title answers with real landmarks, local first names and jobs, local things, a
+  one-line vibe and a climate (temperate, desert, snow or tropical). That takes about 10 s on CPU, so the game fetches
+  the atlases of the first three suggestions in the background, 30 s after you arrive anywhere, one at a time and only
+  while no quest is being written. Those carry a ✦ in the list and arrive instantly, as does any place you have been
+  to (answers are cached in the browser).
 - **A town built from it:** `genCity` (`src/city.js`) lays out a street, a plaza, houses and trees from a seed made
   from the city's name, so a city always looks the same. The climate picks the ground (grass, sand, snow or lush
   green), the three landmarks name three districts, and three locals and Agent Kessler stand where the party can

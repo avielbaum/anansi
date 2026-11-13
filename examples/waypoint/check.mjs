@@ -6,7 +6,7 @@ import { upgrade } from "./src/state.js";
 import { MAPS, STAMPS, TALK, QUEST_WORLD, REGIONS, ITEM_SPOTS, PERSONAS, FALLBACK_QUESTS, SHORT_NAMES } from "./src/data.js";
 import { pages } from "./src/ui.js";
 import { genCity, walkable, LOCALS } from "./src/city.js";
-import { parseAtlas, parseClimate, cityPrompt, CLIMATES } from "./src/atlas.js";
+import { parseAtlas, parseClimate, cityPrompt, CLIMATES, suggest, DESTINATIONS } from "./src/atlas.js";
 
 // long dialogue splits into pages that fit the box, losing no words
 const long = "The Whispering Tram. Kai stumbles into a quiet town where the Directorate watches from afar. Tobias, the shopkeeper, offers a job to help retrieve a lost letter. Ines reveals a secret about the tram token. Agent Kessler watches from the shadows, waiting for the right moment.";
@@ -100,6 +100,12 @@ assert.deepEqual(["desert", "cold and snowy", "Tropical", "temperate (one of des
 assert(CLIMATES.every(c => existsSync(here(`assets/tiles/${{ temperate: "grass", desert: "ground_sand", snow: "ground_snow", tropical: "ground_lush" }[c]}.png`))), "a ground texture per climate");
 assert(cityPrompt("Lisbon").includes("CLIMATE") && cityPrompt("Kyoto").endsWith("Now Kyoto:"));
 for (const id of LOCALS) assert(cast[id], `${id} is missing from the built sprites`);
+// Teleport's suggestions: never somewhere already visited (any capitalisation), five of them, a different handful as you travel
+const s0 = suggest([]); assert.equal(s0.length, 5); assert.equal(new Set(s0).size, 5);
+assert(!suggest(["kyoto", "MARRAKECH"], 16).some(d => ["Kyoto", "Marrakech"].includes(d)), "visited places are not suggested");
+assert.notDeepEqual(suggest([], 5, 0), suggest([], 5, 3), "the list moves on");
+assert.equal(suggest(DESTINATIONS.slice(1), 5).length, 1, "a small pool gives fewer, not repeats");
+assert.equal(suggest(DESTINATIONS).length, 0);
 const dests = ["Kyoto", "Marrakech", "Reykjavik", "Singapore", "Lima", "x", "Ulaanbaatar", "Cape Town", "Oslo", "Hanoi", "Buenos Aires", "Nairobi", "São Paulo", "Tromsø", "Yakutsk", "Dubai",
   ...Array.from({ length: 40 }, (_, i) => `City ${i * 7919}`)];
 for (const [i, dest] of dests.entries()) {
