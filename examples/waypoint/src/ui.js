@@ -1,5 +1,6 @@
 // Menu windows, dialogue and list choosers. Each returns a Promise so scenes can `await` the player.
 /* global Phaser */
+import { sfx } from "./audio.js";
 export const W = 640, H = 360;
 export const FONT = { fontFamily: "monospace", fontSize: "14px", color: "#ffffff" };
 const OK = ["ENTER", "SPACE", "Z"], BACK = ["ESC", "X", "BACKSPACE"];
@@ -53,12 +54,13 @@ function sayPage(scene, name, line) {
     let shown = 0;
     const timer = scene.time.addEvent({ delay: 22, loop: true, callback: () => {
       shown = Math.min(line.length, shown + 1); body.setText(line.slice(0, shown));
+      if (shown % 3 === 0 && line[shown - 1] !== " ") sfx("blip", { volume: 0.3, rate: 0.9 + Math.random() * 0.3 });
       if (shown === line.length) { timer.remove(); more.setVisible(true); }
     } });
     const stop = listen(scene, k => {
       if (!OK.includes(k)) return;
       if (shown < line.length) { shown = line.length; body.setText(line); timer.remove(); more.setVisible(true); return; }
-      stop(); parts.forEach(p => p.destroy()); done();
+      sfx("page", { volume: 0.5 }); stop(); parts.forEach(p => p.destroy()); done();
     });
   });
 }
@@ -72,21 +74,21 @@ export async function talk(scene, lines, name) {
  * A vertical list in a window. items: strings or {label, disabled}. Resolves with the chosen index, or -1 when
  * cancelled (if cancel is allowed). onMove(i) runs as the cursor moves, e.g. to show a description.
  */
-export function choose(scene, x, y, w, items, { cancel = true, onMove, keep = false, rowH = 22 } = {}) {
+export function choose(scene, x, y, w, items, { cancel = true, onMove, keep = false, rowH = 22, start = 0 } = {}) {
   return new Promise(done => {
     items = items.map(i => (typeof i === "string" ? { label: i } : i));
     const win = drawWindow(scene, x, y, w, items.length * rowH + 20);
     const labels = items.map((it, i) => text(scene, x + 30, y + 11 + i * rowH, it.label, { color: it.disabled ? "#7f86a8" : "#ffffff" }));
     const cur = text(scene, x + 12, 0, "▶", { color: "#ffd76a" });
-    let i = Math.max(0, items.findIndex(it => !it.disabled));
+    let i = items[start] && !items[start].disabled ? start : Math.max(0, items.findIndex(it => !it.disabled));
     const move = d => { i = (i + d + items.length) % items.length; cur.setY(y + 11 + i * rowH); onMove?.(i); };
     move(0);
     const close = r => { stop(); if (!keep) [win, cur, ...labels].forEach(o => o.destroy()); done(r); };
     const stop = listen(scene, k => {
-      if (k === "UP") move(-1);
-      else if (k === "DOWN") move(1);
-      else if (OK.includes(k) && !items[i].disabled) close(i);
-      else if (BACK.includes(k) && cancel) close(-1);
+      if (k === "UP") { sfx("move", { volume: 0.5 }); move(-1); }
+      else if (k === "DOWN") { sfx("move", { volume: 0.5 }); move(1); }
+      else if (OK.includes(k) && !items[i].disabled) { sfx("accept"); close(i); }
+      else if (BACK.includes(k) && cancel) { sfx("cancel"); close(-1); }
     });
     choose.last = { win, cur, labels }; // for callers that keep the window open (keep: true) and destroy it later
   });
@@ -100,9 +102,9 @@ export function pickTarget(scene, targets, start = 0) {
     const place = () => cur.setPosition(targets[i].x, targets[i].y);
     place();
     const stop = listen(scene, k => {
-      if (["UP", "LEFT"].includes(k)) { i = (i - 1 + targets.length) % targets.length; place(); }
-      else if (["DOWN", "RIGHT"].includes(k)) { i = (i + 1) % targets.length; place(); }
-      else if (OK.includes(k) || BACK.includes(k)) { stop(); cur.destroy(); done(OK.includes(k) ? i : -1); }
+      if (["UP", "LEFT"].includes(k)) { sfx("move", { volume: 0.5 }); i = (i - 1 + targets.length) % targets.length; place(); }
+      else if (["DOWN", "RIGHT"].includes(k)) { sfx("move", { volume: 0.5 }); i = (i + 1) % targets.length; place(); }
+      else if (OK.includes(k) || BACK.includes(k)) { sfx(OK.includes(k) ? "accept" : "cancel"); stop(); cur.destroy(); done(OK.includes(k) ? i : -1); }
     });
   });
 }

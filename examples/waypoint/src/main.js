@@ -6,6 +6,7 @@ import { Field } from "./field.js";
 import { Battle } from "./battle.js";
 import { Menu } from "./menu.js";
 import { Ending } from "./ending.js";
+import { preloadAudio, initAudio, music } from "./audio.js";
 
 const DIRS = ["up", "left", "down", "right"]; // LPC row order
 const LEADS = ["lead_m", "lead_f"];
@@ -15,6 +16,7 @@ const ENEMY_IMGS = ["bat", "slime", "snake", "eyeball", "spider_bot", "drone_tan
 class Boot extends Phaser.Scene {
   constructor() { super("boot"); }
   preload() {
+    preloadAudio(this);
     this.load.json("cast", "assets/sprites/manifest.json");
     this.load.once("filecomplete-json-cast", (_k, _t, cast) => {
       for (const [id, c] of Object.entries(cast))
@@ -36,15 +38,21 @@ class Boot extends Phaser.Scene {
         this.anims.create({ key: `${id}-${a}-left`, frames: this.anims.generateFrameNumbers(`${id}-${a}`, { start: m, end: 2 * m - 1 }), frameRate: 14 });
       }
     }
+    initAudio(this.game);
+    this.scene.launch("sound");
     this.scene.start("title");
   }
 }
+
+class Sound extends Phaser.Scene { constructor() { super("sound"); } } // runs all the time: owns the music loader and the fades
 
 class Title extends Phaser.Scene {
   constructor() { super("title"); }
   async create() {
     this.add.text(W / 2, 100, "WAYPOINT", { ...FONT, fontSize: "48px", color: "#ffd76a", stroke: "#000", strokeThickness: 6 }).setOrigin(0.5);
     this.add.text(W / 2, 150, "You can be anywhere you can picture.", { ...FONT, color: "#c8d0ff" }).setOrigin(0.5);
+    music("title");
+    this.add.text(W / 2, H - 14, "M: sound on / off", { ...FONT, fontSize: "11px", color: "#8890c0" }).setOrigin(0.5);
     const saved = hasSave();
     const k = await choose(this, W / 2 - 80, 200, 160, [saved ? "Continue" : { label: "Continue", disabled: true }, "New Game"], { cancel: false });
     if (k === 0 && load()) this.scene.start("field", {});
@@ -95,5 +103,5 @@ const lastLead = () => { try { return localStorage.getItem("waypoint.lead"); } c
 window.game = new Phaser.Game({ // on window for debugging from the console
   type: Phaser.AUTO, parent: "game", width: W, height: H, pixelArt: true, backgroundColor: "#05060c",
   dom: { createContainer: true }, // the NPC text box is a real <input>
-  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [Boot, Title, LeadSelect, Field, Battle, Menu, Ending] });
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: [Boot, Title, LeadSelect, Field, Battle, Menu, Ending, Sound] });
 window.G = G;

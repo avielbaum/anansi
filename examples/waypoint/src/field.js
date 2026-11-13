@@ -5,6 +5,7 @@ import { mapFor, areaOf, areaLabel } from "./world.js";
 import { G } from "./state.js";
 import { ITEMS, ENEMIES, questStep, payQuest, canGift, markGift, resetGifts } from "./rules.js";
 import { BEATS, ENDINGS, destroyRelay } from "./story.js";
+import { sfx, music, musicPush, musicPop } from "./audio.js";
 import { W, H, drawWindow, text, talk, choose, say, prompt, waitFor } from "./ui.js";
 import { ask, prefetchQuest, takeQuest, warmAtlases, suggestions } from "./anansi.js";
 
@@ -56,6 +57,7 @@ export class Field extends Phaser.Scene {
     this.nextFight = this.fightGap();
     this.events.on("resume", () => { this.input.keyboard.resetKeys(); });
     this.cameras.main.fadeIn(250);
+    music(M.music);
     const banner = this.add.text(W / 2, 30, M.name, { fontFamily: "monospace", fontSize: "18px", color: "#fff", stroke: "#000", strokeThickness: 4 }).setOrigin(0.5).setScrollFactor(0).setDepth(9000);
     this.tweens.add({ targets: banner, alpha: 0, delay: 1500, duration: 600, onComplete: () => banner.destroy() });
     if (M.intro && !G.s.flags[M.intro]) { G.s.flags[M.intro] = true; this.run(() => this.lines(TALK[M.intro])); }
@@ -145,11 +147,11 @@ export class Field extends Phaser.Scene {
       if (r.action === "heal_hero") {
         G.s.party.forEach(h => { if (h.hp > 0) h.hp = h.maxhp; });
         markGift(G.s, gift); // marked when it happens, not after the player dismisses the message
-        await say(this, "", `${who} patches the party up. HP restored.`);
+        sfx("heal"); await say(this, "", `${who} patches the party up. HP restored.`);
       } else if (r.action === "give_supplies") {
         G.s.items.potion = (G.s.items.potion || 0) + 1;
         markGift(G.s, gift);
-        await say(this, "", `${who} hands you a Potion.`);
+        sfx("gift"); await say(this, "", `${who} hands you a Potion.`);
       }
     }
   }
@@ -177,9 +179,11 @@ export class Field extends Phaser.Scene {
     const r = questStep(G.s.quest, kind, id);
     const q = G.s.quest.q;
     this.refreshMarker();
+    if (r === "step") sfx("step");
     if (r === "step") return this.toast(`✔ ${q.steps[G.s.quest.step - 1].description}`);
     G.s.quest = null;
     const pay = payQuest(G.s, q), extra = Object.entries(pay.items).map(([i, k]) => `, ${k} × ${ITEMS[i].name}`).join("");
+    sfx("questdone");
     await say(this, "", `Quest complete: ${q.title}! +${pay.gold} G${extra}.`);
     prefetchQuest(this.area);
   }
@@ -213,12 +217,13 @@ export class Field extends Phaser.Scene {
         const k = await choose(this, W - 260, 56, 250, ids.map(id => ({ label: `${ITEMS[id].name.padEnd(8)} ${String(ITEMS[id].price).padStart(3)} G  x${G.s.items[id] || 0}`, disabled: G.s.gold < ITEMS[id].price })),
           { onMove: i => desc.setText(ITEMS[ids[i]].desc) });
         desc.destroy();
-        if (k >= 0) { G.s.gold -= ITEMS[ids[k]].price; G.s.items[ids[k]] = (G.s.items[ids[k]] || 0) + 1; await say(this, who, `One ${ITEMS[ids[k]].name}. Thank you kindly!`); }
+        if (k >= 0) { sfx("coin"); G.s.gold -= ITEMS[ids[k]].price; G.s.items[ids[k]] = (G.s.items[ids[k]] || 0) + 1; await say(this, who, `One ${ITEMS[ids[k]].name}. Thank you kindly!`); }
       } else if (pick === 1) {
         if (G.s.gold < 10) { await say(this, who, "Ten gold for the cot in the back, I'm afraid."); continue; }
         G.s.gold -= 10;
         await new Promise(r => { this.cameras.main.fadeOut(400); this.cameras.main.once("camerafadeoutcomplete", r); });
         G.s.party.forEach(h => { h.hp = h.maxhp; h.mp = h.maxmp; });
+        sfx("rest");
         resetGifts(G.s); // a night's rest: everyone is ready to help again
         this.cameras.main.fadeIn(400);
         await say(this, who, "Rested and ready. Mind the tunnels.");
@@ -229,6 +234,7 @@ export class Field extends Phaser.Scene {
   openChest(img, opt, t) {
     this.run(async () => {
       G.s.flags[opt.chest] = true;
+      sfx("chest");
       G.s.items[opt.item] = (G.s.items[opt.item] || 0) + opt.n;
       img.setTint(0x777777);
       this.things = this.things.filter(x => x !== t);
@@ -292,7 +298,7 @@ export class Field extends Phaser.Scene {
     if (here && this.stepIs("explore", here[0])) return this.run(() => this.questEvent("explore", here[0]));
     if (this.marker && Phaser.Math.Distance.Between(s.x, s.y, this.marker.x, this.marker.y) < 20) {
       const id = this.marker.id;
-      return this.run(async () => { await say(this, "", `Found: ${this.area.names[id]}`); await this.questEvent("fetch", id); });
+      return this.run(async () => { sfx("pickup"); await say(this, "", `Found: ${this.area.names[id]}`); await this.questEvent("fetch", id); });
     }
     if (this.M.encounters && (this.nextFight -= moved) <= 0) {
       this.nextFight = this.fightGap();
@@ -301,11 +307,12 @@ export class Field extends Phaser.Scene {
   }
 
   /** Jumps to another map (Teleport in the menu) and arrives at its spawn point. */
-  teleportTo(mapId) { const [x, y] = mapFor(mapId).spawn; this.goTo({ map: mapId, x, y }); }
+  teleportTo(mapId) { const [x, y] = mapFor(mapId).spawn; this.goTo({ map: mapId, x, y }, "teleport"); }
 
-  goTo(go) {
+  goTo(go, sound = "door") {
     this.busy = this.leaving = true; // stays locked through the fade, until the new map is built
     G.s.pos = null;
+    sfx(sound);
     this.cameras.main.fadeOut(250);
     this.cameras.main.once("camerafadeoutcomplete", () => this.scene.restart({ map: go.map, at: feet(go.x, go.y) }));
   }
@@ -335,6 +342,7 @@ export class Field extends Phaser.Scene {
       const { count, last } = destroyRelay(plot, key);
       this.tweens.killTweensOf(this.relayLight);
       this.relayLight.setFillStyle(0x55565f).setScale(1).setAlpha(1);
+      sfx("relay");
       await this.lines(BEATS.relayDown(count, name));
       if (last) { plot.act = 3; plot.spire = true; this.teleportTo("spire"); }
     });
@@ -349,6 +357,7 @@ export class Field extends Phaser.Scene {
       G.s.party.forEach(h => { h.hp = h.maxhp; h.mp = h.maxmp; });
       resetGifts(G.s);
       this.cameras.main.flash(300, 95, 224, 208);
+      sfx("pad");
       await say(this, "", "The pad hums and the party is fully restored.");
     }) });
   }
@@ -379,9 +388,12 @@ export class Field extends Phaser.Scene {
     G.s.pos = { x: this.hero.s.x, y: this.hero.s.y };
     return new Promise(done => {
       this.cameras.main.flash(300, 255, 255, 255);
+      sfx(mapBoss ? "rage" : "alert");
+      musicPush(mapBoss ? this.M.boss.music : noFlee ? "tension" : "battle");
       this.time.delayedCall(300, () => {
         this.scene.launch("battle", { enemies, bg: this.M.battle, boss: noFlee, onEnd: async result => {
           this.scene.resume();
+          musicPop();
           this.busy = false;
           if (result === "won" && mapBoss) {
             const b = this.M.boss;

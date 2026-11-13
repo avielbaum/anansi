@@ -12,7 +12,7 @@ export const STAMPS = {
 
 export const MAPS = {
   town: {
-    name: "Old Town", w: 40, h: 26, ground: "grass", battle: "town",
+    name: "Old Town", w: 40, h: 26, ground: "grass", battle: "town", music: "town",
     paint: [["cobble", 11, 7, 18, 9], ["cobble", 18, 16, 4, 1], ["sidewalk", 0, 16, 40, 1], ["sidewalk", 0, 19, 40, 1], ["cobble", 18, 16, 4, 1], ["road_line", 0, 17, 40, 1], ["road", 0, 18, 40, 1], ["cobble", 29, 10, 4, 4]],
     objects: [
       ["house", 4, 1], ["house", 9, 1], ["house", 14, 1], ["house", 23, 1], ["house", 28, 1], ["house", 33, 1],
@@ -31,14 +31,14 @@ export const MAPS = {
     intro: "arrived",
   },
   undercroft: {
-    name: "The Undercroft", w: 30, h: 18, ground: "flagstone", battle: "dungeon",
+    name: "The Undercroft", w: 30, h: 18, ground: "flagstone", battle: "dungeon", music: "cave",
     paint: [
       ["brick", 0, 0, 30, 3, true], ["brick", 0, 17, 30, 1, true], ["brick", 0, 0, 1, 18, true], ["brick", 29, 0, 1, 18, true],
       ["brick", 8, 3, 1, 9, true], ["brick", 15, 7, 1, 10, true], ["brick", 22, 3, 1, 9, true],
     ],
     objects: [["dungeon_wall", 1, -1], ["dungeon_wall", 10, -1], ["dungeon_wall", 17, -1], ["dungeon_wall", 24, -1],
       ["chest", 5, 15, { chest: "c1", item: "ether", n: 2 }], ["chest", 18, 4, { chest: "c2", item: "potion", n: 3 }]],
-    boss: { x: 26, y: 9, enemy: "minotaur_mage", flag: "warden", name: "The Warden" },
+    boss: { x: 26, y: 9, enemy: "minotaur_mage", flag: "warden", name: "The Warden", music: "tension" },
     labels: [["▲ Old Town", 2.5, 3.2]],
     zones: [
       { x: 1, y: 3, w: 3, h: 1, go: { map: "town", x: 31, y: 11 } },
@@ -48,7 +48,7 @@ export const MAPS = {
     spawn: [3, 6],
   },
   spire: {
-    name: "The Spire", w: 32, h: 22, ground: "flagstone", battle: "dungeon",
+    name: "The Spire", w: 32, h: 22, ground: "flagstone", battle: "dungeon", music: "spire",
     paint: [
       ["brick", 0, 0, 32, 3, true], ["brick", 0, 21, 32, 1, true], ["brick", 0, 0, 1, 22, true], ["brick", 31, 0, 1, 22, true],
       ["brick", 10, 3, 1, 6, true], ["brick", 10, 13, 1, 8, true], // gap at rows 9-12
@@ -58,7 +58,7 @@ export const MAPS = {
     objects: [...[1, 4, 7, 10, 13, 16, 19, 22, 25, 28].map(x => ["dungeon_wall", x, -1]),
       ["chest", 5, 17, { chest: "s1", item: "potion", n: 4 }], ["chest", 13, 18, { chest: "s2", item: "ether", n: 3 }], ["chest", 19, 4, { chest: "s3", item: "potion", n: 4 }]],
     pads: [{ x: 4, y: 10 }, { x: 19, y: 10 }], // recovery pads: confirm to restore the party
-    boss: { x: 27, y: 11, enemy: "director", flag: "director", name: "The Director" },
+    boss: { x: 27, y: 11, enemy: "director", flag: "director", name: "The Director", music: "final" },
     zones: [{ x: 24, y: 8, w: 1, h: 6, boss: true }],
     encounters: [["spire_drone", "spire_guard"], ["spire_guard", "spire_guard"], ["wraith"], ["wraith", "spire_drone"], ["spire_drone", "spire_drone", "spire_drone"]],
     encounterSteps: [350, 700], // more often than elsewhere

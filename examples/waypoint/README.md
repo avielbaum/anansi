@@ -68,11 +68,18 @@ prototype, with real-world destinations, is in `prototype/`.
   only picks Fight. The Director falls to a skilled party at about L5 to L6 and to a Fight-only one at about L8 to L9;
   the XP of the story fights and the Spire's encounters is meant to bring a party there without grinding.
 
-Controls: arrows or WASD to move; Enter, Space or Z to talk and confirm; Esc or X for the menu and to go back.
+**Sound:** twelve music tracks and 36 effects (`src/audio.js`). Old Town, each climate of generated city, the
+Undercroft, the Spire, the title and the ending have their own music; battles have theirs, with a tenser track for
+bosses and relay fights, and the field music resumes where it stopped. Menus, dialogue, chests, spells, hits, teleports
+and quest steps have effects, and winning a battle or a level plays a jingle. Menu -> Sound sets the music and effects
+volume, and **M** mutes or unmutes anywhere (the choice is saved in the browser). Browsers only start audio after the
+first key press or click, so the title music begins then.
+
+Controls: arrows or WASD to move; Enter, Space or Z to talk and confirm; Esc or X for the menu and to go back; M for sound.
 
 Code: `src/rules.js` (stats, damage, levelling, quests; no Phaser, tested by `check.mjs`), `src/data.js` (the written
 maps, dialogue, quest world, personas), `src/atlas.js` (parsing what the model says about a place; the prototype
-shares it), `src/city.js` (generating a city's map, people and written quests), `src/story.js` (the acts and their words), `src/ending.js`, `src/world.js` (which map and quest area
+shares it), `src/city.js` (generating a city's map, people and written quests), `src/story.js` (the acts and their words), `src/ending.js`, `src/audio.js` (music crossfades, battle music over the field music, effects), `src/world.js` (which map and quest area
 an id belongs to), `src/anansi.js` (the SDK calls), `src/field.js`, `src/battle.js`, `src/menu.js`, `src/ui.js`
 (windows, dialogue, text box, choosers), `src/state.js` (save). `check.mjs` walks every map tile by tile, written or
 generated, to prove that each exit, chest, person, quest item and the boss can be reached; it generates 56 cities,
@@ -113,6 +120,15 @@ battle backgrounds into `assets/tiles` and `assets/enemies`. It reads the downlo
 (or `--src`): LPC Base Assets and LPC in-battle sprites (CC-BY-SA 3.0 / GPL 3.0), curato's street tiles (CC0) and
 Pixel-boy's battlebacks (CC0). Credits are in `assets/CREDITS_TILES.csv`. The baked files are committed, so the game
 runs without the downloads.
+
+## Audio
+
+`python tools/build_audio.py` builds `assets/audio` from the CC0 Ninja Adventure pack (needs `ffmpeg` with libvorbis;
+`tools/audio.json` says which file is which sound). Music is re-encoded as Ogg Vorbis at quality 1 (4 MB for the 12
+tracks; the originals were 12 MB), effects become small mp3s, and `manifest.json` holds a volume per track that brings
+them all down to the quietest. Only the track being played is decoded (a decoded track takes about 20 MB), and
+`check.mjs` makes sure every sound the code asks for exists and every file is used. The music is Ogg Vorbis: old Safari
+versions cannot play it (the game then runs without music, and the effects still work).
 
 ## Licences
 

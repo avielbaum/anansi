@@ -8,10 +8,10 @@ export const ITEMS = {
 
 // kind: phys uses atk, mag uses mag, heal restores HP. target: enemy | enemies | ally.
 export const SKILLS = {
-  blink_strike: { name: "Blink Strike", mp: 4, kind: "phys", power: 2, target: "enemy", anim: "thrust", desc: "Teleport behind a foe and strike twice as hard." },
-  rift_burst: { name: "Rift Burst", mp: 8, kind: "mag", power: 1.1, target: "enemies", anim: "spellcast", desc: "Tear space open around every foe." },
-  mend: { name: "Mend", mp: 5, kind: "heal", power: 35, target: "ally", anim: "spellcast", desc: "Heal one ally." },
-  static_lance: { name: "Static Lance", mp: 5, kind: "mag", power: 1.8, target: "enemy", anim: "spellcast", desc: "A bolt of folded lightning." },
+  blink_strike: { name: "Blink Strike", mp: 4, kind: "phys", power: 2, target: "enemy", anim: "thrust", sound: "blink", desc: "Teleport behind a foe and strike twice as hard." },
+  rift_burst: { name: "Rift Burst", mp: 8, kind: "mag", power: 1.1, target: "enemies", anim: "spellcast", sound: "burst", desc: "Tear space open around every foe." },
+  mend: { name: "Mend", mp: 5, kind: "heal", power: 35, target: "ally", anim: "spellcast", sound: "heal", desc: "Heal one ally." },
+  static_lance: { name: "Static Lance", mp: 5, kind: "mag", power: 1.8, target: "enemy", anim: "spellcast", sound: "lance", desc: "A bolt of folded lightning." },
 };
 
 export const HEROES = {

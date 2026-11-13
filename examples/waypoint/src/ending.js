@@ -4,12 +4,14 @@ import { G, save } from "./state.js";
 import { W, FONT, drawWindow, text, say, choose, waitFor } from "./ui.js";
 import { epilogue } from "./anansi.js";
 import { ENDINGS, RELAYS_NEEDED } from "./story.js";
+import { music } from "./audio.js";
 
 export class Ending extends Phaser.Scene {
   constructor() { super("ending"); }
 
   async create() {
     this.cameras.main.fadeIn(600);
+    music("ending", 1500);
     this.add.text(W / 2, 64, "THE END", { ...FONT, fontSize: "40px", color: "#ffd76a", stroke: "#000", strokeThickness: 6 }).setOrigin(0.5);
     const plot = G.s.plot, cities = Object.keys(G.s.cities), [lead, mate] = G.s.party;
     await say(this, "", await waitFor(this, epilogue(plot.ending, cities), "The story settles"));

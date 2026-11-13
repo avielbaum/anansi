@@ -5,6 +5,7 @@ import { mapFor, areaOf, areaLabel, cityId } from "./world.js";
 import { fetchAtlas, atlasCached, suggestions } from "./anansi.js";
 import { cleanDest } from "./atlas.js";
 import { ACTS, objective } from "./story.js";
+import { settings, setMuted, cycleVolume, sfx } from "./audio.js";
 import { ITEMS, SKILLS, HEROES, xpToNext, useItem } from "./rules.js";
 import { W, H, drawWindow, text, choose, say, prompt, waitFor } from "./ui.js";
 
@@ -29,13 +30,14 @@ export class Menu extends Phaser.Scene {
   async loop() {
     for (;;) {
       this.draw();
-      const k = await choose(this, 486, 8, 146, ["Items", "Status", "Story", "Quests", "Teleport", "Save", "Close"]);
+      const k = await choose(this, 486, 8, 146, ["Items", "Status", "Story", "Quests", "Teleport", "Sound", "Save", "Close"]);
       if (k === 0) await this.items();
       else if (k === 1) await this.status();
       else if (k === 2) await this.story();
       else if (k === 3) await this.quests();
       else if (k === 4) { if (await this.teleport()) return; }
-      else if (k === 5) await say(this, "", save() ? "Game saved." : "Could not save (browser storage is blocked).");
+      else if (k === 5) await this.soundPage();
+      else if (k === 6) { const ok = save(); if (ok) sfx("save"); await say(this, "", ok ? "Game saved." : "Could not save (browser storage is blocked)."); }
       else return this.close();
     }
   }
@@ -57,6 +59,17 @@ export class Menu extends Phaser.Scene {
   async status() {
     for (const h of G.s.party) {
       await say(this, h.name, `Lv ${h.lvl}  ATK ${h.atk}  MAG ${h.mag}  DEF ${h.def}  SPD ${h.spd}\nSkills: ${HEROES[h.id].skills.map(s => SKILLS[s].name).join(", ")}`);
+    }
+  }
+
+  async soundPage() {
+    const bar = v => "█".repeat(Math.round(v * 3)) + "░".repeat(3 - Math.round(v * 3));
+    let at = 0;
+    for (;;) {
+      const k = await choose(this, 250, 40, 260, [`Music    ${bar(settings.music)}`, `Effects  ${bar(settings.sfx)}`, `Sound    ${settings.muted ? "off" : "on"}  (M)`, "Back"], { start: at });
+      if (k < 0 || k === 3) return;
+      at = k;
+      if (k === 2) setMuted(!settings.muted); else cycleVolume(k === 0 ? "music" : "sfx");
     }
   }
 

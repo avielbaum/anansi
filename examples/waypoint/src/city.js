@@ -12,6 +12,7 @@ const TREE = { temperate: "tree", desert: "tree", snow: "pine", tropical: "tree"
 const TREES = { temperate: 7, desert: 2, snow: 7, tropical: 8 };
 export const LOCALS = ["local_f", "local_m", "local_f2", "local_m2", "shopkeeper"]; // sprites the people of a city wear
 const ENCOUNTERS = [["spider_bot"], ["drone_tank"], ["spider_bot", "spider_bot"], ["drone_tank", "spider_bot"]];
+const CITY_MUSIC = { temperate: "road", desert: "ruins", snow: "snow", tropical: "tropical" };
 const BANDS = [[0, 13], [13, 27], [27, W]]; // the three districts, one per landmark, left to right
 
 /** The solid boxes [x, y, w, h], in pixels, that the walking code collides with. */
@@ -110,7 +111,7 @@ function layout(dest, world, vibe, climate, ri) {
     const p = c[ri(c.length)]; itemTaken.push(p); itemSpots[it.id] = [id, p[0], p[1]];
   }
 
-  const map = { name: dest, w: W, h: H, ground: GROUND[climate], battle: "town", paint, objects, labels, npcs, zones: [], spawn, encounters: ENCOUNTERS, vibe, climate, relay: { x: relay[0], y: relay[1] } };
+  const map = { name: dest, w: W, h: H, ground: GROUND[climate], battle: "town", paint, objects, labels, npcs, zones: [], spawn, encounters: ENCOUNTERS, vibe, climate, music: CITY_MUSIC[climate], relay: { x: relay[0], y: relay[1] } };
   const { seen } = walkable(map);
   const reach = (x, y) => [[x, y], [x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]].some(([a, b]) => seen.has(`${a},${b}`));
   const ok = npcs.every(n => reach(n.x, n.y)) && reach(relay[0], relay[1]) && Object.values(itemSpots).every(([, x, y]) => seen.has(`${x},${y}`));

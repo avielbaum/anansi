@@ -12,8 +12,9 @@ change it, also commercially, as long as you follow the terms below.
 | `tiles/ground_sand, ground_snow, ground_lush` | CC-BY-SA 3.0 | The LPC grass above with its colours changed by `tools/build_tiles.py`; an adaptation, so it stays CC-BY-SA 3.0 |
 | `tiles/road, road_line, sidewalk` | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | "Street tiles" by curato |
 | `tiles/battle_town, battle_dungeon` | CC0 | "Battlebacks Pack" by Pixel-boy |
+| `audio/*` (music, effects, jingles) | CC0 | "Ninja Adventure Asset Pack" by Pixel-boy and AAA; the music is re-encoded and the effects converted by `tools/build_audio.py`. Each file is listed in [`CREDITS_AUDIO.csv`](CREDITS_AUDIO.csv). |
 
-Full source links are in [`CREDITS.csv`](CREDITS.csv) and [`CREDITS_TILES.csv`](CREDITS_TILES.csv).
+Full source links are in [`CREDITS.csv`](CREDITS.csv), [`CREDITS_TILES.csv`](CREDITS_TILES.csv) and [`CREDITS_AUDIO.csv`](CREDITS_AUDIO.csv).
 
 Why CC-BY-SA 3.0. Each LPC piece used here is offered under CC-BY-SA 3.0 or under something more permissive (OGA-BY 3.0,
 CC-BY 3.0 or CC0). Many pieces are also offered under GPL 3.0; we use them under CC-BY-SA 3.0 only. A sprite combines
@@ -21,7 +22,7 @@ several pieces, so the combined image is released under CC-BY-SA 3.0.
 
 What that means for you:
 
-- **Credit** the authors: ship the two CREDITS files, or show their contents, with your game.
+- **Credit** the authors: ship the CREDITS files, or show their contents, with your game. (The CC0 audio and street tiles do not require credit, but it is appreciated.)
 - **Share alike**: if you change these images, release your changed images under CC-BY-SA 3.0 (or a compatible
   licence) too. This applies to the art only. Your game's code can use any licence, including a closed one.
 - **No extra restrictions**: do not add terms or technical measures that stop others using the art under these terms.

@@ -166,6 +166,36 @@ for (const [id, e] of Object.entries(ENEMIES)) {
 }
 assert(ENEMIES.director.boss && ENEMIES.director.rage.atk > ENEMIES.director.atk && ENEMIES.director.rage.waveEvery < ENEMIES.director.waveEvery);
 assert(MAPS.spire.pads.length >= 2 && MAPS.spire.boss.enemy === "director" && MAPS.spire.arrival === "spireArrive" && BEATS[MAPS.spire.arrival]);
+// ---- sound: everything the code asks for is in the manifest, every file exists, and no asset sits unused --------------------
+import { statSync } from "node:fs";
+const audio = JSON.parse(readFileSync(here("assets/audio/manifest.json")));
+const srcText = ["audio", "battle", "city", "data", "ending", "field", "main", "menu", "rules", "ui"].map(f => readFileSync(here(`src/${f}.js`), "utf8")).join("\n");
+const quoted = name => { // every "word" inside the calls name(...)
+  const out = new Set();
+  for (let i = srcText.indexOf(name + "("); i >= 0; i = srcText.indexOf(name + "(", i + 1)) {
+    let d = 0, j = i + name.length;
+    for (; j < srcText.length; j++) { if (srcText[j] === "(") d++; else if (srcText[j] === ")" && --d === 0) break; }
+    for (const m of srcText.slice(i, j).matchAll(/"(\w+)"/g)) out.add(m[1]);
+  }
+  return out;
+};
+const sfxUsed = new Set([...quoted("sfx"), ...[...srcText.matchAll(/sound: "(\w+)"/g)].map(m => m[1]), // a skill's sound
+  ...[...srcText.matchAll(/goTo\(\{[^}]*\}, "(\w+)"\)/g)].map(m => m[1]), ...[...srcText.matchAll(/sound = "(\w+)"/g)].map(m => m[1])]); // the sound of changing map
+const musicUsed = new Set([...quoted("music"), ...quoted("musicPush"), ...[...srcText.matchAll(/music: "(\w+)"/g)].map(m => m[1]),
+  ...[...srcText.match(/CITY_MUSIC = \{([^}]*)\}/)[1].matchAll(/"(\w+)"/g)].map(m => m[1])]);
+for (const k of sfxUsed) assert(audio.sfx[k], `the code plays the effect "${k}", which is not in the manifest`);
+for (const k of musicUsed) assert(audio.music[k], `the code plays the track "${k}", which is not in the manifest`);
+for (const k of Object.keys(audio.sfx)) assert(sfxUsed.has(k), `the effect "${k}" is never played; remove it from tools/audio.json`);
+for (const k of Object.keys(audio.music)) assert(musicUsed.has(k), `the track "${k}" is never played; remove it from tools/audio.json`);
+let audioBytes = 0;
+for (const v of [...Object.values(audio.sfx), ...Object.values(audio.music)]) { assert(existsSync(here(`assets/audio/${v.file}`)), v.file); audioBytes += statSync(here(`assets/audio/${v.file}`)).size; }
+for (const v of Object.values(audio.music)) assert(v.gain > 0 && v.gain <= 1, "music gains bring tracks down to the quietest: at most 1");
+assert(audioBytes < 8e6, `audio is ${(audioBytes / 1e6).toFixed(1)} MB; keep the repo small (re-encode or drop tracks)`);
+for (const M of Object.values(MAPS)) assert(audio.music[M.music] && (!M.boss || audio.music[M.boss.music]), `${M.name}: missing music`);
+for (const c of CLIMATES) assert(audio.music[genCity("Testville", parseAtlas(atlasText), c).map.music], `no music for the ${c} climate`);
+assert(existsSync(here("assets/CREDITS_AUDIO.csv")), "run python tools/build_audio.py");
+for (const s of Object.values(SKILLS)) assert(s.sound && audio.sfx[s.sound], "every skill has a sound");
+
 const save = newGame("lead_m"); const pay = payQuest(save, FALLBACK_QUESTS[1]);
 assert.equal(save.gold, 60 + pay.gold); assert.equal(save.items.potion, 4); assert.equal(save.questsDone, 1); assert(save.story.includes("tram token"));
 console.log("ok");
