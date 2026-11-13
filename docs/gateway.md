@@ -38,7 +38,7 @@ JSON file named by `ANANSI_CONFIG`.
 | `retention_days` | Days of per-account usage rows kept (they hold player ids); default 35 |
 | `pull_tokens` | Enables volunteer agents; see [nodes.md](nodes.md) |
 | `pull_poll_s`, `pull_ttl_s`, `canaries`, `canary_rate` | Pull-node tuning and verification; see [nodes.md](nodes.md) |
-| `credits` | `per_1k_tokens` (credits per 1,000 tokens by the model name sent to the node, plus `"default"`; default 1) and `hold_days` (default 7); see [nodes.md](nodes.md#credits) |
+| `credits` | `per_1k_tokens` (credits per 1,000 tokens by the model name sent to the node, plus `"default"`; default 1) `hold_days` (default 7) and `max_per_day` (credits one wallet may earn per UTC day across all its machines; unset means no cap); see [nodes.md](nodes.md#credits) |
 | `auth_fail_limit` | Failed logins (bad title key or ticket) one client address may make per minute before it gets `429` for the rest of that minute; default 30. Behind a proxy, list it in `trusted_proxies`, or every player shares the proxy's address and one bot locks them all out |
 | `trusted_proxies` | Addresses of your own reverse proxies or load balancers. A request from one of them is counted under the right-most `X-Forwarded-For` entry that is not a listed proxy (entries further left are written by the client). Empty by default: the header is ignored |
 | `max_inflight` | Requests the gateway serves at once (default 256; a stream counts until it ends). Past it, new requests get `429` with `Retry-After: 1` instead of queueing without limit. It is per gateway process |

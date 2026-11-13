@@ -66,7 +66,7 @@ def make_app(config=None, transport=None):
     cfg = config or json.load(open(os.environ["ANANSI_CONFIG"], encoding="utf-8"))
     sched = Scheduler(cfg["nodes"], cfg.get("overflow_spill_at", 4))
     credits = cfg.get("credits") or {}
-    store = Store(cfg.get("db_path"), credits.get("hold_days", 7))
+    store = Store(cfg.get("db_path"), credits.get("hold_days", 7), credits.get("max_per_day"))
     store.purge(cfg.get("retention_days", 35))
     purged = [datetime.date.today()]
     hub = PullHub(sched, cfg["pull_tokens"], transport or httpx.AsyncHTTPTransport(), cfg.get("pull_poll_s", 20),

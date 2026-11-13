@@ -110,10 +110,13 @@ Volunteers earn credits that games can turn into in-game items. No cash and no c
    the player's platform id, an amount and its own purchase id as `ref`, and grants the item only on `"result": "ok"`. A repeated
    `ref` is not charged twice. The check and the charge are one transaction, so gateways spending from one wallet at once cannot
    overdraw it (tested with 16 simultaneous spends on SQLite and Postgres).
+6. **Daily cap.** `credits.max_per_day` (credits, unset by default) limits what one wallet earns per UTC day across all its
+   linked machines, so linking a farm of machines to one player does not pay more than the cap. Work past it is still served
+   and recorded in the ledger, but earns nothing. The check and the credit are one transaction, so gateways crediting one
+   wallet at once cannot pass it (tested with 16 simultaneous credits).
 
 Not built: what an item costs (each studio decides), Steam Inventory grants, SDK methods for these three routes (plain HTTP
-for now), the DESIGN.md rule that a brand-new node earns nothing for 24 hours (the 7-day hold covers the audit window), and
-any limit on how much one player can earn.
+for now) and the DESIGN.md rule that a brand-new node earns nothing for 24 hours (the 7-day hold covers the audit window).
 
 ### What this does not give you
 

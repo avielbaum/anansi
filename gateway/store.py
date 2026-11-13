@@ -34,8 +34,9 @@ def today():
 
 
 class Store:
-    def __init__(self, path=None, hold_days=7):
+    def __init__(self, path=None, hold_days=7, max_per_day=None):
         self.hold_days = hold_days  # credits mature after this many days; a ban inside the window voids them
+        self.cap = None if max_per_day is None else round(max_per_day * 1000)  # milli-credits one wallet may earn per UTC day
         self.in_tx = False
         self.url = path if (path or "").startswith(("postgres://", "postgresql://")) else None
         if self.url:
@@ -124,10 +125,24 @@ class Store:
         day = day or today()
         self._x("INSERT INTO ledger(agent, day, jobs, tokens) VALUES(?,?,1,?) ON CONFLICT(agent, day) "
                 "DO UPDATE SET jobs = ledger.jobs + 1, tokens = ledger.tokens + excluded.tokens", (agent, day, int(tokens)))
-        if milli > 0:
+        if milli <= 0:
+            return
+        if self.cap is None:
             self._x("INSERT INTO earnings(wallet, agent, day, milli) SELECT wallet, agent, ?, ? FROM links WHERE agent=? "
                     "ON CONFLICT(wallet, agent, day) DO UPDATE SET milli = earnings.milli + excluded.milli",
                     (day, int(milli), agent))
+            return
+        with self.tx():  # max_per_day: the wallet's total across all its linked machines, so linking more machines does not pay more
+            row = self._x("SELECT wallet FROM links WHERE agent=?", (agent,)).fetchone()
+            if not row:
+                return
+            self._x("INSERT INTO wallets VALUES(?, 0) ON CONFLICT(wallet) DO NOTHING", (row[0],))
+            self._x("UPDATE wallets SET spent = wallets.spent WHERE wallet=?", (row[0],))  # row lock: gateways crediting one wallet take turns
+            used = self._x("SELECT COALESCE(SUM(milli), 0) FROM earnings WHERE wallet=? AND day=?", (row[0], day)).fetchone()[0]
+            add = min(int(milli), self.cap - int(used))
+            if add > 0:
+                self._x("INSERT INTO earnings VALUES(?,?,?,?) ON CONFLICT(wallet, agent, day) "
+                        "DO UPDATE SET milli = earnings.milli + excluded.milli", (row[0], agent, day, add))
 
     # credits: a node is linked to a player's wallet with a one-time code; games spend from the wallet
     def _matured(self):

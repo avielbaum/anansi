@@ -1024,6 +1024,17 @@ def t_credits_in_the_store():
             got = list(pool.map(lambda i: Store(path).spend("w:carol", 1_000, "demo", f"c{i}"), range(16)))
         assert got.count("ok") == 10 and got.count("short") == 6, got
         assert s.balance("w:carol")["balance"] == 0
+        # max_per_day caps a wallet across all its machines: two farms on one wallet, credited by gateways at once
+        capped = Store(path, max_per_day=5)  # 5 credits per wallet per UTC day
+        for agent in ("farm-1", "farm-2"):
+            capped.add_link_code("C" + agent, agent, 600)
+            capped.link("C" + agent, "w:dave")
+        with concurrent.futures.ThreadPoolExecutor(8) as pool:
+            list(pool.map(lambda i: Store(path, max_per_day=5).credit(f"farm-{i % 2 + 1}", 700, milli=700), range(16)))
+        assert capped.balance("w:dave") == {"balance": 0, "pending": 5_000, "nodes": 2}  # 11.2 credits of work, 5 paid
+        capped.credit("farm-1", 700, day=old, milli=700)  # another day has its own allowance
+        assert capped.balance("w:dave")["balance"] == 700
+        assert capped.report(today())["agents"][0]["jobs"] >= 8  # the work itself is still in the ledger
 
 
 async def t_credits_through_the_gateway():
