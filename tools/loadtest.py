@@ -1,5 +1,6 @@
 """Closed-loop load test for the gateway. Reports client-side latency (this is the number a game sees).
-Run: python tools/loadtest.py --url http://127.0.0.1:8080 --key change-me --n 200 --concurrency 20"""
+Run: python tools/loadtest.py --url http://127.0.0.1:8080 --key change-me --n 200 --concurrency 20
+Several gateways (processes or machines sharing one database): --url http://a:8080,http://b:8080 sends to them in turn."""
 import argparse
 import asyncio
 import collections
@@ -10,7 +11,7 @@ import httpx
 
 async def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", default="http://127.0.0.1:8080")
+    ap.add_argument("--url", default="http://127.0.0.1:8080", help="one gateway URL, or several comma-separated")
     ap.add_argument("--title", default="demo")
     ap.add_argument("--key", required=True)
     ap.add_argument("--n", type=int, default=100)
@@ -20,7 +21,8 @@ async def main():
     ap.add_argument("--prompt", default="Greet the traveller in one short sentence.")
     a = ap.parse_args()
 
-    lat, status, nodes = [], collections.Counter(), collections.Counter()
+    lat, status, nodes, per_gw = [], collections.Counter(), collections.Counter(), collections.Counter()
+    urls = [u.strip().rstrip("/") for u in a.url.split(",") if u.strip()]
     sem = asyncio.Semaphore(a.concurrency)
 
     async def one(c, i):
@@ -29,8 +31,10 @@ async def main():
         async with sem:
             t0 = time.monotonic()
             try:
-                r = await c.post("/v1/chat/completions", json=body, headers=h)
+                u = urls[i % len(urls)]
+                r = await c.post(u + "/v1/chat/completions", json=body, headers=h)
                 status[r.status_code] += 1
+                per_gw[(u, r.status_code)] += 1
                 if r.status_code == 200:
                     lat.append((time.monotonic() - t0) * 1000)
                     nodes[r.json()["anansi"]["node"]] += 1
@@ -38,7 +42,7 @@ async def main():
                 status[type(e).__name__] += 1
 
     t0 = time.monotonic()
-    async with httpx.AsyncClient(base_url=a.url, timeout=60) as c:
+    async with httpx.AsyncClient(timeout=60, limits=httpx.Limits(max_connections=a.concurrency)) as c:
         await asyncio.gather(*(one(c, i) for i in range(a.n)))
     wall = time.monotonic() - t0
     lat.sort()
@@ -46,6 +50,8 @@ async def main():
     print(f"requests={a.n} wall={wall:.1f}s rps={a.n / wall:.1f} status={dict(status)}")
     print(f"latency_ms p50={pct(0.5)} p95={pct(0.95)} p99={pct(0.99)} max={round(lat[-1], 1) if lat else None}")
     print(f"per node: {dict(nodes)}")
+    if len(urls) > 1:
+        print(f"per gateway and status: {dict(per_gw)}")
 
 
 if __name__ == "__main__":

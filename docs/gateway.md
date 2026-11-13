@@ -184,6 +184,13 @@ Limits to plan around:
 - **Postgres:** every budget check is a round trip on the request path (about a millisecond to a database in the same data
   centre), and if the database restarts, the requests that were using the connection fail once and the next ones reconnect.
   Tested against Postgres 16 (locally and in CI); no load test across real machines.
+- **Local load test** (one 4-core Windows PC running the load client, two gateway processes on one SQLite file and two mock
+  nodes with 50 ms latency; `tools/loadtest.py --url a,b`, 2,000 requests): 121 requests/s at 10 in flight (p99 156 ms), 179 at
+  50 (p99 812 ms); one process alone managed 97 at 50. At 200 in flight everything shares the CPU and it falls to 54 to 64
+  requests/s with p99 around 13 s and a few dropped connections; the same run without a database file reached 84, so the CPU,
+  not the database, is the main limit here, and the shared file costs about a third more at that level. Budgets held under
+  load: one player with a 3,000-token budget, 500 requests at 100 in flight across both processes, ended at 2,985 tokens (199
+  served, 301 refused with 429, split evenly between the processes). Postgres was not load-tested.
 
 ## Production switches
 
