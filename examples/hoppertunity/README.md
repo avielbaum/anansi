@@ -101,4 +101,7 @@ misses three deadlines and has not won by day 20. A full 28x24 floor of moving b
   the desktop; **F3** shows the frame rate). CI checks that the web build exports, not that it runs.
 - Conveyors and arrows are drawn in four batches. Machines, docks and hoppers are still one node each: 672 separate
   nodes drew nothing at all in the browser, 336 were fine, so a floor of several hundred machines may hit that limit.
-- Replies arrive whole (`chat`), not sentence by sentence: `chat_stream` is untested in a browser.
+- Replies arrive whole (`chat`), not sentence by sentence: a streamed reply carries no action, and the game needs
+  the action. The SDK itself does stream in a browser: `sdk/godot`'s 18 checks, exported for the web from a scratch
+  copy, all passed in Chrome against a gateway on mock nodes (run by hand, not in CI; whether sentences arrive one at a
+  time or all together was not measured).
