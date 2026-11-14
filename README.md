@@ -93,9 +93,9 @@ Ollama Cloud and OpenRouter. See
 | Volunteer node agent, entry probe, spot checks, bans; one-step `join` setup | working on Windows and on the Linux GPU VM (`join.sh` with Ollama); pauses while the owner is busy, even under steady traffic (CPU and GPU; Linux Intel GPUs not measured) |
 | Layered output safety: overlap guard, Llama Guard classifier, judge model | working; on 23 self-written pairs the combination caught all violations with no false positives, about 7.5 s extra on CPU |
 | Python and C# SDKs with sentence streaming and local fallback | working (C# as plain .NET; Unity untested) |
-| JavaScript / TypeScript SDK (browsers, Node, Electron, Deno, Bun) | working: 16 checks against a live gateway in CI; for browsers on another origin list them in `cors_origins` |
+| JavaScript / TypeScript SDK (browsers, Node, Electron, Deno, Bun) | working: 20 checks against a live gateway in CI; for browsers on another origin list them in `cors_origins` |
 | Red-team set for gate G5 (759 prompts, dev/test split, runner) | built; untuned holdout run (420 fresh cases): 32 automatic failures; a second untuned set: 6 (5 arguable); **G5 not passed** |
-| Godot 4 addon (GDScript) | working: 16 checks in the real Godot 4.3 engine against a live gateway in CI, in the editor and in an exported Linux release build (not tried on other export targets or consoles) |
+| Godot 4 addon (GDScript) | working: 20 checks in the real Godot 4.3 engine against a live gateway in CI, in the editor and in an exported Linux release build (not tried on other export targets or consoles) |
 | Unreal Engine 5 plugin (C++, Blueprint-callable) | **written, never compiled or run: no Unreal install was available** |
 | Linux | working: gateway and SDKs in CI on Ubuntu; Docker compose (vLLM + gateway), the systemd unit, llama-server and `join.sh` run on Ubuntu 22.04 with an NVIDIA A10 |
 | macOS Apple Silicon | untested: no Mac hardware |

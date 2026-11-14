@@ -152,6 +152,6 @@ server process (the `ANANSI_TITLE` and `ANANSI_KEY` variables). The red-team too
 
 The C# SDK is tested as plain .NET against a live gateway (Windows PowerShell test and a `dotnet` test run in CI on
 Ubuntu). The Unity `JsonUtility` branch and a real Unity project have not been run. The Godot addon runs in CI in the
-real Godot 4.3 engine against a live gateway (`sdk/godot/test/checks.gd`, 16 checks: replies, streaming, quests, credits,
+real Godot 4.3 engine against a live gateway (`sdk/godot/test/checks.gd`, 20 checks: replies, streaming, quests, credits, leaderboard,
 every fallback path), both from the editor binary and in an exported Linux release build. The Unreal plugin is an **untested draft**: it follows the same contract and JSON shapes but has
 never been compiled or run, and CI does not build it. Other engines can call the HTTP API directly; it is plain JSON and SSE.
