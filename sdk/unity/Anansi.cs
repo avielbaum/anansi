@@ -56,23 +56,10 @@ namespace Anansi
         public Credits Credits;  // the player's credits after linking
     }
 
-    // The public volunteer leaderboard (GET /v1/leaderboard) and a player's opt-in name (POST /v1/credits/name).
-    [Serializable] public class BoardTokens { public long today; public long week; public long all; }
-    [Serializable] public class BoardGpu { public string name; public int vram_mb; }
-    [Serializable] public class BoardReported { public string cpu; public int threads; public List<BoardGpu> gpus; public string os; public double? idle_gpu_pct; public string at; }
-    [Serializable] public class BoardNode { public int rank; public string node; public string name; public BoardTokens tokens; public int jobs; public BoardReported reported; }
-    [Serializable] public class BoardUser { public int rank; public string name; public int machines; public BoardTokens tokens; public int jobs; }
-    [Serializable] public class Leaderboard { public string period; public List<BoardNode> nodes; public List<BoardUser> users; }  // names and hardware text come from outside: escape them in markup
-    [Serializable] public class NameRequest { public string name; }
-    [Serializable] public class NameReply { public string name; }
-    public class NameResult
-    {
-        public bool Set;
-        public string Name;      // the cleaned name, or null when the player opted out
-        public string Reason;    // when not set: "bad_name" (refused: Message says why), "not_allowed" (names switched off or this account blocked) or "unavailable"
-        public string Message;   // why a name was refused, in words a player can act on
-    }
-    [Serializable] public class ErrorReply { public string detail; }
+    // The anonymous volunteer-network statistics (GET /v1/leaderboard). Hardware names come from outside: escape them in markup.
+    [Serializable] public class BoardRow { public string name; public int machines; public long tokens; public double? idle_gpu_pct; }
+    [Serializable] public class BoardReporting { public int machines; public long tokens; public double? idle_gpu_pct; }
+    [Serializable] public class Leaderboard { public string period; public bool published; public int min_group; public BoardReporting reporting; public long network_tokens; public List<BoardRow> gpus; public List<BoardRow> cpus; public List<BoardRow> systems; }  // published is false, and the rest empty, until min_group machines report
 
     public class Reply
     {
@@ -209,8 +196,8 @@ namespace Anansi
             return req;
         }
 
-        // The public volunteer leaderboard ("day", "week" or "all"), or null when the gateway cannot be reached.
-        public async Task<Leaderboard> LeaderboardAsync(string period = "week", int limit = 25)
+        // The anonymous volunteer-network statistics ("day", "week" or "all"), or null when the gateway cannot be reached.
+        public async Task<Leaderboard> LeaderboardAsync(string period = "week", int limit = 20)
         {
             try
             {
@@ -220,29 +207,6 @@ namespace Anansi
             }
             catch (Exception) { }
             return null;
-        }
-
-        // Opt this player in to the leaderboard under `name` (empty = opt out). Shown once a machine is linked.
-        public async Task<NameResult> SetLeaderboardNameAsync(string name)
-        {
-            try
-            {
-                var body = Json.To(new NameRequest { name = name ?? "" });
-                using (var resp = await http.SendAsync(Req(HttpMethod.Post, "/v1/credits/name", body)).ConfigureAwait(false))
-                {
-                    if (resp.IsSuccessStatusCode)
-                        return new NameResult { Set = true, Name = Json.From<NameReply>(await resp.Content.ReadAsStringAsync().ConfigureAwait(false)).name };
-                    var s = (int)resp.StatusCode;
-                    if (s == 400 || s == 403 || s == 422)
-                    {
-                        string why = "";
-                        try { why = Json.From<ErrorReply>(await resp.Content.ReadAsStringAsync().ConfigureAwait(false)).detail ?? ""; } catch (Exception) { }  // a validation error has no text detail
-                        return new NameResult { Set = false, Reason = s == 403 ? "not_allowed" : "bad_name", Message = why };
-                    }
-                }
-            }
-            catch (Exception) { }
-            return new NameResult { Set = false, Reason = "unavailable" };
         }
 
         // This player's volunteer credits, or null when the gateway cannot be reached.

@@ -1,4 +1,4 @@
-# Privacy: what Anansi collects, shows and keeps
+# Privacy: what Anansi collects, publishes and keeps
 
 > **Draft for counsel review.** This describes what the software does today. It is not legal advice and not a finished policy.
 > Whoever runs a gateway (the *operator*) is responsible for their own legal basis, notices and compliance, and has to fill in the
@@ -19,48 +19,65 @@
 |---|---|---|---|
 | Platform account id (for example a Steam id), tokens used per day | Player | Daily token budget, so one account cannot use everything | `retention_days` (35), then deleted |
 | The text of a player's message and the NPC's reply | Player | Not stored: processed in memory by the gateway and sent to whichever model answers (see below). The operator's own logging or proxy may differ | Not stored by the gateway |
-| A random agent id, tokens and jobs served per day, probe results, bans | Volunteer | Verification and the work ledger | The ledger has no automatic deletion (see "Not handled yet") |
+| A random agent id, tokens and jobs served per day, probe results, bans | Volunteer | Verification and the work ledger | No automatic deletion (see "Not handled yet") |
 | A link between an agent id and a player's account, earned and spent credits | Volunteer / player | Volunteer credits | While credits exist (no automatic deletion) |
-| **Leaderboard, machine (opt-in)**: display name, CPU model, thread count, GPU models and memory, operating system name, a slow average of idle GPU load, time of the last report | Volunteer | Public leaderboard | Until the volunteer leaves (`--telemetry-off`), is blocked, or stays silent for `retention_days` |
-| **Leaderboard, player (opt-in)**: display name, linked to the account | Player | Public leaderboard | Until the player sets an empty name, or is blocked |
-| Leaderboard blocks: the hash shown on the board or the name, and the date | Volunteer / player | Moderation | Until lifted |
+| **Statistics report (opt-in)**: CPU model, GPU models and memory, operating system name, a slow average of idle GPU load, and when it last arrived | Volunteer | The anonymous network statistics below | Until the volunteer deletes it (`--telemetry-off`), or **2 days after the last report** |
 
-Nothing about a computer other than the list above is read: no hostname, user name, address, serial number, driver version or file.
+The statistics report is the only thing a machine sends beyond doing jobs, and it is off unless the volunteer starts the agent with
+`--telemetry`. It contains **no name, account, address, hostname, user name, serial number, driver version or thread count**
+(`--telemetry-show` prints it exactly), and an agent has no option to add a name.
 
-## What is public
+## What is published: anonymous statistics
 
-The leaderboard (`/leaderboard`, `/v1/leaderboard`) shows, only for machines and players that chose to be listed:
+The page `/leaderboard` and the JSON `/v1/leaderboard` show **statistics about groups of machines**, not machines or people:
 
-- **Machines:** rank, display name, a short hash of the agent id, CPU and GPU models with memory, operating system name, a typical idle GPU
-  figure in whole percent, tokens processed (today, 7 days, all time), jobs, and the date of the last report.
-- **Players:** rank, display name, number of linked machines, tokens processed by those machines since they were linked.
+- how many machines are reporting, the tokens they served (today, 7 days, all time), and a typical idle GPU load;
+- the same broken down by **graphics card** (model and memory), **processor** model and **operating system**: machines, tokens served
+  and typical idle load per group, most tokens first;
+- the tokens served by the whole volunteer network, for comparison.
 
-It never shows the agent id, the platform account, an address, a hostname, a time of day, or which machines belong to which player.
-Things to know before opting in:
+How it stays anonymous:
 
-- **The two lists can be matched.** A player with one machine and a machine with the same totals are the same person's. Anyone can see
-  that. Opting in as both reveals the link; opting in as only one does not.
-- **Hardware and idle load are reported by each machine and are not checked.** Tokens are measured by the gateway.
-- **The idle figure is a slow average** (hours), not a live reading, so it does not show when the owner is using the computer.
-- **A name is public text.** Do not use a real name. Links, email addresses, handles and phone numbers are refused, and the operator can
-  block a name. A name is cleaned (invisible and right-to-left characters removed, 24 characters at most).
-- **Copies.** The page asks search engines not to index it and cannot be framed by other sites, but anyone can keep a copy (a screenshot,
-  an archive, a scraper). Leaving removes the entry within about 30 seconds (the page is cached that long); it cannot recall copies.
+- **A group is shown only if at least `min_group` machines are in it** (default 5). Smaller groups are folded into "Other" if together
+  they reach `min_group`, and are otherwise left out. **Nothing at all is published until `min_group` machines report**, not even a count.
+  So no row describes a single computer or a single person, and a rare build cannot point at its owner.
+- **No name, account, agent id, hash, rank of a person, per-machine row, jobs per machine or time of day** is published, and there is no
+  display name anywhere to choose. The last report is never shown.
+- **The idle figure is a slow average** (hours) of what machines report, and a group's figure is the mean of its machines, shown as a whole
+  percent, so it cannot reveal when anyone is playing.
+- A machine's tokens are counted once, under its graphics card with the most memory.
+- Hardware text comes from outside and is cleaned (invisible and right-to-left characters removed, lengths capped) and escaped; a group
+  needs `min_group` machines reporting the very same text, and the operator can hide hardware by pattern (`leaderboard.hidden_hardware`).
+- The page asks search engines not to index it and cannot be framed by other sites.
+
+## How anonymous is it, exactly
+
+Be precise about this rather than rely on the word.
+
+- **What anyone can see is anonymous** in the sense above: groups of at least `min_group` machines, nothing about an individual.
+- **Small numbers weaken it.** An operator who sets `min_group` to 1 (allowed, for testing) publishes single machines, and the page says so.
+  With 5, someone who watches the page over time can see that a group grew from 5 to 6 machines, which says a machine joined, not whose.
+- **The operator's database is pseudonymous, not anonymous, for up to 2 days.** The latest report is kept under the machine's random agent
+  id so it can be updated and deleted. That id also appears in the work ledger and, for a volunteer who linked credits to a player account,
+  points to that account. A volunteer who wants nothing at all linked to them does not turn `--telemetry` on (nothing is sent by default).
+  Making the stored report unlinkable too (a key that rotates every day) is possible and is listed under "Not handled yet".
+- **Hardware and idle load are reported by each machine and not verified**; tokens are measured by the gateway.
+- **Copies.** Anyone can keep a copy of a public page (a screenshot, an archive, a scraper). Leaving removes the machine from the next
+  page (within about 30 seconds); it cannot recall copies.
 
 ## Choices
 
 | | |
 |---|---|
-| Not appear at all | Do nothing: both are off by default |
-| Machine on | `agent.py ... --telemetry [--name NAME]` (or the same flags on `join`). The agent prints, at every start, what it sends and to whom, and `--telemetry-show` prints the exact report without sending anything. It refuses a gateway address that is plain `http://` on another machine |
-| Machine off | `agent.py ... --telemetry-off` removes it and deletes what it reported |
-| Player on / off | The game calls `set_leaderboard_name` with a name / an empty name |
-| Operator removes someone | `POST /admin/leaderboard/block` with `{"node": "<hash>"}` or `{"user": "<name>"}`. It comes off the board at once and cannot be listed again; the volunteer still serves jobs and the player still plays |
-| Operator turns it off | `leaderboard.enabled: false` (no page, no reports) or `leaderboard.players: false` (machines only) |
+| Not take part | Do nothing: it is off by default |
+| Take part | `agent.py ... --telemetry` (or on `join`). The agent says at every start exactly what it sends and to whom. `--telemetry-show` prints the exact report and sends nothing. It refuses a gateway address that is plain `http://` on another machine |
+| Stop and delete | `agent.py ... --telemetry-off` deletes what the machine reported; a machine silent for 2 days is forgotten anyway |
+| Operator turns it off | `leaderboard.enabled: false`: no page, and reports are refused |
+| Operator raises the bar | `leaderboard.min_group` (larger is more anonymous), `leaderboard.hidden_hardware` |
 
 ## Volunteers see what players write
 
-This matters more than the leaderboard. When a title sets `allow_volunteers`, **the text of the player's message and the studio's NPC
+This matters more than the statistics. When a title sets `allow_volunteers`, **the text of the player's message and the studio's NPC
 prompt are sent to a volunteer's computer**, and a volunteer's model answers it. The platform account, name and address are not sent.
 The earlier design note that volunteers should get "no player chat" cannot hold for dialogue and is superseded by this page.
 
@@ -79,22 +96,24 @@ what they process, but we cannot technically stop them."* Drop the sentence abou
 
 ## Children
 
-Leaderboard names are free text shown to the public, and dialogue is typed by players. For a title aimed at children (or players below the
-age of digital consent in your markets) the safe settings are `leaderboard.players: false`, no `allow_volunteers`, and whatever age gate
-and parental consent your law requires. The software has no age check.
+Dialogue is typed by players, so for a title aimed at children (or players below the age of digital consent in your markets) the safe
+settings are no `allow_volunteers`, and whatever age gate and parental consent your law requires. The software has no age check. The
+statistics contain no player data at all.
 
 ## Security measures that exist
 
-Opt-in for both sides; telemetry only over `https://` (or this machine); the volunteer's report limited to 16 KB and one per 20 seconds,
-and only from a machine that registered or served a job; everything outside written text cleaned and escaped on the page, with a
-restrictive content policy; no indexing, no framing; links, emails and phone numbers refused in names; operator block and removal; a
-daily purge of inactive reports; banned machines are not ranked; every protection above has a self-check that fails without it.
+Opt-in; telemetry only over `https://` (or this machine); a report limited to 16 KB and one per 20 seconds, and only from a machine that
+registered or served a job; a minimum group size; no name field anywhere; hardware text cleaned and escaped, with a restrictive content
+policy; no indexing, no framing; a short retention (2 days) for the stored report, purged daily; banned machines not counted; and every
+control above has a self-check that fails without it.
 
 ## Not handled yet
 
 - **The work ledger and credit records are never deleted automatically.** They are pseudonymous (an agent id) until a player links a
   machine, after which they point at a platform account. A retention period and an erase-on-request path need a decision (the credit audit
   window is 7 days) and code.
+- **The stored statistics report is pseudonymous for up to 2 days** (see above). A daily rotating key would make it unlinkable to the
+  ledger and to a player account; it adds moving parts and has not been built.
 - **No export or erase endpoint for a person's data**; the operator uses the database.
 - **No age gate, no consent record** beyond the opt-in action itself.
 - **Transfers.** Volunteers can be anywhere, so player messages can cross borders. The operator has to assess that.

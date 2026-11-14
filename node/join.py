@@ -92,10 +92,10 @@ def plan(a, ram, have):
     steps.append((True, f"Will connect out to {a.gateway} with {a.slots} worker(s). No port is opened on this machine."))
     if getattr(a, "telemetry", False):
         urls = [u.strip() for u in a.gateway.split(",") if u.strip()]
-        steps.append((not any(insecure(u) for u in urls), "Will report your CPU and GPU model and idle GPU load to the public leaderboard "
-                      "(stop with agent.py --telemetry-off); this needs an https:// gateway address."))
+        steps.append((not any(insecure(u) for u in urls), "Will report your CPU and GPU model and idle GPU load to the anonymous network "
+                      "statistics (stop with agent.py --telemetry-off); this needs an https:// gateway address."))
     else:
-        steps.append((True, "Not on the leaderboard. To appear on it, add --telemetry (and --name YOURNAME)."))
+        steps.append((True, "Not in the network statistics. To add this machine, add --telemetry."))
     return steps, model
 
 
@@ -107,8 +107,7 @@ def parser():
     ap.add_argument("--slots", type=int, default=1)
     ap.add_argument("--local", default=OLLAMA)
     ap.add_argument("--dry-run", action="store_true", help="show the plan and stop")
-    ap.add_argument("--telemetry", action="store_true", help="opt in to the public leaderboard: report CPU and GPU model and idle GPU load")
-    ap.add_argument("--name", default="", help="display name on the leaderboard (with --telemetry)")
+    ap.add_argument("--telemetry", action="store_true", help="opt in to the anonymous network statistics: report CPU and GPU model and idle GPU load")
     add_load_args(ap)
     return ap
 
@@ -134,14 +133,14 @@ def main():
             sys.exit("ollama pull failed. Check your connection and try again; it resumes where it stopped.")
     print(JOBS_NOTICE)
     if a.telemetry:
-        print(telemetry_notice([u.strip() for u in a.gateway.split(",") if u.strip()], a.name))
+        print(telemetry_notice([u.strip() for u in a.gateway.split(",") if u.strip()]))
     print("Starting. Press Ctrl+C to stop.")
 
     async def run():
         gws = [httpx.AsyncClient(base_url=u.strip().rstrip("/")) for u in a.gateway.split(",") if u.strip()]
         async with httpx.AsyncClient(base_url=a.local) as local:
             try:
-                await serve(gws, local, a.token, a.slots, model=model, idle=idle_limits(a), telemetry_name=a.name if a.telemetry else None)
+                await serve(gws, local, a.token, a.slots, model=model, idle=idle_limits(a), telemetry_on=a.telemetry)
             finally:
                 for g in gws:
                     await g.aclose()

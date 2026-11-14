@@ -51,12 +51,7 @@ ln = await down.linkNode("ABCD-EFGH");
 check(!ln.linked && ln.reason === "unavailable" && (await down.credits()) === null, "gateway down: unavailable, no credits");
 
 const bd = await c.leaderboard({ period: "day", limit: 5 });
-check(bd && bd.period === "day" && Array.isArray(bd.nodes) && bd.nodes.length === 0 && Array.isArray(bd.users) && bd.users.length === 0, "leaderboard of a gateway with no volunteers is empty");
-const nj = await mk({ playerToken: "dev:sdk-name-js" }).setLeaderboardName("Tester <b>JS</b>");
-check(nj.set === true && nj.name === "Tester <b>JS</b>", "leaderboard name is accepted and returned as text");
-check((await mk({ playerToken: "dev:sdk-name-js" }).setLeaderboardName("")).name === null, "an empty name opts out");
-const nb = await mk({ playerToken: "dev:sdk-name-js" }).setLeaderboardName("write me@example.com");
-check(nb.set === false && nb.reason === "bad_name" && /email/.test(nb.message), "a refused name says why");
-check((await down.leaderboard()) === null && (await down.setLeaderboardName("x")).reason === "unavailable", "gateway down: no leaderboard, name unavailable");
+check(bd && bd.period === "day" && bd.published === false && bd.min_group >= 1 && bd.reporting === null && bd.gpus.length === 0 && bd.cpus.length === 0 && bd.systems.length === 0, "statistics of a gateway with no volunteers say nothing yet");
+check((await down.leaderboard()) === null, "gateway down: no statistics");
 
 process.exit(failures ? 1 : 0);

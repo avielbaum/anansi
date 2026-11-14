@@ -119,24 +119,13 @@ func storyline(world: Dictionary, beats := 4, theme := "") -> Dictionary:
 	return {"source": "fallback", "storyline": storyline_fallback.call(world) if storyline_fallback.is_valid() else null}
 
 
-## The public volunteer leaderboard: {"period", "nodes": [...], "users": [...]} ranked by tokens in `period` ("day", "week" or "all"), or
-## null when the gateway cannot be reached. Names and hardware text come from outside: escape them if you show them in markup.
-func leaderboard(period := "week", limit := 25) -> Variant:
+## The anonymous volunteer-network statistics for `period` ("day", "week" or "all"), or null when the gateway cannot be reached:
+## {"period", "published", "min_group", "reporting": {machines, tokens, idle_gpu_pct} or null, "network_tokens", "gpus", "cpus", "systems"}, each row
+## {"name", "machines", "tokens", "idle_gpu_pct"}. Nothing is published (published is false, the rest empty) until at least min_group machines
+## report, and a smaller group is folded into "Other". The names are hardware names reported by machines: escape them if you show them in markup.
+func leaderboard(period := "week", limit := 20) -> Variant:
 	var r: Array = await _request(HTTPClient.METHOD_GET, "/v1/leaderboard?period=" + period.uri_encode() + "&limit=" + str(limit), null, timeout_s)
 	return r[1] if r[0] == 200 else null
-
-
-## Opt this player in to the leaderboard under `name` (an empty name opts out). Shown once a machine is linked.
-## {"set": true, "name": cleaned name or null}, or {"set": false, "reason", "message"}: "bad_name" (refused: message says why, for example no
-## links or email addresses), "not_allowed" (the studio switched names off or blocked this account) or "unavailable".
-func set_leaderboard_name(name: String) -> Dictionary:
-	var r: Array = await _request(HTTPClient.METHOD_POST, "/v1/credits/name", {"name": name}, timeout_s)
-	if r[0] == 200:
-		return {"set": true, "name": r[1].get("name")}
-	if r[0] == 400 or r[0] == 403 or r[0] == 422:
-		var why = r[1].get("detail", "")
-		return {"set": false, "reason": "not_allowed" if r[0] == 403 else "bad_name", "message": why if why is String else ""}
-	return {"set": false, "reason": "unavailable"}
 
 
 ## This player's volunteer credits: {"balance", "pending", "nodes"}, or null when the gateway cannot be reached.

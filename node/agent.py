@@ -3,7 +3,7 @@ OpenAI-compatible server (Ollama, llama-server, vLLM). No inbound port, so it wo
 Run: python node/agent.py --gateway https://gw.example --token TOKEN --local http://127.0.0.1:11434 [--slots 2]
 It pauses while the owner is busy (CPU or GPU above 60 percent; --cpu-limit, --gpu-limit, --ignore-load).
 To earn credits: run once with --link and type the printed code into a game that uses Anansi.
-To appear on the public leaderboard: add --telemetry [--name NAME] (CPU and GPU model, idle GPU load); --telemetry-off removes you.
+To add this machine to the anonymous network statistics: --telemetry (CPU and GPU model, idle GPU load; no name); --telemetry-off removes it.
 Each slot registers as its own worker. It only ever forwards /v1/chat/completions to the local server.
 Works the same on Windows, Linux and macOS (Apple Silicon: Ollama and llama.cpp use Metal).
 shortcut: the token is a shared secret per pool, not a per-user, platform-bound certificate (DESIGN.md section 9)."""
@@ -260,27 +260,27 @@ def insecure(url):
     return u.scheme != "https" and u.host not in ("localhost", "127.0.0.1", "::1")
 
 
-def telemetry_notice(urls, name):
+def telemetry_notice(urls):
     """Said at every start with --telemetry: exactly what is sent, to whom, and what happens to it."""
-    return (f"Leaderboard telemetry is ON for {', '.join(urls)}. About every 5 minutes this agent sends your CPU model, GPU models and "
-            "memory, an operating system name and a slow average of how busy your GPU is when this agent is not using it, under the name "
-            f"{name!r}" + (" (a short code is shown instead of a name)" if not name else "") + ". The gateway shows them publicly next to your token "
-            "totals. A name is public: do not use your real name. If you are also listed as a player, anyone can tell the two are yours "
-            "(the totals match). Anyone can keep a copy of a public page. See exactly what is sent: --telemetry-show. Leave any time: --telemetry-off.")
+    return (f"Statistics telemetry is ON for {', '.join(urls)}. About every 5 minutes this agent sends your CPU model, GPU models and memory, "
+            "an operating system name and a slow average of how busy your GPU is when this agent is not using it. It sends no name, account or "
+            "address. The gateway publishes only statistics for groups of machines with the same hardware (never a single machine), but it keeps "
+            "your latest report under this agent's random id for up to 2 days so it can update it. See exactly what is sent: --telemetry-show. "
+            "Stop and delete it any time: --telemetry-off.")
 
 
-def telemetry_preview(name):
+def telemetry_preview():
     """The report as it would be sent, with the GPU load read right now (the real one is a slow average)."""
-    return json.dumps({**hardware.describe(), "name": name, "idle_gpu": gpu_util()}, indent=2)
+    return json.dumps({**hardware.describe(), "idle_gpu": gpu_util()}, indent=2)
 
 
-async def telemetry(gw, token, agent, name, log=print):
-    """Opt-in (--telemetry): tell the gateway what this machine is and how busy its GPU is when none of our jobs run, for the public
-    leaderboard. The load is sampled only while idle, so it is the owner's own use, and smoothed so one spike does not stand for the
+async def telemetry(gw, token, agent, log=print):
+    """Opt-in (--telemetry): tell the gateway what this machine is and how busy its GPU is when none of our jobs run, for the anonymous
+    network statistics. The load is sampled only while idle, so it is the owner's own use, and smoothed so one spike does not stand for the
     machine. A report the gateway refuses (not registered yet) is retried at the next sample."""
     H = {"X-Node-Token": token, "X-Node-Agent": agent}
     info = await asyncio.to_thread(hardware.describe)
-    last, started, warned = None, time.monotonic(), False
+    last, started = None, time.monotonic()
     while True:
         if JOBS["active"] == 0 and time.monotonic() - JOBS["last"] > SETTLE_S:
             g = await asyncio.to_thread(gpu_util)
@@ -289,34 +289,31 @@ async def telemetry(gw, token, agent, name, log=print):
         # the probe the gateway sends on registration keeps our model busy for the first seconds: the first report waits for a sample
         if (IDLE["gpu"] is not None or time.monotonic() - started > GRACE_S) if last is None else time.monotonic() - last >= REPORT_S:
             try:
-                r = await gw.post("/node/telemetry", json={**info, "name": name, "idle_gpu": IDLE["gpu"]}, headers=H)
+                r = await gw.post("/node/telemetry", json={**info, "idle_gpu": IDLE["gpu"]}, headers=H)
                 if r.status_code == 200:
                     last = time.monotonic()
-                    if r.json().get("name_rejected") and not warned:  # the rest of the report was kept
-                        warned = True
-                        log(f"the leaderboard will not show your name: {r.json()['name_rejected']}. Pick another with --name.")
-                elif r.status_code == 403 and any(w in r.text for w in ("banned", "switched off", "blocked")):
+                elif r.status_code == 403 and any(w in r.text for w in ("banned", "switched off")):
                     try:
                         why = r.json()["detail"]
                     except (ValueError, KeyError):
                         why = r.text
-                    log(f"the gateway will not list this machine on its leaderboard ({why})")
+                    log(f"the gateway will not take statistics from this machine ({why})")
                     return
             except httpx.HTTPError:
                 pass  # unreachable: the next sample tries again
         await asyncio.sleep(SAMPLE_S)
 
 
-async def serve(gw, local, token, slots=1, log=print, agent=None, model=None, idle=None, telemetry_name=None):
+async def serve(gw, local, token, slots=1, log=print, agent=None, model=None, idle=None, telemetry_on=False):
     """gw: one gateway client, or a list of them (one per gateway machine sharing a database). Every gateway gets `slots`
     workers so none waits for another's long poll; at most `slots` jobs run on the local model at once across all of them.
-    telemetry_name: None = no leaderboard report; a string (may be empty) = report to every gateway under that display name."""
+    telemetry_on: also send the anonymous hardware and idle-load report to every gateway."""
     agent = agent or agent_id()
     gws = gw if isinstance(gw, (list, tuple)) else [gw]
     slot = asyncio.Semaphore(slots)
     await asyncio.gather(*[worker(g, local, token, agent, log if len(gws) == 1 else (lambda m, u=str(g.base_url): log(f"[{u}] {m}")),
                                   model, idle, slot=slot) for g in gws for _ in range(slots)],
-                         *([telemetry(g, token, agent, telemetry_name, log) for g in gws] if telemetry_name is not None else []))
+                         *([telemetry(g, token, agent, log) for g in gws] if telemetry_on else []))
 
 
 if __name__ == "__main__":
@@ -327,23 +324,22 @@ if __name__ == "__main__":
     ap.add_argument("--slots", type=int, default=1)
     ap.add_argument("--model", help="local model name to run every job on (default: the name the gateway sends)")
     ap.add_argument("--link", action="store_true", help="print a code to type into a game, so this machine earns credits for you")
-    ap.add_argument("--telemetry", action="store_true", help="opt in to the public leaderboard: report CPU and GPU model and idle GPU load")
-    ap.add_argument("--name", default="", help="display name on the leaderboard (with --telemetry); default: a short code")
-    ap.add_argument("--telemetry-off", action="store_true", help="remove this machine from the leaderboard and delete what it reported, then exit")
+    ap.add_argument("--telemetry", action="store_true", help="opt in to the anonymous network statistics: report CPU and GPU model and idle GPU load")
+    ap.add_argument("--telemetry-off", action="store_true", help="delete what this machine reported, then exit")
     ap.add_argument("--telemetry-show", action="store_true", help="print exactly what --telemetry would send and exit; nothing is sent")
     add_load_args(ap)
     a = ap.parse_args()
     urls = [u.strip().rstrip("/") for u in a.gateway.split(",") if u.strip()]
     if a.telemetry_show:
-        print(telemetry_notice(urls, a.name) + "\n\nA report looks like this (the real GPU load is a slow average, and the gateway averages again):")
-        print(telemetry_preview(a.name))
+        print(telemetry_notice(urls) + "\n\nA report looks like this (the real GPU load is a slow average, and the gateway averages again):")
+        print(telemetry_preview())
         raise SystemExit
     if a.telemetry and any(insecure(u) for u in urls):
         raise SystemExit("--telemetry sends your hardware details, so the gateway address must start with https:// (or be this machine). Not started.")
     if a.telemetry_off:
         for u in urls:
             r = httpx.delete(u + "/node/telemetry", headers={"X-Node-Token": a.token, "X-Node-Agent": agent_id()}, timeout=20)
-            print(f"{u}: {'removed from the leaderboard' if r.status_code == 200 else 'HTTP ' + str(r.status_code)}")
+            print(f"{u}: {'deleted' if r.status_code == 200 else 'HTTP ' + str(r.status_code)}")
         raise SystemExit
     if a.link:  # codes live in the shared database, so any one gateway can issue them
         r = httpx.post(urls[0] + "/node/link-code", headers={"X-Node-Token": a.token, "X-Node-Agent": agent_id()}, timeout=20)
@@ -354,13 +350,13 @@ if __name__ == "__main__":
 
     print(JOBS_NOTICE)
     if a.telemetry:
-        print(telemetry_notice(urls, a.name))
+        print(telemetry_notice(urls))
 
     async def main():
         gws = [httpx.AsyncClient(base_url=u) for u in urls]
         async with httpx.AsyncClient(base_url=a.local) as local:
             try:
-                await serve(gws, local, a.token, a.slots, model=a.model, idle=idle_limits(a), telemetry_name=a.name if a.telemetry else None)
+                await serve(gws, local, a.token, a.slots, model=a.model, idle=idle_limits(a), telemetry_on=a.telemetry)
             finally:
                 for g in gws:
                     await g.aclose()

@@ -126,4 +126,4 @@ def os_label():
 
 
 def describe():
-    return {"cpu": cpu_model(), "threads": os.cpu_count() or 0, "gpus": gpus(), "os": os_label()}
+    return {"cpu": cpu_model(), "gpus": gpus(), "os": os_label()}

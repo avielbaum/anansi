@@ -752,8 +752,10 @@ def t_replies_cannot_stall_the_gateway():
     assert len(pats) >= 6, [n for n, _ in pats]  # the sweep really found them (ALWAYS, PLANTED, ORDER, THINK, TAGS, quests' own)
     funcs = [("quests.planted", lambda t: qm.planted("kiwi-42 and more words", t)), ("quests.breaks_fiction", lambda t: qm.breaks_fiction("kiwi-42", t)),
              ("quests.clean", lambda t: qm.clean(t, 500)), ("leaderboard.clean_text", lambda t: lbm.clean_text(t, 24)),
-             ("leaderboard.name_problem", lambda t: lbm.name_problem(t, ["bad"])),
-             ("leaderboard.clean_telemetry", lambda t: lbm.clean_telemetry({"name": t, "cpu": t, "os": t, "gpus": [{"name": t}] * 20})), ("leaks", lambda t: ga.leaks("one two three four five six seven eight", t)),
+             ("leaderboard.clean_telemetry", lambda t: lbm.clean_telemetry({"cpu": t, "os": t, "gpus": [{"name": t}] * 20})),
+             ("leaderboard.gpu_label", lambda t: lbm.gpu_label([{"name": t, "vram_mb": 1024}] * 8)),
+             ("leaderboard.board", lambda t: lbm.board([{"cpu": t, "gpus": [{"name": t, "vram_mb": 1}], "os": t, "idle_gpu": 1.0, "tokens": {"today": 1, "week": 1, "all": 1}}] * 6,
+                                                       {"today": 0, "week": 0, "all": 0}, "week", 5, ["bad", "^x"])), ("leaks", lambda t: ga.leaks("one two three four five six seven eight", t)),
              ("visible", ga.visible), ("first_sentence", ga.first_sentence), ("strip_chatter", ga.strip_chatter), ("json_slice", ga.json_slice), ("schema_hint", lambda t: ga.schema_hint({"type": "object", "properties": {"a": {"type": "string"}}}))]
     runs = [(n, p.search) for n, p in pats] + [(n, p.match) for n, p in pats] + [(n, lambda t, p=p: p.sub("", t)) for n, p in pats] + funcs
     for size in (1500, 20_000):
@@ -817,184 +819,8 @@ def t_hardware_readers():
         assert hw.amd_sysfs(d) == [{"name": "AMD GPU 0x73bf", "vram_mb": 16368}, {"name": "AMD Radeon RX 6600", "vram_mb": 8192}]
         assert hw.amd_sysfs(os.path.join(d, "nothing")) == []
     me = hw.describe()  # this machine, whatever it is: the readers must not fail
-    assert me["cpu"] and isinstance(me["threads"], int) and isinstance(me["gpus"], list) and me["os"]
+    assert me["cpu"] and set(me) == {"cpu", "gpus", "os"} and isinstance(me["gpus"], list) and me["os"]  # no thread count, no hostname
     assert all(isinstance(g["name"], str) and isinstance(g["vram_mb"], int) for g in me["gpus"])
-
-
-def t_telemetry_text_is_cleaned():
-    from gateway.leaderboard import clean_telemetry, clean_text, node_label
-    assert clean_text("  Rig\x00 one‮​\n two  ", 24) == "Rig one two"  # controls, right-to-left override, zero-width: all gone
-    assert clean_text("x" * 5000, 24) == "x" * 24 and clean_text(None, 24) == "" and clean_text(12345, 3) == "123"
-    assert clean_text("<script>alert(1)</script>", 40) == "<script>alert(1)</script>"  # kept as text: escaped where it is shown
-    t = clean_telemetry({"name": "N" * 99, "cpu": "C" * 500, "threads": 10**9, "os": "Windows 10", "idle_gpu": 250,
-                         "gpus": [{"name": "G%d" % i, "vram_mb": -5} for i in range(50)] + ["junk", {"name": ""}, {"vram_mb": 4}]})
-    assert len(t["name"]) == 24 and len(t["cpu"]) == 80 and t["threads"] == 4096 and t["idle_gpu"] == 100.0
-    assert len(t["gpus"]) == 8 and all(g["vram_mb"] == 0 for g in t["gpus"])  # eight at most, nameless ones dropped, negatives clamped
-    assert clean_telemetry({})["idle_gpu"] is None and clean_telemetry({"idle_gpu": float("nan")})["idle_gpu"] is None
-    assert clean_telemetry({"idle_gpu": True, "threads": "8", "gpus": "no"}) == {"name": "", "cpu": "", "threads": 0, "gpus": [], "os": "", "idle_gpu": None}
-    for bad in ([], "x", None, 3):
-        try:
-            clean_telemetry(bad)
-            assert False, bad
-        except ValueError:
-            pass
-    assert len(node_label("some-agent-id")) == 8 and node_label("a") != node_label("b") and "some-agent-id" not in node_label("some-agent-id")
-
-
-async def t_leaderboard():
-    import node.agent as ag
-    from gateway import leaderboard as lb
-    from node.agent import serve
-    cfg = copy.deepcopy(CFG)
-    cfg.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2, canary_rate=0,
-               canaries=[{"user": "say hi", "expect": "hello"}], max_inflight_per_player=100)
-    app = make_app(cfg)
-    hub, store = app.state.hub, app.state.store
-    gw = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://gw")
-    local = lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=make_node("v")), base_url="http://l")
-    saved = ag.hardware.describe, ag.gpu_util, ag.SAMPLE_S, ag.REPORT_S, lb.CACHE_S
-    ag.hardware.describe = lambda: {"cpu": "Test CPU ‮ @ 3.0GHz", "threads": 16, "os": "Windows 10",
-                                    "gpus": [{"name": "NVIDIA <b>A10</b>", "vram_mb": 23028}, {"name": "Intel HD Graphics", "vram_mb": 1024}]}
-    ag.gpu_util, ag.SAMPLE_S, ag.REPORT_S, lb.CACHE_S = (lambda: 12.0), 0.05, 0.2, 0
-    import gateway.pull as gp
-    old_min, gp.TELEMETRY_MIN_S = gp.TELEMETRY_MIN_S, 0.3
-    ag.JOBS.update(active=0, last=0.0)  # earlier tests ran jobs: the idle sample waits for 5 quiet seconds after the last one
-    ag.IDLE["gpu"] = None
-    nh = lambda agent, tok="tok": {"X-Node-Token": tok, "X-Node-Agent": agent}
-    try:
-        a = asyncio.create_task(serve(gw, local(), "tok", log=lambda m: None, agent="vol-a", telemetry_name="Rig <b>1</b>"))
-        b = asyncio.create_task(serve(gw, local(), "tok", log=lambda m: None, agent="vol-b"))  # does not opt in
-        await asyncio.sleep(1.0)  # both registered; vol-a has reported
-        for i in range(80):  # a request for a given NPC sticks to one node, so ask for different NPCs until both volunteers have served jobs
-            body = {**BODY, "anansi": {"npc_id": f"npc{i}"}}
-            assert (await gw.post("/v1/chat/completions", json=body, headers=H)).status_code == 200
-            if {r["agent"] for r in store.report()["agents"] if r["tokens"] > 0} >= {"vol-a", "vol-b"}:
-                break
-        assert {r["agent"] for r in store.report()["agents"] if r["tokens"] > 0} >= {"vol-a", "vol-b"}
-        await asyncio.sleep(0.5)  # a report is sent every 0.2 s: the last one is in
-        board = (await gw.get("/v1/leaderboard")).json()
-        assert [n["node"] for n in board["nodes"]] == [lb.node_label("vol-a")], board  # vol-b served jobs too, but is not on the board
-        n = board["nodes"][0]
-        served = {r["agent"]: r for r in store.report()["agents"]}
-        assert n["rank"] == 1 and n["name"] == "Rig <b>1</b>" and n["tokens"]["all"] == served["vol-a"]["tokens"] > 0 and n["jobs"] == served["vol-a"]["jobs"]
-        assert n["tokens"]["today"] == n["tokens"]["week"] == n["tokens"]["all"] and len(n["reported"]["at"]) == 10  # a date, not a time
-        assert n["reported"]["cpu"] == "Test CPU @ 3.0GHz" and n["reported"]["threads"] == 16 and n["reported"]["idle_gpu_pct"] == 12.0  # override char removed
-        assert n["reported"]["gpus"][0] == {"name": "NVIDIA <b>A10</b>", "vram_mb": 23028} and "vol-a" not in json.dumps(board)  # the agent id is not shown
-        assert "vol-b" in served and lb.node_label("vol-b") not in json.dumps(board) and board["period"] == "week" and board["users"] == []
-        # the page escapes everything an outside machine wrote, and says what it is
-        page = await gw.get("/leaderboard?period=all")
-        assert page.status_code == 200 and "Rig &lt;b&gt;1&lt;/b&gt;" in page.text and "NVIDIA &lt;b&gt;A10&lt;/b&gt;" in page.text and "<b>" not in page.text
-        assert "default-src 'none'" in page.headers["content-security-policy"] and page.headers["x-content-type-options"] == "nosniff"
-        assert "reported by the machine" in page.text and "No player has opted in yet" in page.text
-        # players: nothing is public until they link a machine AND choose a name
-        code = (await gw.post("/node/link-code", headers=nh("vol-a"))).json()["code"]
-        assert (await gw.post("/v1/credits/link", json={"code": code}, headers=H)).status_code == 200
-        assert (await gw.get("/v1/leaderboard")).json()["users"] == []  # linked, no name yet: still private
-        r = await gw.post("/v1/credits/name", json={"name": "Ada‮ <i>Lovelace</i> the very long named player"}, headers=H)
-        assert r.status_code == 200 and r.json()["name"] == "Ada <i>Lovelace</i> the" and len(r.json()["name"]) <= 24
-        u = (await gw.get("/v1/leaderboard")).json()["users"]
-        assert len(u) == 1 and u[0]["rank"] == 1 and u[0]["machines"] == 1 and u[0]["tokens"]["all"] == n["tokens"]["all"] and "wallet" not in json.dumps(u)
-        assert "Ada &lt;i&gt;Lovelace&lt;/i&gt; the" in (await gw.get("/leaderboard")).text
-        for bad in ({"name": 5}, {}, "x"):
-            assert (await gw.post("/v1/credits/name", json=bad, headers=H)).status_code in (400, 422), bad
-        assert (await gw.post("/v1/credits/name", json={"name": "x"}, headers={**H, "X-Anansi-Key": "bad"})).status_code == 401
-        assert (await gw.post("/v1/credits/name", json={"name": ""}, headers=H)).json()["name"] is None  # opting out
-        assert (await gw.get("/v1/leaderboard")).json()["users"] == []
-        # who may report
-        report = {"cpu": "x", "gpus": [], "idle_gpu": 1}
-        assert (await gw.post("/node/telemetry", json=report, headers=nh("vol-a", "wrong"))).status_code == 401
-        assert (await gw.post("/node/telemetry", json=report, headers=nh("ghost"))).status_code == 403  # never registered, never served: no row
-        assert (await gw.post("/node/telemetry", content=b"x" * 17_000, headers=nh("vol-a"))).status_code == 413
-        assert (await gw.post("/node/telemetry", content=b"[1]", headers=nh("vol-a"))).status_code == 400
-        two = [(await gw.post("/node/telemetry", json=report, headers=nh("vol-a"))).json()["stored"] for _ in range(2)]
-        assert two[1] is False  # a second report right behind another is not stored: reports are limited to one per TELEMETRY_MIN_S
-        # period and limit
-        assert (await gw.get("/v1/leaderboard?period=year")).status_code == 400 and (await gw.get("/v1/leaderboard?limit=1")).status_code == 200
-        # from here the agent is stopped, so nothing re-adds a row behind the assertions
-        a.cancel()
-        b.cancel()
-        await asyncio.gather(a, b, return_exceptions=True)
-        # the cache: a public page does not hit the database for every visitor
-        lb.CACHE_S = 1000
-        before = (await gw.get("/v1/leaderboard?period=day")).json()
-        assert len(before["nodes"]) == 1
-        store.forget_telemetry("vol-a")
-        assert (await gw.get("/v1/leaderboard?period=day")).json() == before  # served from the cache
-        lb.CACHE_S = 0
-        assert (await gw.get("/v1/leaderboard?period=day")).json()["nodes"] == []  # fresh: the row is gone
-        # opting out through the agent's own call, and a banned machine
-        store.set_telemetry("vol-a", lb.clean_telemetry({"name": "Back", "cpu": "c"}))
-        assert len((await gw.get("/v1/leaderboard")).json()["nodes"]) == 1
-        assert (await gw.delete("/node/telemetry", headers=nh("vol-a"))).json() == {"ok": True}
-        assert (await gw.delete("/node/telemetry", headers=nh("vol-a", "wrong"))).status_code == 401
-        assert (await gw.get("/v1/leaderboard")).json()["nodes"] == []
-        store.set_telemetry("vol-a", lb.clean_telemetry({"name": "Back", "cpu": "c"}))
-        store.ban("vol-a", "test")  # a banned machine is not ranked, whatever it reported
-        assert (await gw.get("/v1/leaderboard")).json()["nodes"] == []
-        assert (await gw.post("/node/telemetry", json=report, headers=nh("vol-a"))).status_code == 403
-    finally:
-        ag.hardware.describe, ag.gpu_util, ag.SAMPLE_S, ag.REPORT_S, lb.CACHE_S = saved
-        gp.TELEMETRY_MIN_S = old_min
-
-
-def t_leaderboard_ranking_and_store():
-    import datetime
-    import hashlib
-    import tempfile
-    from gateway.store import Store, today
-    path = os.path.join(tempfile.mkdtemp(), "lb.db")
-    pg = os.environ.get("ANANSI_TEST_PG")  # the same queries on Postgres in CI
-    for p in [path] + ([pg] if pg else []):
-        s = Store(p)
-        if p == pg:
-            for t in ("node_telemetry", "wallet_names", "links", "link_codes", "ledger", "earnings", "bans"):
-                s._x(f"DELETE FROM {t}")
-        old = (datetime.date.fromisoformat(today()) - datetime.timedelta(days=20)).isoformat()
-        week = (datetime.date.fromisoformat(today()) - datetime.timedelta(days=5)).isoformat()
-        for agent, name in (("big-old", "Veteran"), ("small-now", "Newcomer"), ("quiet", ""), ("hidden", "Private")):
-            if agent != "hidden":  # "hidden" never opted in: it has tokens but no telemetry row
-                s.set_telemetry(agent, {"name": name, "cpu": "cpu " + agent, "threads": 8, "gpus": [{"name": "GPU", "vram_mb": 2048}], "os": "Linux", "idle_gpu": 7.26})
-        s.credit("big-old", 9000, day=old)
-        s.credit("big-old", 100, day=week)
-        s.credit("small-now", 700)
-        s.credit("small-now", 50, day=week)
-        s.credit("hidden", 99999)
-        for period, order in (("day", ["small-now", "big-old", "quiet"]), ("week", ["small-now", "big-old", "quiet"]), ("all", ["big-old", "small-now", "quiet"])):
-            got = [x["node"] for x in s.leaderboard(period)["nodes"]]
-            assert got == [hashlib.sha256(a.encode()).hexdigest()[:8] for a in order], (period, got)
-        first = s.leaderboard("all")["nodes"]
-        assert first[0]["tokens"] == {"today": 0, "week": 100, "all": 9100} and first[0]["jobs"] == 2 and first[0]["rank"] == 1 and first[0]["name"] == "Veteran"
-        assert first[2]["name"] == "node-" + first[2]["node"] and first[2]["tokens"] == {"today": 0, "week": 0, "all": 0}  # no work yet, no name: still listed
-        assert first[0]["reported"] == {"cpu": "cpu big-old", "threads": 8, "gpus": [{"name": "GPU", "vram_mb": 2048}], "os": "Linux",
-                                        "idle_gpu_pct": 7, "at": today()} and len(s.leaderboard("all", 2)["nodes"]) == 2
-        s.set_telemetry("quiet", {"name": "Q2", "cpu": "c", "threads": 1, "gpus": [], "os": "", "idle_gpu": None})  # a later report replaces the first
-        assert [x["name"] for x in s.leaderboard("all")["nodes"]][-1] == "Q2" and s.leaderboard("all")["nodes"][-1]["reported"]["idle_gpu_pct"] == 7  # no value: unchanged
-        # players: tokens from the day a machine was linked, over all their machines; only with a name
-        for code, agent, wallet in (("C1", "big-old", "w:ada"), ("C2", "small-now", "w:ada"), ("C3", "quiet", "w:bob"), ("C4", "hidden", "w:cy")):
-            s.add_link_code(code, agent, 600)
-            assert s.link(code, wallet) == agent
-        s.set_wallet_name("w:ada", "Ada")
-        s.set_wallet_name("w:bob", "Bob")  # w:cy has machines but no name
-        users = s.leaderboard("all")["users"]
-        assert [(u["name"], u["machines"], u["tokens"]["all"]) for u in users] == [("Ada", 2, 700), ("Bob", 1, 0)]  # only work since each machine was linked
-        s._x("UPDATE links SET at = ? WHERE agent = 'big-old'", (old,))  # linked 20 days ago: its older work counts for Ada
-        users = s.leaderboard("all")["users"]
-        assert users[0]["name"] == "Ada" and users[0]["machines"] == 2 and users[0]["tokens"]["all"] == 9100 + 700 and users[0]["rank"] == 1
-        s.ban("small-now", "x")
-        assert [x["node"] for x in s.leaderboard("all")["nodes"]] == [hashlib.sha256(a.encode()).hexdigest()[:8] for a in ("big-old", "quiet")]
-        assert s.leaderboard("all")["users"][0]["machines"] == 1 and s.leaderboard("all")["users"][0]["tokens"]["all"] == 9100  # a banned machine's tokens leave too
-        s.set_wallet_name("w:ada", "")
-        assert [u["name"] for u in s.leaderboard("all")["users"]] == ["Bob"]
-        s.forget_telemetry("big-old")
-        assert all(x["name"] != "Veteran" for x in s.leaderboard("all")["nodes"]) and s.has_work("big-old") and not s.has_work("nobody")
-        # a machine that stopped reporting drops off by itself (retention_days), and so do old paid-node counters
-        s.set_telemetry("stale", {"name": "StaleRig", "cpu": "c", "threads": 1, "gpus": [], "os": "", "idle_gpu": None})
-        s._x("UPDATE node_telemetry SET updated = ? WHERE agent = 'stale'", ("2020-01-01T00:00:00+00:00",))
-        s.add_node_spend("https://old.example", 5, day="2020-01-01")
-        assert any(x["name"] == "StaleRig" for x in s.leaderboard("all")["nodes"])
-        s.purge(35)
-        assert all(x["name"] != "StaleRig" for x in s.leaderboard("all")["nodes"]) and s.node_spend("https://old.example", "2020-01-01") == 0
-        assert any(x["name"] == "Q2" for x in s.leaderboard("all")["nodes"])  # a recent report stays
 
 
 async def t_telemetry_first_report_waits_for_a_sample():
@@ -1006,19 +832,19 @@ async def t_telemetry_first_report_waits_for_a_sample():
         return httpx.Response(200, json={"ok": True, "stored": True})
     gw = httpx.AsyncClient(transport=httpx.MockTransport(gateway), base_url="http://gw")
     saved = ag.hardware.describe, ag.gpu_util, ag.SAMPLE_S, ag.REPORT_S, ag.GRACE_S
-    ag.hardware.describe = lambda: {"cpu": "c", "threads": 4, "gpus": [], "os": "Linux"}
+    ag.hardware.describe = lambda: {"cpu": "c", "gpus": [], "os": "Linux"}
     ag.SAMPLE_S, ag.REPORT_S, ag.GRACE_S = 0.05, 0.3, 5
     try:
         # our own job is running (the probe sent on registration): no idle sample can be taken, so nothing is reported yet
         ag.gpu_util = lambda: 20.0
         ag.JOBS.update(active=1, last=time.monotonic())
         ag.IDLE["gpu"] = None
-        task = asyncio.create_task(ag.telemetry(gw, "tok", "a", "Rig", log=lambda m: None))
+        task = asyncio.create_task(ag.telemetry(gw, "tok", "a", log=lambda m: None))
         await asyncio.sleep(0.4)
         assert posts == []
         ag.JOBS.update(active=0, last=0.0)  # the job ends and settles: the first sample (20 %) is taken, then reported
         await asyncio.sleep(0.3)
-        assert posts and posts[0]["idle_gpu"] == 20.0 and posts[0]["name"] == "Rig" and posts[0]["cpu"] == "c"
+        assert posts and posts[0]["idle_gpu"] == 20.0 and posts[0]["cpu"] == "c" and set(posts[0]) == {"cpu", "gpus", "os", "idle_gpu"}
         ag.gpu_util = lambda: 60.0
         await asyncio.sleep(0.6)  # the next report carries a smoothed value: 0.7 * 20 + 0.3 * 60, then closer to 60 as samples continue
         assert len(posts) >= 2 and 20.0 < posts[-1]["idle_gpu"] < 60.0, posts
@@ -1028,11 +854,11 @@ async def t_telemetry_first_report_waits_for_a_sample():
         posts.clear()
         ag.gpu_util, ag.GRACE_S = (lambda: None), 0.3
         ag.IDLE["gpu"] = None
-        task = asyncio.create_task(ag.telemetry(gw, "tok", "a", "", log=lambda m: None))
+        task = asyncio.create_task(ag.telemetry(gw, "tok", "a", log=lambda m: None))
         await asyncio.sleep(0.15)
         assert posts == []
         await asyncio.sleep(0.4)
-        assert posts and posts[0]["idle_gpu"] is None and posts[0]["name"] == ""
+        assert posts and posts[0]["idle_gpu"] is None
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
     finally:
@@ -1041,17 +867,128 @@ async def t_telemetry_first_report_waits_for_a_sample():
         ag.JOBS.update(active=0, last=0.0)
 
 
-def t_names_are_filtered():
-    from gateway.leaderboard import name_problem
-    for ok in ("Ada", "Rig 4090", "Dev laptop", "Zoë", "xX_Gamer_Xx", "Room 12", "Tester <b>"):
-        assert name_problem(ok) == "", ok
-    for bad in ("visit www.shop.example", "VISIT WWW.SHOP", "http://x.y", "me@x.io", "@ada", "call 555 123 4567", "5551234567"):
-        assert name_problem(bad), bad
-    assert name_problem("BadWord Rig", [r"bad\s?word"]) == "that name is not allowed" and name_problem("Good Rig", ["bad"]) == ""
+def t_telemetry_text_is_cleaned():
+    from gateway.leaderboard import clean_telemetry, clean_text
+    assert clean_text("  Rig\x00 one‮​\n two  ", 24) == "Rig one two"  # controls, right-to-left override, zero-width: all gone
+    assert clean_text("x" * 5000, 24) == "x" * 24 and clean_text(None, 24) == "" and clean_text(12345, 3) == "123"
+    assert clean_text("<script>alert(1)</script>", 40) == "<script>alert(1)</script>"  # kept as text: escaped where it is shown
+    t = clean_telemetry({"cpu": "C" * 500, "os": "Windows 10", "idle_gpu": 250, "name": "A Person", "threads": 8, "hostname": "laptop",
+                         "gpus": [{"name": "G%d" % i, "vram_mb": -5} for i in range(50)] + ["junk", {"name": ""}, {"vram_mb": 4}]})
+    assert set(t) == {"cpu", "gpus", "os", "idle_gpu"}  # anything else a machine sends (a name, a hostname) is dropped, not stored
+    assert len(t["cpu"]) == 80 and t["idle_gpu"] == 100.0
+    assert len(t["gpus"]) == 8 and all(g["vram_mb"] == 0 for g in t["gpus"])  # eight at most, nameless ones dropped, negatives clamped
+    assert clean_telemetry({})["idle_gpu"] is None and clean_telemetry({"idle_gpu": float("nan")})["idle_gpu"] is None
+    assert clean_telemetry({"idle_gpu": True, "gpus": "no"}) == {"cpu": "", "gpus": [], "os": "", "idle_gpu": None}
+    for bad in ([], "x", None, 3):
+        try:
+            clean_telemetry(bad)
+            assert False, bad
+        except ValueError:
+            pass
+
+
+def t_statistics_are_grouped_and_anonymous():
+    from gateway.leaderboard import board, gpu_label
+
+    def m(gpu, cpu="C", os="Linux", idle=20.0, t=100, vram=8192, extra=()):
+        return {"cpu": cpu, "gpus": ([{"name": gpu, "vram_mb": vram}] if gpu else []) + list(extra), "os": os, "idle_gpu": idle,
+                "tokens": {"today": t, "week": t * 2, "all": t * 3}}
+    net = {"today": 5, "week": 10, "all": 15}
+    rows = [m("A")] * 6 + [m("B", idle=40.0, t=50)] * 5 + [m("C")] * 2 + [m("D")]
+    top = {"period", "published", "min_group", "reporting", "network_tokens", "gpus", "cpus", "systems"}
+    b = board(rows, net, "week", 5)
+    assert set(b) == top and b["published"] and b["min_group"] == 5 and b["network_tokens"] == 10
+    assert b["reporting"] == {"machines": 14, "tokens": 6 * 200 + 5 * 100 + 2 * 200 + 200, "idle_gpu_pct": 27}
+    assert b["gpus"] == [{"name": "A (8 GB)", "machines": 6, "tokens": 1200, "idle_gpu_pct": 20},
+                         {"name": "B (8 GB)", "machines": 5, "tokens": 500, "idle_gpu_pct": 40}]  # C and D (3 machines) are too few to show, even as Other
+    assert b["cpus"] == [{"name": "C", "machines": 14, "tokens": 2300, "idle_gpu_pct": 27}] and [x["name"] for x in b["systems"]] == ["Linux"]
+    assert all(set(r) == {"name", "machines", "tokens", "idle_gpu_pct"} for t in ("gpus", "cpus", "systems") for r in b[t])
+    # no row ever describes fewer machines than min_group, whatever the settings
+    for k in (1, 2, 3, 5, 6):
+        got = board(rows, net, "week", k)["gpus"]
+        assert all(r["machines"] >= k for r in got), (k, got)
+    assert [(r["name"], r["machines"]) for r in board(rows, net, "week", 3)["gpus"]] == [("A (8 GB)", 6), ("B (8 GB)", 5), ("Other", 3)]  # C+D together are 3
+    assert [r["name"] for r in board(rows, net, "week", 2)["gpus"]] == ["A (8 GB)", "B (8 GB)", "C (8 GB)"]  # D (1) is left out, not shown alone
+    # fewer than min_group machines in all: nothing is published, not even a count
+    off = board(rows[:4], net, "week", 5)
+    assert off == {"period": "week", "published": False, "min_group": 5, "reporting": None, "network_tokens": 0, "gpus": [], "cpus": [], "systems": []}
+    # periods and limit
+    assert board(rows, net, "day", 5)["gpus"][0]["tokens"] == 600 and board(rows, net, "all", 5)["gpus"][0]["tokens"] == 1800
+    assert len(board(rows, net, "week", 2, limit=1)["gpus"]) == 1
+    # hardware the operator hides is folded into Other (and counts there, so it is still anonymous)
+    h = board(rows, net, "week", 5, hidden=["^b "])
+    assert [(r["name"], r["machines"]) for r in h["gpus"]] == [("A (8 GB)", 6), ("Other", 8)] and "B (8" not in str(h)
+    # a machine counts once, under the GPU with the most memory, so its tokens are not counted twice
+    two = [m("RTX", extra=[{"name": "Intel iGPU", "vram_mb": 1024}])] * 5
+    assert [(r["name"], r["tokens"]) for r in board(two, net, "week", 5)["gpus"]] == [("RTX (8 GB)", 1000)]
+    assert gpu_label([]) == "No GPU reported" and gpu_label([{"name": "X", "vram_mb": 0}]) == "X" and gpu_label([{"name": "X", "vram_mb": 100}]) == "X"
+    assert gpu_label([{"name": "X", "vram_mb": 1024}, {"name": "Y", "vram_mb": 1024}]) == "X (1 GB)"  # a tie: the first
+    blank = board([m(None, cpu="", os="")] * 5, net, "week", 5)
+    assert blank["gpus"][0]["name"] == "No GPU reported" and blank["cpus"][0]["name"] == "Unknown CPU" and blank["systems"][0]["name"] == "Unknown"
+    assert board([m("A", idle=None)] * 5, net, "week", 5)["gpus"][0]["idle_gpu_pct"] is None  # nothing reported: nothing shown
+
+
+def t_statistics_store():
+    import datetime
+    import tempfile
+    from gateway.store import Store
+    path = os.path.join(tempfile.mkdtemp(), "hw.db")
+    pg = os.environ.get("ANANSI_TEST_PG")  # the same queries on Postgres in CI
+    rep = lambda idle: {"cpu": "c", "gpus": [{"name": "g", "vram_mb": 1024}], "os": "Linux", "idle_gpu": idle}
+    for p in [path] + ([pg] if pg else []):
+        s = Store(p)
+        if p == pg:
+            for t in ("volunteer_hardware", "ledger", "bans"):
+                s._x(f"DELETE FROM {t}")
+        s.credit("a1", 500)
+        s.credit("a1", 100, day=(datetime.date.today() - datetime.timedelta(days=3)).isoformat())  # in the week, not today
+        s.credit("a1", 1000, day=(datetime.date.today() - datetime.timedelta(days=30)).isoformat())  # all time only
+        s.credit("a2", 300)
+        s.credit("a3", 7)  # serves, but never opted in: counted in the network total only
+        s.set_hardware("a1", rep(None))
+        s.set_hardware("a2", rep(50.0))
+        rows = {tuple(r["tokens"].values()): r for r in s.hardware_rows()}
+        assert set(rows) == {(500, 600, 1600), (300, 300, 300)}, rows  # tokens by agent from the ledger, for the machines that reported
+        assert s.network_tokens() == {"today": 807, "week": 907, "all": 1907}
+        assert all(set(r) == {"cpu", "gpus", "os", "idle_gpu", "tokens"} for r in rows.values())  # no agent id leaves the store
+        # idle load is kept as a slow average: nothing yet, the first value as it is, then 97 / 3, a missing value changes nothing
+        idle = lambda: [r["idle_gpu"] for r in s.hardware_rows() if r["tokens"]["all"] == 1600][0]
+        assert idle() is None
+        s.set_hardware("a1", rep(100.0))
+        assert idle() == 100
+        s.set_hardware("a1", rep(0.0))
+        assert round(idle()) == 97  # one report of 0 % moves a 100 % average to 97: a gaming session does not show up as it happens
+        s.set_hardware("a1", rep(None))
+        assert round(idle()) == 97
+        for _ in range(100):
+            s.set_hardware("a1", rep(0.0))
+        assert idle() < 6  # a sustained change does come through, over hours
+        # a banned machine is left out, and one that stopped reporting is forgotten
+        s.ban("a2", "x")
+        assert [r["tokens"]["all"] for r in s.hardware_rows()] == [1600] and s.network_tokens()["all"] == 1607
+        s._x("UPDATE volunteer_hardware SET updated = ? WHERE agent = 'a1'", ("2020-01-01T00:00:00+00:00",))
+        assert s.hardware_rows() == []  # too old to count, even before the purge
+        s.purge(35)
+        assert s._x("SELECT COUNT(*) FROM volunteer_hardware WHERE agent = 'a1'").fetchone()[0] == 0  # and then deleted
+        s.set_hardware("a3", rep(10.0))
+        assert len(s.hardware_rows()) == 1
+        s.forget_hardware("a3")  # opting out deletes it
+        assert s.hardware_rows() == [] and s.has_work("a1") and not s.has_work("nobody")
+        # an earlier design kept names: a database from then loses those tables, and the names with them
+        s._x("CREATE TABLE IF NOT EXISTS wallet_names(wallet TEXT PRIMARY KEY, name TEXT, at TEXT)")
+        s._x("INSERT INTO wallet_names VALUES('w:ada', 'Ada', '2026-11-14') ON CONFLICT(wallet) DO NOTHING")
+        s2 = Store(p)
+        try:
+            s2._x("SELECT 1 FROM wallet_names")
+            gone = False
+        except Exception:
+            gone = True
+        assert gone
 
 
 def t_leaderboard_config_is_checked():
-    for bad in ({"privacy_url": "http://x.example/privacy"}, {"blocked_names": ["("]}, {"blocked_names": [5]}):
+    for bad in ({"privacy_url": "http://x.example/privacy"}, {"hidden_hardware": ["("]}, {"hidden_hardware": [5]}, {"min_group": 0},
+                {"min_group": "5"}, {"min_group": True}, {"min_group": -2}):
         cfg = copy.deepcopy(CFG)
         cfg["leaderboard"] = bad
         try:
@@ -1060,7 +997,7 @@ def t_leaderboard_config_is_checked():
         except ValueError:
             pass
     cfg = copy.deepcopy(CFG)
-    cfg["leaderboard"] = {"privacy_url": "https://x.example/privacy", "blocked_names": ["bad"], "players": False}
+    cfg["leaderboard"] = {"privacy_url": "https://x.example/privacy", "hidden_hardware": ["rtx"], "min_group": 10, "enabled": True}
     make_app(cfg)  # a good block starts
 
 
@@ -1068,20 +1005,21 @@ def t_agent_telemetry_consent():
     import subprocess
     from node import join
     import node.agent as ag
-    n = ag.telemetry_notice(["https://gw.example"], "Rig")
-    for must in ("https://gw.example", "CPU model", "GPU models", "slow average", "'Rig'", "publicly", "real name", "totals match", "copy",
-                 "--telemetry-show", "--telemetry-off"):
+    n = ag.telemetry_notice(["https://gw.example"])
+    for must in ("https://gw.example", "CPU model", "GPU models", "slow average", "no name, account or address", "never a single machine",
+                 "random id", "2 days", "--telemetry-show", "--telemetry-off"):
         assert must in n, must
-    assert "short code" in ag.telemetry_notice(["https://g"], "") and "player" in ag.JOBS_NOTICE and "Do not log" in ag.JOBS_NOTICE
+    assert "player" in ag.JOBS_NOTICE and "Do not log" in ag.JOBS_NOTICE
     assert ag.insecure("http://example.com") and ag.insecure("http://192.168.1.5:8080") and not ag.insecure("https://example.com")
     assert not ag.insecure("http://127.0.0.1:8080") and not ag.insecure("http://localhost") and not ag.insecure("http://[::1]:8080")
     root = os.path.join(os.path.dirname(__file__), "..")
     run = lambda *args, timeout=60: subprocess.run([sys.executable, os.path.join(root, "node", "agent.py"), "--gateway", "http://nowhere.invalid", "--token", "t", *args],
                                                    capture_output=True, text=True, timeout=timeout)
-    shown = run("--telemetry-show", "--name", "Rig")  # nowhere.invalid does not resolve: it only prints, so nothing is tried
-    assert shown.returncode == 0 and "Leaderboard telemetry is ON" in shown.stdout
+    shown = run("--telemetry-show")  # nowhere.invalid does not resolve: it only prints, so nothing is tried
+    assert shown.returncode == 0 and "Statistics telemetry is ON" in shown.stdout
     report = json.loads(shown.stdout[shown.stdout.index("{"):])
-    assert report["name"] == "Rig" and report["cpu"] and isinstance(report["gpus"], list) and "idle_gpu" in report and "hostname" not in json.dumps(report).lower()
+    assert set(report) == {"cpu", "gpus", "os", "idle_gpu"} and report["cpu"] and isinstance(report["gpus"], list)  # no name, no thread count, no hostname
+    assert run("--telemetry-show", "--name", "x").returncode != 0  # there is no --name: nothing identifying can be sent by mistake
     try:
         refused = run("--telemetry", timeout=15)  # plain http to another machine: the report would cross the network unencrypted
     except subprocess.TimeoutExpired:
@@ -1103,25 +1041,19 @@ async def t_agent_telemetry_reacts_to_the_gateway():
         return reply["r"]
     gw = httpx.AsyncClient(transport=httpx.MockTransport(gateway), base_url="http://gw")
     saved = ag.hardware.describe, ag.gpu_util, ag.SAMPLE_S, ag.REPORT_S, ag.GRACE_S
-    ag.hardware.describe, ag.gpu_util = (lambda: {"cpu": "c", "threads": 1, "gpus": [], "os": "Linux"}), (lambda: None)
+    ag.hardware.describe, ag.gpu_util = (lambda: {"cpu": "c", "gpus": [], "os": "Linux"}), (lambda: None)
     ag.SAMPLE_S, ag.REPORT_S, ag.GRACE_S = 0.05, 0.1, 0
     try:
-        reply["r"] = httpx.Response(200, json={"ok": True, "stored": True, "name_rejected": "a name may not contain a link, an email address or a handle"})
-        task = asyncio.create_task(ag.telemetry(gw, "tok", "a", "me@x.io", log=logs.append))
-        await asyncio.sleep(0.6)
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
-        assert len(posts) >= 2 and len([m for m in logs if "will not show your name" in m]) == 1 and "email" in logs[0]  # said once, and why
-        for why in ("the leaderboard is switched off on this gateway", "the operator has blocked this machine from the leaderboard", "agent banned"):
+        for why in ("the statistics are switched off on this gateway", "agent banned"):
             posts.clear()
             logs.clear()
             reply["r"] = httpx.Response(403, json={"detail": why})
-            task = asyncio.create_task(ag.telemetry(gw, "tok", "a", "Rig", log=logs.append))
+            task = asyncio.create_task(ag.telemetry(gw, "tok", "a", log=logs.append))
             await asyncio.sleep(0.4)
-            assert task.done() and len(posts) == 1 and logs and "will not list this machine" in logs[0] and why in logs[0], (why, logs)  # it stops, and says why
+            assert task.done() and len(posts) == 1 and logs and "will not take statistics" in logs[0] and why in logs[0], (why, logs)  # it stops, and says why
         posts.clear()
         reply["r"] = httpx.Response(403, json={"detail": "register first: only machines that have registered or served jobs can report"})
-        task = asyncio.create_task(ag.telemetry(gw, "tok", "a", "Rig", log=logs.append))
+        task = asyncio.create_task(ag.telemetry(gw, "tok", "a", log=logs.append))
         await asyncio.sleep(0.5)
         assert not task.done() and len(posts) >= 2  # not registered yet is temporary: it keeps trying
         task.cancel()
@@ -1130,114 +1062,144 @@ async def t_agent_telemetry_reacts_to_the_gateway():
         ag.hardware.describe, ag.gpu_util, ag.SAMPLE_S, ag.REPORT_S, ag.GRACE_S = saved
 
 
-async def t_leaderboard_privacy_controls():
+async def t_statistics_end_to_end():
+    import node.agent as ag
+    import gateway.pull as gp
+    from gateway import leaderboard as lb
+    from node.agent import serve
+    cfg = copy.deepcopy(CFG)
+    cfg.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2, canary_rate=0,
+               canaries=[{"user": "say hi", "expect": "hello"}], max_inflight_per_player=100, leaderboard={"min_group": 2})
+    app = make_app(cfg)
+    store = app.state.store
+    gw = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://gw")
+    local = lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=make_node("v")), base_url="http://l")
+    saved = ag.hardware.describe, ag.gpu_util, ag.SAMPLE_S, ag.REPORT_S, lb.CACHE_S, gp.TELEMETRY_MIN_S
+    ag.hardware.describe = lambda: {"cpu": "Test CPU ‮ @ 3.0GHz", "os": "Windows 10",
+                                    "gpus": [{"name": "NVIDIA <b>A10</b>", "vram_mb": 24576}, {"name": "Intel HD Graphics", "vram_mb": 1024}]}
+    ag.gpu_util, ag.SAMPLE_S, ag.REPORT_S, lb.CACHE_S, gp.TELEMETRY_MIN_S = (lambda: 12.0), 0.05, 0.2, 0, 0.3
+    ag.JOBS.update(active=0, last=0.0)  # earlier tests ran jobs: the idle sample waits for 5 quiet seconds after the last one
+    ag.IDLE["gpu"] = None
+    nh = lambda agent, tok="tok": {"X-Node-Token": tok, "X-Node-Agent": agent}
+    try:
+        # two volunteers opt in, a third serves jobs but does not
+        tasks = [asyncio.create_task(serve(gw, local(), "tok", log=lambda m: None, agent=a, telemetry_on=(a != "vol-c"))) for a in ("vol-a", "vol-b", "vol-c")]
+        await asyncio.sleep(1.2)
+        served = lambda: {r["agent"]: r["tokens"] for r in store.report()["agents"]}
+        for i in range(150):  # a request for a given NPC sticks to one node, so ask for different NPCs until all three have served jobs
+            body = {**BODY, "anansi": {"npc_id": f"npc{i}"}}
+            assert (await gw.post("/v1/chat/completions", json=body, headers=H)).status_code == 200
+            if all(served().get(a, 0) > 0 for a in ("vol-a", "vol-b", "vol-c")):
+                break
+        sv = served()
+        assert all(sv.get(a, 0) > 0 for a in ("vol-a", "vol-b", "vol-c"))
+        await asyncio.sleep(0.6)  # a report is sent every 0.2 s: the last one is in
+        b = (await gw.get("/v1/leaderboard")).json()
+        assert b["published"] and b["min_group"] == 2 and b["period"] == "week"
+        assert b["reporting"] == {"machines": 2, "tokens": sv["vol-a"] + sv["vol-b"], "idle_gpu_pct": 12}  # vol-c did not opt in
+        assert b["network_tokens"] == sv["vol-a"] + sv["vol-b"] + sv["vol-c"] > b["reporting"]["tokens"]  # but its tokens are in the network total
+        assert b["gpus"] == [{"name": "NVIDIA <b>A10</b> (24 GB)", "machines": 2, "tokens": sv["vol-a"] + sv["vol-b"], "idle_gpu_pct": 12}]
+        assert [x["name"] for x in b["cpus"]] == ["Test CPU @ 3.0GHz"] and [x["name"] for x in b["systems"]] == ["Windows 10"]  # the override character is gone
+        assert set(b) == {"period", "published", "min_group", "reporting", "network_tokens", "gpus", "cpus", "systems"}
+        for who in ("vol-a", "vol-b", "vol-c", "dev:"):
+            assert who not in json.dumps(b), who  # no agent id or account in what is published
+        # the page escapes what machines wrote, and says what it is
+        page = await gw.get("/leaderboard?period=all")
+        assert page.status_code == 200 and "NVIDIA &lt;b&gt;A10&lt;/b&gt; (24 GB)" in page.text and "<b>" not in page.text
+        assert "2 machines are reporting" in page.text and "No names, accounts or machine ids are published" in page.text and "fewer than 2 machines" in page.text
+        for period in ("day", "all"):
+            assert (await gw.get(f"/v1/leaderboard?period={period}")).json()["reporting"]["tokens"] == sv["vol-a"] + sv["vol-b"]  # all of it is from today
+        assert (await gw.get("/v1/leaderboard?period=year")).status_code == 400 and (await gw.get("/v1/leaderboard?limit=1")).status_code == 200
+        # who may report
+        report = {"cpu": "x", "gpus": [], "idle_gpu": 1}
+        assert (await gw.post("/node/telemetry", json=report, headers=nh("vol-a", "wrong"))).status_code == 401
+        assert (await gw.post("/node/telemetry", json=report, headers=nh("ghost"))).status_code == 403  # never registered, never served: it cannot join the statistics
+        assert (await gw.post("/node/telemetry", content=b"x" * 17_000, headers=nh("vol-a"))).status_code == 413
+        assert (await gw.post("/node/telemetry", content=b"[1]", headers=nh("vol-a"))).status_code == 400
+        for t in tasks:  # from here nothing re-adds a report behind the assertions
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        two = [(await gw.post("/node/telemetry", json=report, headers=nh("vol-c"))).json()["stored"] for _ in range(2)]
+        assert two[1] is False  # reports are limited to one per TELEMETRY_MIN_S per machine
+        store.forget_hardware("vol-c")
+        # opting out takes a machine out at once; with fewer than min_group left, nothing at all is published
+        assert (await gw.delete("/node/telemetry", headers=nh("vol-a"))).json() == {"ok": True}
+        assert (await gw.delete("/node/telemetry", headers=nh("vol-a", "wrong"))).status_code == 401
+        off = (await gw.get("/v1/leaderboard")).json()
+        assert off == {"period": "week", "published": False, "min_group": 2, "reporting": None, "network_tokens": 0, "gpus": [], "cpus": [], "systems": []}
+        assert "Statistics appear once at least 2 machines report" in (await gw.get("/leaderboard")).text
+        store.set_hardware("vol-a", lb.clean_telemetry({"cpu": "c", "gpus": [{"name": "g", "vram_mb": 8192}]}))
+        assert (await gw.get("/v1/leaderboard")).json()["published"]  # two again
+        store.ban("vol-b", "test")  # a banned machine is not counted, whatever it reported
+        assert (await gw.get("/v1/leaderboard")).json()["published"] is False
+        # the cache: a public page does not hit the database for every visitor
+        store._x("DELETE FROM bans WHERE agent = 'vol-b'")  # lifted
+        lb.CACHE_S = 1000
+        before = (await gw.get("/v1/leaderboard?period=day")).json()
+        store.forget_hardware("vol-a")
+        assert (await gw.get("/v1/leaderboard?period=day")).json() == before  # served from the cache
+    finally:
+        ag.hardware.describe, ag.gpu_util, ag.SAMPLE_S, ag.REPORT_S, lb.CACHE_S, gp.TELEMETRY_MIN_S = saved
+
+
+async def t_statistics_privacy_controls():
     from gateway import leaderboard as lb
     import gateway.pull as gp
     base = copy.deepcopy(CFG)
     base.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2, canary_rate=0)
-    os.environ["ANANSI_ADMIN_TOKEN"] = "t"
-    adm, nh = {"X-Admin-Token": "t"}, (lambda agent: {"X-Node-Token": "tok", "X-Node-Agent": agent})
     saved = lb.CACHE_S, gp.TELEMETRY_MIN_S
     lb.CACHE_S, gp.TELEMETRY_MIN_S = 0, 0
-    wallet = "dev:76561198000000001"  # the player token in H
+    nh = lambda agent: {"X-Node-Token": "tok", "X-Node-Agent": agent}
 
     def build(**lbcfg):
         cfg = copy.deepcopy(base)
         cfg["leaderboard"] = lbcfg
         app = make_app(cfg)
-        for agent in ("rig-a", "rig-b"):
-            app.state.store.credit(agent, 500)  # served jobs, so they may report
-        return app, httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://gw")
-    rep = lambda c, agent, name: c.post("/node/telemetry", json={"name": name, "cpu": "c", "gpus": [], "os": "Linux", "idle_gpu": 10}, headers=nh(agent))
+        for i in range(1, 8):
+            app.state.store.credit(f"rig-{i}", 100)  # served jobs, so they may report
+        return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://gw")
+    rep = lambda c, i, cpu="c", gpu="GPU X": c.post("/node/telemetry", json={"cpu": cpu, "gpus": [{"name": gpu, "vram_mb": 8192}], "os": "Linux", "idle_gpu": 10},
+                                                    headers=nh(f"rig-{i}"))
     try:
-        app, c = build(privacy_url="https://example.com/privacy?a=1&b=2", blocked_names=[r"bad\s?word"])
-        store = app.state.store
-        # a name that may not be shown is left out, the rest of the report is kept, and the machine is told why
-        r = (await rep(c, "rig-a", "visit www.shop.example")).json()
-        assert r["stored"] and "link" in r["name_rejected"]
-        n = (await c.get("/v1/leaderboard")).json()["nodes"]
-        assert len(n) == 1 and n[0]["name"] == "node-" + n[0]["node"] and n[0]["reported"]["cpu"] == "c"
-        assert (await rep(c, "rig-a", "BadWord Rig")).json()["name_rejected"] == "that name is not allowed"
-        r = (await rep(c, "rig-a", "Dev laptop")).json()
-        assert r["name_rejected"] is None and (await c.get("/v1/leaderboard")).json()["nodes"][0]["name"] == "Dev laptop"
+        # the default minimum group is 5: four machines publish nothing, the fifth publishes
+        c = build(privacy_url="https://example.com/privacy?a=1&b=2")
+        for i in range(1, 5):
+            assert (await rep(c, i)).json()["stored"]
+        js = (await c.get("/v1/leaderboard")).json()
+        assert js["published"] is False and js["min_group"] == 5 and js["reporting"] is None and js["gpus"] == [] and js["network_tokens"] == 0
+        assert "at least 5 machines" in (await c.get("/leaderboard")).text
+        await rep(c, 5)
+        assert (await c.get("/v1/leaderboard")).json()["reporting"]["machines"] == 5
+        # a rare build is never published on its own, and a machine with it is not described by any row
+        await rep(c, 6, cpu="Rare CPU", gpu="Rare GPU")
+        js = (await c.get("/v1/leaderboard")).json()
+        assert js["reporting"]["machines"] == 6 and "Rare" not in json.dumps(js)
+        assert all(r["machines"] >= 5 for t in ("gpus", "cpus", "systems") for r in js[t])
         # what the page and the JSON tell browsers and crawlers
-        page, js = await c.get("/leaderboard"), await c.get("/v1/leaderboard")
-        assert page.headers["x-robots-tag"] == js.headers["x-robots-tag"] == "noindex, nofollow"
+        page, jr = await c.get("/leaderboard"), await c.get("/v1/leaderboard")
+        assert page.headers["x-robots-tag"] == jr.headers["x-robots-tag"] == "noindex, nofollow"
         assert "frame-ancestors 'none'" in page.headers["content-security-policy"] and "default-src 'none'" in page.headers["content-security-policy"]
         assert "<meta name=robots content='noindex,nofollow'>" in page.text and "name=color-scheme" in page.text
         assert "<a href='https://example.com/privacy?a=1&amp;b=2'>Privacy notice</a>" in page.text and "slow average" in page.text and "archives" in page.text
-        assert "Typical idle GPU" in page.text and "10 %" in page.text and len(js.json()["nodes"][0]["reported"]["at"]) == 10  # a whole percent and a date
-        none = await build()[1].get("/leaderboard")
-        assert "Privacy notice" not in none.text
-        # player names
-        for bad, word in (("me@x.io", "email"), ("BadWord", "not allowed"), ("call 555 123 4567", "phone"), ("www.shop.example", "link")):
-            r = await c.post("/v1/credits/name", json={"name": bad}, headers=H)
-            assert r.status_code == 400 and word in r.json()["detail"], (bad, r.text)
-        assert (await c.post("/v1/credits/name", json={"name": "Ada"}, headers=H)).json() == {"name": "Ada"}
-        store.add_link_code("CODEAAAA", "rig-a", 600)
-        assert store.link("CODEAAAA", wallet) == "rig-a"
-        assert [u["name"] for u in (await c.get("/v1/leaderboard")).json()["users"]] == ["Ada"]
-        # moderation: who may, what it does, what it does not
-        label = lb.node_label("rig-a")
-        assert (await c.post("/admin/leaderboard/block", json={"node": label})).status_code == 404  # no token
-        assert (await c.post("/admin/leaderboard/block", json={"node": label}, headers={"X-Admin-Token": "wrong"})).status_code == 404
-        assert (await c.post("/admin/leaderboard/block", json=["x"], headers=adm)).status_code == 400
-        assert (await c.post("/admin/leaderboard/block", json={"node": "00000000"}, headers=adm)).json() == {"blocked": 0}  # no such machine
-        lb.CACHE_S = 1000  # the page is cached for 30 s in real use: taking something down must not wait for that
-        assert len((await c.get("/v1/leaderboard")).json()["nodes"]) == 1
-        assert (await c.post("/admin/leaderboard/block", json={"node": label}, headers=adm)).json() == {"blocked": 1}
-        assert (await c.get("/v1/leaderboard")).json()["nodes"] == []
-        lb.CACHE_S = 0
-        r = await rep(c, "rig-a", "Dev laptop")
-        assert r.status_code == 403 and "blocked" in r.json()["detail"] and (await c.get("/v1/leaderboard")).json()["nodes"] == []
-        assert store.has_work("rig-a") and "rig-a" not in store.bans()  # it still serves jobs: only the listing is refused
-        assert (await rep(c, "rig-b", "Other")).json()["stored"]  # others are unaffected
-        assert (await c.post("/admin/leaderboard/block", json={"node": label, "unblock": True}, headers=adm)).json() == {"unblocked": 1}
-        assert (await rep(c, "rig-a", "Dev laptop")).json()["stored"]
-        assert (await c.post("/admin/leaderboard/block", json={"user": "ADA"}, headers=adm)).json() == {"blocked": 1}  # by the name shown, any case
-        assert (await c.get("/v1/leaderboard")).json()["users"] == []
-        assert (await c.post("/v1/credits/name", json={"name": "Ada again"}, headers=H)).status_code == 403
-        assert (await c.post("/v1/credits/name", json={"name": ""}, headers=H)).json() == {"name": None}  # leaving is always allowed
-        assert (await c.post("/admin/leaderboard/block", json={"user": "Ada", "unblock": True}, headers=adm)).json() == {"unblocked": 1}
-        assert (await c.post("/v1/credits/name", json={"name": "Ada"}, headers=H)).status_code == 200
-        # the operator's switches: players only, and everything
-        app2, c2 = build(players=False)
-        await rep(c2, "rig-a", "Rig")
-        app2.state.store.add_link_code("CODEBBBB", "rig-a", 600)
-        app2.state.store.link("CODEBBBB", wallet)
-        app2.state.store.set_wallet_name(wallet, "Ada")  # even a name stored earlier is not shown
-        board = (await c2.get("/v1/leaderboard")).json()
-        assert len(board["nodes"]) == 1 and board["users"] == []
-        assert (await c2.post("/v1/credits/name", json={"name": "Ada"}, headers=H)).status_code == 403
-        assert (await c2.post("/v1/credits/name", json={"name": ""}, headers=H)).status_code == 200
-        app3, c3 = build(enabled=False)
-        assert (await c3.get("/leaderboard")).status_code == 404 and (await c3.get("/v1/leaderboard")).status_code == 404
-        r = await rep(c3, "rig-a", "Rig")
+        assert "Typical idle GPU" in page.text and "10 %" in page.text
+        assert "Privacy notice" not in (await build().get("/leaderboard")).text
+        # hardware the operator hides is folded into Other
+        c2 = build(min_group=2, hidden_hardware=["gpu x"])
+        for i in (1, 2):
+            await rep(c2, i)
+        js = (await c2.get("/v1/leaderboard")).json()
+        assert [(r["name"], r["machines"]) for r in js["gpus"]] == [("Other", 2)] and "GPU X" not in json.dumps(js)
+        # a minimum of 1 publishes single machines: allowed, but it is not anonymous (the docs say so)
+        c3 = build(min_group=1)
+        await rep(c3, 1)
+        assert (await c3.get("/v1/leaderboard")).json()["gpus"][0]["machines"] == 1
+        # the operator's switch removes the page and refuses the reports
+        c4 = build(enabled=False)
+        assert (await c4.get("/leaderboard")).status_code == 404 and (await c4.get("/v1/leaderboard")).status_code == 404
+        r = await rep(c4, 1)
         assert r.status_code == 403 and "switched off" in r.json()["detail"]
-        assert (await c3.post("/v1/credits/name", json={"name": "Ada"}, headers=H)).status_code == 403
-        assert (await c3.post("/v1/credits/name", json={"name": ""}, headers=H)).status_code == 200
     finally:
         lb.CACHE_S, gp.TELEMETRY_MIN_S = saved
-
-
-def t_idle_gpu_is_a_slow_average():
-    import tempfile
-    from gateway.store import Store
-    s = Store(os.path.join(tempfile.mkdtemp(), "idle.db"))
-    one = lambda idle: s.set_telemetry("rig", {"name": "R", "cpu": "c", "threads": 1, "gpus": [], "os": "", "idle_gpu": idle})
-    shown = lambda: s.leaderboard("all")["nodes"][0]["reported"]["idle_gpu_pct"]
-    one(None)
-    assert shown() is None  # nothing reported yet: nothing shown
-    one(100.0)
-    assert shown() == 100  # the first value is taken as it is
-    one(0.0)
-    assert shown() == 97  # one report of 0 % moves a 100 % average to 97: a gaming session does not show up as it happens
-    one(None)
-    assert shown() == 97  # a report without a value changes nothing
-    for _ in range(100):
-        one(0.0)
-    assert shown() < 6  # a sustained change does come through, over hours
-    assert isinstance(shown(), int) and len(s.leaderboard("all")["nodes"][0]["reported"]["at"]) == 10  # whole percent, date only
 
 
 async def t_one_agent_serves_several_gateways():
@@ -1564,18 +1526,9 @@ def t_sdk_quest():
     assert seen[-1] == ("/v1/credits/link", {"code": "ABCD-EFGH"})
     assert make(404, {}).link_node("x") == {"linked": False, "reason": "bad_code"}
     assert make(503, {}).link_node("x") == {"linked": False, "reason": "unavailable"}
-    board = {"period": "week", "nodes": [], "users": []}
+    board = {"period": "week", "published": False, "min_group": 5, "reporting": None, "network_tokens": 0, "gpus": [], "cpus": [], "systems": []}
     assert make(200, board).leaderboard("day", 5) == board and make(503, {}).leaderboard() is None
     assert seen[-1][0] == "/v1/leaderboard" and make(200, board).leaderboard("all", 3) == board
-    assert make(200, {"name": "Ada"}).set_leaderboard_name("Ada") == {"set": True, "name": "Ada"}
-    assert seen[-1] == ("/v1/credits/name", {"name": "Ada"})
-    assert make(200, {"name": None}).set_leaderboard_name("") == {"set": True, "name": None}
-    assert make(400, {"detail": "a name may not contain a phone number"}).set_leaderboard_name("5551234567") == {
-        "set": False, "reason": "bad_name", "message": "a name may not contain a phone number"}
-    assert make(403, {"detail": "player names are switched off on this gateway"}).set_leaderboard_name("x") == {
-        "set": False, "reason": "not_allowed", "message": "player names are switched off on this gateway"}
-    assert make(422, {"detail": [{"msg": "x"}]}).set_leaderboard_name(5) == {"set": False, "reason": "bad_name", "message": ""}  # not text: no message
-    assert make(503, {}).set_leaderboard_name("x") == {"set": False, "reason": "unavailable"}
 
 
 def t_store():

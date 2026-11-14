@@ -123,48 +123,48 @@ Volunteers earn credits that games can turn into in-game items. No cash and no c
 Not built: what an item costs (each studio decides), Steam Inventory grants, an Unreal SDK method for credits (the other SDKs have
 `credits` and `link_node`, see [sdk.md](sdk.md#volunteer-credits)) and the DESIGN.md rule that a brand-new node earns nothing for 24 hours (the 7-day hold covers the audit window).
 
-### Leaderboard and telemetry
+### Anonymous network statistics (telemetry)
 
-A public board of total tokens processed, per machine and per player, for today, the last 7 days and all time: `GET /leaderboard`
-(a small web page; `?period=day|week|all`) and `GET /v1/leaderboard` (JSON, `period`, `limit` up to 100), cached for 30 seconds.
-**Nothing is listed unless its owner chooses it, separately for the machine and for the player.** What is collected, shown and kept,
-and the choices, are in [privacy.md](privacy.md); what a volunteer agrees to is in [volunteer-terms.md](volunteer-terms.md) (both are
-drafts for counsel).
+A public page of statistics about the volunteer network: which hardware serves how many tokens and how busy its owners keep it.
+`GET /leaderboard` (a small web page; `?period=day|week|all`) and `GET /v1/leaderboard` (JSON), cached for 30 seconds. It is anonymous by
+design: **no names, no accounts, no machine ids, no per-machine rows**. What is collected, what is published and how anonymous that
+really is are in [privacy.md](privacy.md); what a volunteer agrees to is in [volunteer-terms.md](volunteer-terms.md) (both are drafts
+for counsel).
 
-- **A machine** opts in with `python node/agent.py ... --telemetry [--name "My rig"]` (or the same flags on `join`). The agent then
-  reports its CPU model, GPU models with video memory, a coarse operating system name ("Windows 10", "Linux", "macOS") and the GPU
-  load sampled every 30 seconds while none of this agent's own jobs run, sent every 5 minutes. Nothing else is read: no hostname, user
-  name, address, serial number or driver version. **At every start the agent says exactly what it sends, to which gateway, and that it
-  is public**; `agent.py ... --telemetry-show` prints the exact report and sends nothing; `--telemetry-off` removes the machine and
-  deletes what it reported. It **refuses a plain `http://` gateway on another machine** (the report would cross the network
-  unencrypted). A machine silent for `retention_days` (35) drops off by itself. The page shows a short hash of the agent id, never the id.
+- **A machine takes part** only with `python node/agent.py ... --telemetry` (or the same flag on `join`). It then reports its CPU model,
+  GPU models with video memory, a coarse operating system name ("Windows 10", "Linux", "macOS") and the GPU load sampled every
+  30 seconds while none of this agent's own jobs run, sent every 5 minutes. There is **no name option**, and nothing else is read: no
+  hostname, user name, address, serial number, driver version or thread count. **At every start the agent says exactly what it sends
+  and to which gateway**; `--telemetry-show` prints the exact report and sends nothing; `--telemetry-off` deletes what it reported. It
+  **refuses a plain `http://` gateway on another machine** (the report would cross the network unencrypted).
+- **What is published.** Machines are grouped by graphics card (model and memory), processor model and operating system, with the
+  machines, tokens served and typical idle GPU load of each group, most tokens first, plus totals for the network. **A group is shown only
+  if it has at least `min_group` machines** (default 5); smaller groups are folded into "Other" when together they reach `min_group`
+  and are otherwise left out. **Until `min_group` machines report, nothing is published, not even a count.** A machine is counted once,
+  under its graphics card with the most memory.
 - **The idle GPU figure is a slow average**, not a live reading: the gateway keeps 97 percent of the old value and 3 percent of each
-  report (hours at one report per 5 minutes) and shows a whole percent and only the date of the last report, so the public page does not
-  reveal when the owner is playing.
-- **A player** opts in with `POST /v1/credits/name` `{"name": "Ada"}` (SDK: `set_leaderboard_name`); an empty name opts out and is always
-  allowed. They are listed once they have a name and at least one linked machine; the board shows the name, the number of machines and
-  the tokens those machines served from the day each was linked, never a Steam id or platform account. A refused name comes back with
-  the reason (`bad_name`, for example "a name may not contain a link, an email address or a handle"); `not_allowed` means the
-  operator switched names off or blocked the account.
-- **Names are public text.** A link (`://`, `www.`), an `@` (email address or handle) or seven or more digits (a phone number) is refused,
-  as is anything matching the operator's `leaderboard.blocked_names` (regular expressions). A machine whose name is refused is still
-  listed under `node-<hash>` and the agent says why once. Control, zero-width and right-to-left override characters are removed and
-  lengths capped (name 24, CPU and GPU 80, at most 8 GPUs).
+  report (hours at one report per 5 minutes), and a group shows the mean of its machines as a whole percent, so the page cannot reveal
+  when anyone is playing.
+- **What is stored.** Only the latest report of each machine, under its random agent id, for 2 days at most (`--telemetry-off` deletes
+  it at once). That is pseudonymous, not anonymous, inside the operator's database: see [privacy.md](privacy.md).
 - **What is trusted.** Tokens are measured by the gateway (real jobs only, probes excluded, a claim is capped by the size of the
   text), so they cannot be inflated. Hardware and idle load are **reported by the machine and not verified**; the page says so. A
-  machine can only report if it has registered or served a job, at most once per 20 seconds, 16 KB each, and a banned machine is not ranked.
+  machine can only report if it has registered or served a job, at most once per 20 seconds, 16 KB each, and a banned machine is not counted.
+- **Hostile text.** Hardware names come from outside and appear on a public page: control, zero-width and right-to-left override
+  characters are removed, lengths capped (CPU and GPU 80, at most 8 GPUs), a group needs `min_group` machines reporting the very same text,
+  and the page escapes everything. The operator can hide hardware by pattern (`leaderboard.hidden_hardware`).
 - **What the page tells browsers.** No scripts (`default-src 'none'`), no framing (`frame-ancestors 'none'`), `noindex, nofollow` (header
-  and meta tag), every value escaped, a privacy link when `leaderboard.privacy_url` is set. If you show the JSON in your own UI, escape it too.
-- **Moderation and switches** (config block `leaderboard`, see [gateway.md](gateway.md#leaderboard)): `enabled: false` removes the page and
-  the reports, `players: false` leaves the player board empty and refuses names (for a title aimed at children). `POST /admin/leaderboard/block`
-  with `{"node": "<hash shown>"}` or `{"user": "<name shown>"}` takes someone off at once and keeps them off (they still serve and play);
-  add `"unblock": true` to lift it.
+  and meta tag), a privacy link when `leaderboard.privacy_url` is set. If you show the JSON in your own UI, escape the names.
+- **The operator's settings** (config block `leaderboard`, see [gateway.md](gateway.md#leaderboard)): `enabled: false` removes the page
+  and refuses reports; `min_group` (a larger number is more anonymous; 1 publishes single machines and is for testing only);
+  `hidden_hardware`; `privacy_url`.
 - **Tested.** The hardware readers have run on a real Windows PC (CPU, an Intel and an NVIDIA GPU, idle GPU load) and the whole flow
-  (real agent, real gateway, real local model, the page in a browser, both opt-outs) on that PC. The Linux NVIDIA reader uses
-  `nvidia-smi`, the same command the busy check has run on a real A10; the AMD (sysfs) and macOS (`system_profiler`) readers follow
-  the documented formats and are tested on sample output only. The privacy controls (names, switches, blocks, the https refusal, the
-  slow average, the headers, the purge) each have a self-check that fails when the control is removed. Not built: per-user history over
-  time, a verified hardware check (compare reported GPU against measured tokens per second), and showing the board inside the Steam overlay.
+  (real agent, real gateway, real local model, the page in a browser, the opt-out, and a database left by an earlier design losing its
+  name tables) on that PC. The Linux NVIDIA reader uses `nvidia-smi`, the same command the busy check has run on a real A10; the AMD (sysfs)
+  and macOS (`system_profiler`) readers follow the documented formats and are tested on sample output only. Each privacy control (the
+  minimum group, the "Other" rule, hidden hardware, the report limits, the https refusal, the slow average, the 2-day retention, the
+  headers) has a self-check that fails when the control is removed. Not built: a verified hardware check (compare reported GPU against
+  measured tokens per second), history over time, and a stored report that cannot be linked to the ledger.
 
 ### What this does not give you
 

@@ -23,7 +23,7 @@ import httpx
 from fastapi import Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
-from .leaderboard import clean_telemetry, name_problem
+from .leaderboard import clean_telemetry
 from .scheduler import Node
 from .store import Store
 
@@ -75,25 +75,22 @@ class PullHub(httpx.AsyncBaseTransport):
         return {"code": code[:4] + "-" + code[4:], "expires_s": ttl_s}
 
     def report(self, token, agent, data):
-        """Store what a machine reported about itself for the leaderboard (an opt-in, see gateway/leaderboard.py). Only a machine that has
-        registered or has served a job may: a made-up agent id cannot put a row on the board. Returns (stored, why the display name was
-        refused or ""): stored is False if the report came too soon after the last; a refused name is left out and the rest is kept."""
+        """Store what a machine reported about itself for the anonymous network statistics (an opt-in, see gateway/leaderboard.py). Only a
+        machine that has registered or has served a job may: a made-up agent id cannot add a machine to the statistics. False if the report
+        came too soon after the last."""
         self.check(token, agent)
         if not self.lb.get("enabled", True):
-            raise HTTPException(403, "the leaderboard is switched off on this gateway")
-        if self.store.blocked("node", agent):
-            raise HTTPException(403, "the operator has blocked this machine from the leaderboard")
+            raise HTTPException(403, "the statistics are switched off on this gateway")
         if not self.store.has_work(agent) and not any(e["agent"] == agent for e in self.nodes.values()):
             raise HTTPException(403, "register first: only machines that have registered or served jobs can report")
         now = time.monotonic()
         if now - self.tele_seen.get(agent, -1e9) < TELEMETRY_MIN_S:
-            return False, ""
+            return False
         if len(self.tele_seen) > 10_000:
             self.tele_seen.clear()
         self.tele_seen[agent] = now
-        problem = name_problem(data["name"], self.lb.get("blocked_names", []))
-        self.store.set_telemetry(agent, {**data, "name": "" if problem else data["name"]})
-        return True, problem
+        self.store.set_hardware(agent, data)
+        return True
 
     def register(self, token, agent):
         cfg, tid = self.check(token, agent)
@@ -258,7 +255,7 @@ def add_routes(app, hub):
 
     @app.post("/node/telemetry")
     async def telemetry(req: Request, x_node_token: str = Header(None), x_node_agent: str = Header(None)):
-        """Opt-in: the agent reports its hardware and idle GPU load for the leaderboard (agent --telemetry)."""
+        """Opt-in: the agent reports its hardware and idle GPU load for the anonymous statistics (agent --telemetry)."""
         hub.check(x_node_token, x_node_agent)  # before reading the body
         raw = await req.body()
         if len(raw) > 16_000:
@@ -267,14 +264,13 @@ def add_routes(app, hub):
             data = clean_telemetry(json.loads(raw))
         except ValueError:
             raise HTTPException(400, "bad report")
-        stored, problem = hub.report(x_node_token, x_node_agent, data)
-        return {"ok": True, "stored": stored, "name_rejected": problem or None}
+        return {"ok": True, "stored": hub.report(x_node_token, x_node_agent, data)}
 
     @app.delete("/node/telemetry")
     async def telemetry_off(x_node_token: str = Header(None), x_node_agent: str = Header(None)):
-        """Opt out: remove this machine from the leaderboard and delete what it reported."""
+        """Opt out: delete what this machine reported."""
         hub.check(x_node_token, x_node_agent)
-        hub.store.forget_telemetry(x_node_agent)
+        hub.store.forget_hardware(x_node_agent)
         return {"ok": True}
 
     @app.get("/node/poll")

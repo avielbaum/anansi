@@ -76,21 +76,13 @@ export class Anansi {
     return { linked: false, reason: s === 404 || s === 400 ? "bad_code" : "unavailable" };
   }
 
-  /** The public volunteer leaderboard: {period, nodes, users} ranked by tokens in `period` ("day", "week", "all"), or null when the gateway
-   *  cannot be reached. Names and hardware text come from outside machines and players: escape them if you put them in markup. */
-  async leaderboard({ period = "week", limit = 25 } = {}) {
+  /** The anonymous volunteer-network statistics for `period` ("day", "week", "all"), or null when the gateway cannot be reached:
+   *  {period, published, min_group, reporting: {machines, tokens, idle_gpu_pct}, network_tokens, gpus, cpus, systems}, each row
+   *  {name, machines, tokens, idle_gpu_pct}. Nothing is published (published is false, the rest empty) until at least min_group machines
+   *  report, and a smaller group is folded into "Other". The names are hardware names reported by machines: escape them in markup. */
+  async leaderboard({ period = "week", limit = 20 } = {}) {
     const [s, d] = await this._call("GET", `/v1/leaderboard?period=${encodeURIComponent(period)}&limit=${Number(limit) | 0}`);
     return s === 200 ? d : null;
-  }
-
-  /** Opt this player in to the leaderboard under `name` (an empty name opts out). Shown once a machine is linked.
-   *  {set: true, name} (name is the cleaned text, or null), or {set: false, reason, message}: "bad_name" (refused: message says why, for
-   *  example no links or email addresses), "not_allowed" (the studio switched names off or blocked this account) or "unavailable". */
-  async setLeaderboardName(name) {
-    const [s, d] = await this._call("POST", "/v1/credits/name", { name: String(name) });
-    if (s === 200) return { set: true, name: d.name };
-    if (s === 400 || s === 403 || s === 422) return { set: false, reason: s === 403 ? "not_allowed" : "bad_name", message: typeof d?.detail === "string" ? d.detail : "" };
-    return { set: false, reason: "unavailable" };
   }
 
   async _fallbackReply(messages) {

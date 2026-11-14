@@ -45,14 +45,14 @@ only on items the participating games offer. New credit is held for 7 days. If y
 void. The operator sets the rate per token and the items, may change either, and does not promise that credits will always be
 spendable. No money, cryptocurrency or other payment is made.
 
-## 6. Leaderboard and hardware details (optional, separate)
+## 6. Anonymous statistics (optional, separate)
 
 By default nothing about your computer is sent. If you start the agent with `--telemetry`, it sends your CPU model, GPU models and
-memory, an operating system name and a slow average of your idle GPU load, under a name you pick, and the gateway shows them
-publicly next to your token totals. The agent says exactly this at every start, `--telemetry-show` prints the exact report, and
-`--telemetry-off` removes you. A name must not be your real name, a link, an email address, a handle or a phone number, or anything
-hateful, sexual, threatening or that pretends to be someone else. The operator can remove or block a name. Copies of a public page can
-exist outside the operator's control. The details are in [privacy.md](privacy.md).
+memory, an operating system name and a slow average of your idle GPU load, with **no name, account or address**. The gateway publishes only
+statistics about groups of machines with the same hardware (never a single machine, and nothing at all until enough machines report),
+and keeps your latest report under the agent's random id for up to 2 days so it can update it. The agent says exactly this at every
+start, `--telemetry-show` prints the exact report, and `--telemetry-off` deletes it. Copies of a public page can exist outside the
+operator's control. The details, including how anonymous this is and is not, are in [privacy.md](privacy.md).
 
 ## 7. Suspension and bans
 

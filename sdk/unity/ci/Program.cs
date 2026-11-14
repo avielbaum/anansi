@@ -64,14 +64,9 @@ static class Program
         var ln = c.LinkNodeAsync("ABCD-EFGH").GetAwaiter().GetResult();
         Check(!ln.Linked && ln.Reason == "bad_code", "unknown link code is reported as bad_code");
         var board = c.LeaderboardAsync("day", 5).GetAwaiter().GetResult();
-        Check(board != null && board.period == "day" && board.nodes != null && board.nodes.Count == 0 && board.users != null && board.users.Count == 0, "leaderboard of a gateway with no volunteers is empty");
-        var nm = new Client(url, "demo", "change-me", () => "dev:sdk-name-cs").SetLeaderboardNameAsync("Tester <b>CS</b>").GetAwaiter().GetResult();
-        Check(nm.Set && nm.Name == "Tester <b>CS</b>", "leaderboard name is accepted and returned as text");
-        Check(new Client(url, "demo", "change-me", () => "dev:sdk-name-cs").SetLeaderboardNameAsync("").GetAwaiter().GetResult().Name == null, "an empty name opts out");
-        var nb = new Client(url, "demo", "change-me", () => "dev:sdk-name-cs").SetLeaderboardNameAsync("write me@example.com").GetAwaiter().GetResult();
-        Check(!nb.Set && nb.Reason == "bad_name" && nb.Message.Contains("email"), "a refused name says why");
+        Check(board != null && board.period == "day" && !board.published && board.min_group >= 1 && board.reporting == null && board.gpus.Count == 0 && board.cpus.Count == 0 && board.systems.Count == 0, "statistics of a gateway with no volunteers say nothing yet");
         var down = new Client("http://127.0.0.1:9", "demo", "change-me", ticket, null, 1);
-        Check(down.LeaderboardAsync().GetAwaiter().GetResult() == null && down.SetLeaderboardNameAsync("x").GetAwaiter().GetResult().Reason == "unavailable", "gateway down: no leaderboard, name unavailable");
+        Check(down.LeaderboardAsync().GetAwaiter().GetResult() == null, "gateway down: no statistics");
         ln = down.LinkNodeAsync("ABCD-EFGH").GetAwaiter().GetResult();
         Check(!ln.Linked && ln.Reason == "unavailable" && down.CreditsAsync().GetAwaiter().GetResult() == null, "gateway down: unavailable, no credits");
         return failures == 0 ? 0 : 1;

@@ -143,12 +143,14 @@ def make_app(config=None, transport=None):
             n.full()
             n.used = store.node_spend(n.url)
     purged = [datetime.date.today()]
-    lbc = cfg.get("leaderboard") or {}  # enabled, players, privacy_url, blocked_names: see docs/gateway.md
+    lbc = cfg.get("leaderboard") or {}  # enabled, min_group, hidden_hardware, privacy_url: see docs/gateway.md
     try:
-        for p in lbc.get("blocked_names", []):
+        for p in lbc.get("hidden_hardware", []):
             re.compile(p)
     except (re.error, TypeError) as e:
-        raise ValueError(f"leaderboard.blocked_names must be a list of regular expressions: {e}")
+        raise ValueError(f"leaderboard.hidden_hardware must be a list of regular expressions: {e}")
+    if "min_group" in lbc and not (isinstance(lbc["min_group"], int) and not isinstance(lbc["min_group"], bool) and lbc["min_group"] >= 1):
+        raise ValueError("leaderboard.min_group must be a whole number, 1 or more (5 or more keeps a group from describing one person)")
     if lbc.get("privacy_url") and not str(lbc["privacy_url"]).startswith("https://"):
         raise ValueError("leaderboard.privacy_url must be an https:// address")
     hub = PullHub(sched, cfg["pull_tokens"], transport or httpx.AsyncHTTPTransport(), cfg.get("pull_poll_s", 20),
@@ -842,52 +844,7 @@ def make_app(config=None, transport=None):
         body = {"result": result, **in_credits(store.balance(wallet))}
         return JSONResponse(body, 402 if result == "short" else 200)
 
-    @app.post("/v1/credits/name")
-    async def credit_name(req: Request, c=Depends(creds)):
-        """Opt in to the public leaderboard under a display name (never the platform account); an empty name opts out. Shown once at
-        least one machine is linked."""
-        wallet = await wallet_of(c)
-        raw = await req.body()
-        try:
-            if len(raw) > 2000:
-                raise ValueError
-            name = json.loads(raw)["name"]
-            if not isinstance(name, str):
-                raise ValueError
-            name = leaderboard.clean_text(name, 24)
-        except (ValueError, KeyError, TypeError):
-            raise HTTPException(400, 'body must be {"name": "Your name"}')
-        if name:  # an empty name opts out, and is always allowed
-            if not (lbc.get("enabled", True) and lbc.get("players", True)):
-                raise HTTPException(403, "player names are switched off on this gateway")
-            if store.blocked("user", wallet):
-                raise HTTPException(403, "this account cannot be listed on the leaderboard")
-            problem = leaderboard.name_problem(name, lbc.get("blocked_names", []))
-            if problem:
-                raise HTTPException(400, problem)
-        store.set_wallet_name(wallet, name)
-        return {"name": name or None}
-
     leaderboard.add_routes(app, store, lbc)
-
-    @app.post("/admin/leaderboard/block")
-    async def leaderboard_block(req: Request, x_admin_token: str = Header(None)):
-        """Moderation. {"node": "<label shown on the board>"} or {"user": "<name shown>"}; add "unblock": true to lift it. A blocked machine
-        or player comes off the board at once and cannot be listed again (they still serve jobs and play)."""
-        admin(x_admin_token)
-        try:
-            d = json.loads(await req.body())
-            kind, label = ("node", str(d["node"])) if "node" in d else ("user", str(d["user"]))
-        except (ValueError, KeyError, TypeError):
-            raise HTTPException(400, 'body must be {"node": "<label>"} or {"user": "<name>"}, optionally with "unblock": true')
-        if d.get("unblock"):
-            return {"unblocked": store.unblock(kind, label)}
-        keys = store.agents_by_label(label) if kind == "node" else store.wallets_by_name(label)
-        for k in keys:
-            store.block(kind, k, label)
-            store.forget_telemetry(k) if kind == "node" else store.set_wallet_name(k, "")
-        getattr(app.state, "leaderboard_cache", {}).clear()  # the page must not keep showing it for another 30 seconds
-        return {"blocked": len(keys)}
 
     @app.get("/healthz")
     async def health():

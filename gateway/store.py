@@ -9,17 +9,19 @@ shortcut: synchronous writes on the request path (one small statement each; abou
 them off the event loop if a busy gateway shows database time. Usage rows hold player ids; purge() drops old days (retention_days)."""
 import contextlib
 import datetime
-import hashlib
 import json
 import sqlite3
 import time
 
+HARDWARE_KEEP_DAYS = 2  # a machine's latest report is kept this long without a new one, then forgotten
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS usage(title TEXT, player TEXT, day TEXT, tokens BIGINT, PRIMARY KEY(title, player, day));
 CREATE TABLE IF NOT EXISTS node_spend(node TEXT, day TEXT, tokens BIGINT, PRIMARY KEY(node, day));
-CREATE TABLE IF NOT EXISTS node_telemetry(agent TEXT PRIMARY KEY, name TEXT, cpu TEXT, threads BIGINT, gpus TEXT, os TEXT, idle_gpu REAL, updated TEXT);
-CREATE TABLE IF NOT EXISTS leaderboard_blocks(kind TEXT, key TEXT, label TEXT, at TEXT, PRIMARY KEY(kind, key));
-CREATE TABLE IF NOT EXISTS wallet_names(wallet TEXT PRIMARY KEY, name TEXT, at TEXT);
+CREATE TABLE IF NOT EXISTS volunteer_hardware(agent TEXT PRIMARY KEY, cpu TEXT, gpus TEXT, os TEXT, idle_gpu REAL, updated TEXT);
+DROP TABLE IF EXISTS node_telemetry;
+DROP TABLE IF EXISTS wallet_names;
+DROP TABLE IF EXISTS leaderboard_blocks;
 CREATE TABLE IF NOT EXISTS bans(agent TEXT PRIMARY KEY, reason TEXT, at TEXT);
 CREATE TABLE IF NOT EXISTS ledger(agent TEXT, day TEXT, jobs BIGINT DEFAULT 0, tokens BIGINT DEFAULT 0,
                                   probes_ok BIGINT DEFAULT 0, probes_failed BIGINT DEFAULT 0, PRIMARY KEY(agent, day));
@@ -129,75 +131,45 @@ class Store:
                     (node, day, int(tokens)))
             return int(self._x("SELECT tokens FROM node_spend WHERE node=? AND day=?", (node, day)).fetchone()[0])
 
-    # leaderboard: only machines and players that opted in (see gateway/leaderboard.py)
+    # volunteer statistics (opt-in; gateway/leaderboard.py publishes only aggregates). The latest report is kept under the machine's random
+    # agent id so it can be updated and deleted, for HARDWARE_KEEP_DAYS at most; nothing here is a name.
     def has_work(self, agent):
         return self._x("SELECT 1 FROM ledger WHERE agent=? LIMIT 1", (agent,)).fetchone() is not None
 
-    def set_telemetry(self, agent, t):
+    def set_hardware(self, agent, t):
         """Store what a machine reported (already cleaned by leaderboard.clean_telemetry)."""
         now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
-        # idle_gpu is kept as a slow average (97 % old, 3 % new: a few hours at one report per 5 minutes), so the public value shows the
-        # machine's typical free GPU, not when its owner is playing; a report without a value leaves it as it was
-        self._x("INSERT INTO node_telemetry VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(agent) DO UPDATE SET name=excluded.name, cpu=excluded.cpu, "
-                "threads=excluded.threads, gpus=excluded.gpus, os=excluded.os, updated=excluded.updated, idle_gpu = CASE "
-                "WHEN excluded.idle_gpu IS NULL THEN node_telemetry.idle_gpu WHEN node_telemetry.idle_gpu IS NULL THEN excluded.idle_gpu "
-                "ELSE 0.97 * node_telemetry.idle_gpu + 0.03 * excluded.idle_gpu END",
-                (agent, t["name"], t["cpu"], t["threads"], json.dumps(t["gpus"]), t["os"], t["idle_gpu"], now))
+        # idle_gpu is kept as a slow average (97 % old, 3 % new: a few hours at one report per 5 minutes), so a figure shows a machine's
+        # typical free GPU, not when its owner is playing; a report without a value leaves it as it was
+        self._x("INSERT INTO volunteer_hardware VALUES(?,?,?,?,?,?) ON CONFLICT(agent) DO UPDATE SET cpu=excluded.cpu, gpus=excluded.gpus, "
+                "os=excluded.os, updated=excluded.updated, idle_gpu = CASE WHEN excluded.idle_gpu IS NULL THEN volunteer_hardware.idle_gpu "
+                "WHEN volunteer_hardware.idle_gpu IS NULL THEN excluded.idle_gpu "
+                "ELSE 0.97 * volunteer_hardware.idle_gpu + 0.03 * excluded.idle_gpu END",
+                (agent, t["cpu"], json.dumps(t["gpus"]), t["os"], t["idle_gpu"], now))
 
-    def forget_telemetry(self, agent):
-        self._x("DELETE FROM node_telemetry WHERE agent=?", (agent,))
+    def forget_hardware(self, agent):
+        self._x("DELETE FROM volunteer_hardware WHERE agent=?", (agent,))
 
-    def block(self, kind, key, label):
-        """Keep a machine (kind "node", key = agent id, label = the hash the board shows) or a player (kind "user", key = wallet, label = the
-        name they had) off the leaderboard. They still serve jobs and play; they just cannot be listed."""
-        self._x("INSERT INTO leaderboard_blocks VALUES(?,?,?,?) ON CONFLICT(kind, key) DO NOTHING", (kind, key, label, today()))
-
-    def unblock(self, kind, label):
-        """Lift blocks by label (case-insensitive); returns how many."""
-        return self._x("DELETE FROM leaderboard_blocks WHERE kind=? AND LOWER(label)=LOWER(?)", (kind, label)).rowcount
-
-    def blocked(self, kind, key):
-        return self._x("SELECT 1 FROM leaderboard_blocks WHERE kind=? AND key=?", (kind, key)).fetchone() is not None
-
-    def agents_by_label(self, label):
-        """Agent ids whose board label (a short hash) is `label`: the operator sees only the label, not the id."""
-        return [a for (a,) in self._x("SELECT agent FROM node_telemetry UNION SELECT agent FROM ledger") if hashlib.sha256(a.encode()).hexdigest()[:8] == label]
-
-    def wallets_by_name(self, name):
-        return [w for (w,) in self._x("SELECT wallet FROM wallet_names WHERE LOWER(name)=LOWER(?)", (name,))]
-
-    def set_wallet_name(self, wallet, name):
-        """A player's display name on the board. An empty name takes them off it."""
-        if not name:
-            self._x("DELETE FROM wallet_names WHERE wallet=?", (wallet,))
-        else:
-            self._x("INSERT INTO wallet_names VALUES(?,?,?) ON CONFLICT(wallet) DO UPDATE SET name=excluded.name, at=excluded.at", (wallet, name, today()))
-
-    def leaderboard(self, period="week", limit=100):
-        """{"nodes": [...], "users": [...]} ranked by tokens in `period` (day, week or all). Banned machines are left out. A player's
-        tokens are those their linked machines served from the day they linked."""
+    def hardware_rows(self):
+        """One record per machine that reported in the last HARDWARE_KEEP_DAYS days and is not banned, with the tokens its agent served
+        (today, the last 7 days, all time) from the ledger. Not public: leaderboard.board() turns these into group statistics."""
         day = today()
         week = (datetime.date.fromisoformat(day) - datetime.timedelta(days=6)).isoformat()
-        order = {"day": "today", "week": "week", "all": "total"}[period]
-        sums = ("COALESCE(SUM(CASE WHEN l.day = ? THEN l.tokens END), 0) AS today, COALESCE(SUM(CASE WHEN l.day >= ? THEN l.tokens END), 0) AS week, "
-                "COALESCE(SUM(l.tokens), 0) AS total, COALESCE(SUM(l.jobs), 0) AS jobs")
-        nodes = []
-        for i, (agent, name, cpu, threads, gpus, os_, idle, updated, d, w, a, jobs) in enumerate(self._x(
-                "SELECT t.agent, t.name, t.cpu, t.threads, t.gpus, t.os, t.idle_gpu, t.updated, " + sums + " FROM node_telemetry t "
-                "LEFT JOIN ledger l ON l.agent = t.agent WHERE t.agent NOT IN (SELECT agent FROM bans) "
-                "GROUP BY t.agent, t.name, t.cpu, t.threads, t.gpus, t.os, t.idle_gpu, t.updated ORDER BY " + order + " DESC, t.agent LIMIT ?",
-                (day, week, int(limit))), 1):
-            label = hashlib.sha256(agent.encode()).hexdigest()[:8]
-            nodes.append({"rank": i, "node": label, "name": name or "node-" + label, "tokens": {"today": int(d), "week": int(w), "all": int(a)},
-                          "jobs": int(jobs), "reported": {"cpu": cpu, "threads": int(threads), "gpus": json.loads(gpus), "os": os_,
-                                                          "idle_gpu_pct": None if idle is None else int(round(float(idle))), "at": updated[:10]}})
-        users = []
-        for i, (name, machines, d, w, a, jobs) in enumerate(self._x(
-                "SELECT n.name, COUNT(DISTINCT k.agent), " + sums + " FROM wallet_names n JOIN links k ON k.wallet = n.wallet "
-                "LEFT JOIN ledger l ON l.agent = k.agent AND l.day >= k.at WHERE k.agent NOT IN (SELECT agent FROM bans) "
-                "GROUP BY n.wallet, n.name ORDER BY " + order + " DESC, n.name LIMIT ?", (day, week, int(limit))), 1):
-            users.append({"rank": i, "name": name, "machines": int(machines), "tokens": {"today": int(d), "week": int(w), "all": int(a)}, "jobs": int(jobs)})
-        return {"nodes": nodes, "users": users}
+        since = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=HARDWARE_KEEP_DAYS)).isoformat(timespec="seconds")
+        return [{"cpu": cpu, "gpus": json.loads(gpus), "os": os_, "idle_gpu": idle,
+                 "tokens": {"today": int(d), "week": int(w), "all": int(a)}} for cpu, gpus, os_, idle, d, w, a in self._x(
+            "SELECT h.cpu, h.gpus, h.os, h.idle_gpu, COALESCE(SUM(CASE WHEN l.day = ? THEN l.tokens END), 0), "
+            "COALESCE(SUM(CASE WHEN l.day >= ? THEN l.tokens END), 0), COALESCE(SUM(l.tokens), 0) FROM volunteer_hardware h "
+            "LEFT JOIN ledger l ON l.agent = h.agent WHERE h.updated >= ? AND h.agent NOT IN (SELECT agent FROM bans) "
+            "GROUP BY h.agent, h.cpu, h.gpus, h.os, h.idle_gpu", (day, week, since))]
+
+    def network_tokens(self):
+        """Tokens served by every volunteer (not banned) today, in the last 7 days and all time."""
+        day = today()
+        week = (datetime.date.fromisoformat(day) - datetime.timedelta(days=6)).isoformat()
+        d, w, a = self._x("SELECT COALESCE(SUM(CASE WHEN day = ? THEN tokens END), 0), COALESCE(SUM(CASE WHEN day >= ? THEN tokens END), 0), "
+                          "COALESCE(SUM(tokens), 0) FROM ledger WHERE agent NOT IN (SELECT agent FROM bans)", (day, week)).fetchone()
+        return {"today": int(d), "week": int(w), "all": int(a)}
 
     # bans
     def bans(self):
@@ -303,4 +275,5 @@ class Store:
         cutoff = (datetime.date.today() - datetime.timedelta(days=keep_days)).isoformat()
         self._x("DELETE FROM usage WHERE day < ?", (cutoff,))
         self._x("DELETE FROM node_spend WHERE day < ?", (cutoff,))
-        self._x("DELETE FROM node_telemetry WHERE updated < ?", (cutoff,))  # a machine that stopped reporting drops off the board
+        self._x("DELETE FROM volunteer_hardware WHERE updated < ?", ((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+            days=HARDWARE_KEEP_DAYS)).isoformat(timespec="seconds"),))  # a machine that stopped reporting is forgotten
