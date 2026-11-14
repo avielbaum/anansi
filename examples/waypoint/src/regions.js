@@ -26,7 +26,7 @@ export const REGIONS = {
 };
 export const REGION_IDS = Object.keys(REGIONS);
 
-const norm = s => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+export const norm = s => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 const lookup = new Map(REGION_IDS.flatMap(id => REGIONS[id].places.map(p => [norm(p), id])));
 
 /** The region id a place is in, or null (the Margins). Case and accents do not matter. */

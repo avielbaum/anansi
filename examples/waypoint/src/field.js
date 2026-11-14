@@ -2,6 +2,9 @@
 /* global Phaser */
 import { STAMPS, TALK } from "./data.js";
 import { mapFor, areaOf, areaLabel } from "./world.js";
+import { ensureCity } from "./travel.js";
+import { ENCOUNTERS } from "./city.js";
+import { worldSpot } from "./overworld.js";
 import { G } from "./state.js";
 import { ITEMS, ENEMIES, HEROES, EQUIP, SHOP_GEAR, SHOP_GEAR2, WARDEN_GEAR, RELAY_GEAR, SITE_GEAR, addGear, joinParty, leaveParty, unequip, bonusText, questStep, payQuest, canGift, markGift, resetGifts } from "./rules.js";
 import { BEATS, SITE_BEATS, ENDINGS, destroyRelay, completeSite, banter } from "./story.js";
@@ -323,6 +326,8 @@ export class Field extends Phaser.Scene {
       this.inZone = true;
       const z = zones[0];
       if (z.go) return this.goTo(z.go);
+      if (z.enter) return this.run(async () => this.teleportTo(await ensureCity(this, z.enter))); // a gate on the overworld
+      if (z.world) { const [x, y] = worldSpot(this.mapId); return this.goTo({ map: "world", x, y }); } // the road out of a city
       if (z.back) return this.teleportTo(G.s.siteFrom && G.s.siteFrom !== this.mapId ? G.s.siteFrom : "town");
       if (z.boss && !G.s.flags[this.M.boss.flag]) return this.bossFight();
     }
@@ -333,9 +338,9 @@ export class Field extends Phaser.Scene {
       const id = this.marker.id;
       return this.run(async () => { sfx("pickup"); await say(this, "", `Found: ${this.area.names[id]}`); await this.questEvent("fetch", id); });
     }
-    if (this.M.encounters && (this.nextFight -= moved) <= 0) {
+    if ((this.M.encounters || this.M.biomes) && (this.nextFight -= moved) <= 0) {
       this.nextFight = this.fightGap();
-      this.battle(Phaser.Utils.Array.GetRandom(this.M.encounters));
+      this.battle(Phaser.Utils.Array.GetRandom(this.biome()?.encounters || this.M.encounters));
     }
   }
 
@@ -348,6 +353,13 @@ export class Field extends Phaser.Scene {
     sfx(sound);
     this.cameras.main.fadeOut(250);
     this.cameras.main.once("camerafadeoutcomplete", () => this.scene.restart({ map: go.map, at: feet(go.x, go.y) }));
+  }
+
+  /** On the overworld: the climate band under the hero, with its wildlife and battle backdrop. */
+  biome() {
+    const s = this.hero.s;
+    const b = (this.M.biomes || []).find(({ rect: [x, y, w, h] }) => s.x >= x * T && s.x < (x + w) * T && s.y >= y * T && s.y < (y + h) * T);
+    return b && { encounters: ENCOUNTERS[b.climate], battle: b.battle };
   }
 
   /** Steps to walk before the next random fight: [min, max] from the map, else the usual. */
@@ -499,7 +511,7 @@ export class Field extends Phaser.Scene {
       sfx(mapBoss ? "rage" : "alert");
       musicPush(mapBoss ? this.M.boss.music : noFlee ? "tension" : "battle");
       this.time.delayedCall(300, () => {
-        this.scene.launch("battle", { enemies, bg: this.M.battle, boss: noFlee, onEnd: async result => {
+        this.scene.launch("battle", { enemies, bg: this.biome()?.battle || this.M.battle, boss: noFlee, onEnd: async result => {
           this.scene.resume();
           musicPop();
           this.busy = false;

@@ -81,6 +81,10 @@ prototype, with real-world destinations, is in `prototype/`.
   the XP of the story fights and the Spire's encounters is meant to bring a party there without grinding.
 
 **Milestone 5, a bigger world and a longer story** (`src/regions.js`, `src/sites.js`, `src/story.js`):
+- **The overworld** (`src/overworld.js`): leave Old Town by the road at its west end, or any city by either end of its main street, and you
+  walk a 128 x 64 tile map of the four regions with a gate for every place on the World Map (the anchor cities are starred). Step onto a
+  gate to enter that city (a new one is generated first, as with Teleport). Each region has its own ground, wildlife and battle
+  backdrop; paths join the gates and lakes and trees fill the gaps. Teleport still works from anywhere and lists "The Wide World".
 - **The World Map** (Menu → Teleport → World Map): four regions (the Pacific Rim, Old Europe, Africa and the Gulf, the Americas), each
   with an anchor city and a list of places. Any real place can still be typed in; one that is not listed is "in the Margins".
 - **Five acts:** I Cold Trail (the Warden), II The Relays (three), **III The Rift Sites**, **IV The Traitor**, V The Spire.

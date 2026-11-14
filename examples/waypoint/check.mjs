@@ -8,7 +8,8 @@ import { upgrade } from "./src/state.js";
 import { MAPS, STAMPS, TALK, QUEST_WORLD, REGIONS, ITEM_SPOTS, PERSONAS, FALLBACK_QUESTS, SHORT_NAMES } from "./src/data.js";
 import { pages } from "./src/ui.js";
 import { SITE_BEATS, completeSite, banter, newPlot, destroyRelay, objective, situation, BEATS, ENDINGS, ACTS, RELAYS_NEEDED, epilogueFallback } from "./src/story.js";
-import { genCity, walkable, LOCALS } from "./src/city.js";
+import { genCity, walkable, LOCALS, ENCOUNTERS } from "./src/city.js";
+import { worldSpot } from "./src/overworld.js";
 import { REGIONS as WORLD, REGION_IDS, regionOf, anchorOf } from "./src/regions.js";
 import { hash, parseAtlas, parseClimate, cityPrompt, CLIMATES, suggest, DESTINATIONS } from "./src/atlas.js";
 
@@ -117,6 +118,10 @@ for (const [i, dest] of dests.entries()) {
   const climate = CLIMATES[i % 4], atlas = i === 5 ? parseAtlas("...") : parseAtlas(atlasText); // "x" gets the SDK's empty fallback
   const c = genCity(dest, atlas, climate), M = c.map, area = c.area;
   assert(c.ok, `${dest}: no valid layout`);
+  { // the road out: both ends of the main street lead to the overworld
+    const { seen } = walkable(M);
+    assert(M.zones.filter(z => z.world).length === 2 && M.zones.every(z => !z.world || seen.has(`${z.x + (z.x ? 0 : 1)},${z.y + 1}`)), `${dest}: no way out to the overworld`);
+  }
   assert.equal(JSON.stringify(genCity(dest, atlas, climate).map), JSON.stringify(M), `${dest}: the same city must always look the same`);
   for (const [tex] of M.paint) assert(existsSync(here(`assets/tiles/${tex}.png`)), tex);
   assert(existsSync(here(`assets/tiles/${M.ground}.png`)) && existsSync(here(`assets/tiles/battle_${M.battle}.png`)));
@@ -281,4 +286,16 @@ for (const [id, e] of Object.entries(ENEMIES)) assert(existsSync(here(`assets/en
 
 const save = newGame("lead_m"); const pay = payQuest(save, FALLBACK_QUESTS[1]);
 assert.equal(save.gold, 60 + pay.gold); assert.equal(save.items.potion, 4); assert.equal(save.questsDone, 1); assert(save.story.includes("tram token"));
+// the overworld: a gate for every place, all reachable, every biome fightable, every city and Old Town lead back to it
+{
+  const W = MAPS.world, { seen } = walkable(W);
+  const places = REGION_IDS.flatMap(id => WORLD[id].places);
+  assert(W.zones.length === places.length + 1, "one gate per place and Old Town");
+  for (const name of places) { const z = W.zones.find(z => z.enter === name); assert(z, `${name}: no gate`); assert(seen.has(`${z.x},${z.y}`), `${name}: the gate cannot be reached`); }
+  assert(audio.music[W.music]);
+  for (const b of W.biomes) assert(existsSync(here(`assets/tiles/battle_${b.battle}.png`)) && ENCOUNTERS[b.climate], `${b.climate}: no backdrop or wildlife`);
+  for (const id of ["town", ...places.map(p => "city:" + p)]) { const [x, y] = worldSpot(id); assert(seen.has(`${x},${y}`), `${id}: arrival on the overworld is blocked`); }
+  const t = MAPS.town, tz = t.zones.find(z => z.world), tw = walkable(t).seen;
+  assert(tz && tw.has(`${tz.x + 1},${tz.y}`), "Old Town has a road out");
+}
 console.log("ok");

@@ -4,6 +4,7 @@ import { G, save } from "./state.js";
 import { mapFor, areaOf, areaLabel, cityId } from "./world.js";
 import { fetchAtlas, atlasCached, suggestions } from "./anansi.js";
 import { cleanDest } from "./atlas.js";
+import { ensureCity } from "./travel.js";
 import { ACTS, objective } from "./story.js";
 import { REGIONS, REGION_IDS } from "./regions.js";
 import { settings, setMuted, cycleVolume, sfx } from "./audio.js";
@@ -178,6 +179,7 @@ export class Menu extends Phaser.Scene {
     const entries = [{ label: "World Map", world: true }, { label: "Type a place…" },
       ...(plot.spire && here !== "spire" ? [{ label: "Directorate Spire", map: "spire" }] : []),
       ...(plot.act === 4 && !G.s.flags.vesper && here !== "site:gate" ? [{ label: "The Rift Gate", map: "site:gate" }] : []),
+      ...(here === "world" ? [] : [{ label: "The Wide World", map: "world" }]),
       ...(here === "town" ? [] : [{ label: "Old Town", map: "town" }]),
       ...Object.keys(G.s.cities).filter(d => cityId(d) !== here).slice(-6).map(d => ({ label: d.slice(0, 20), map: cityId(d) }))];
     const k = await choose(this, 250, 40, 220, entries.map(e => e.label));
@@ -187,16 +189,7 @@ export class Menu extends Phaser.Scene {
     else if (!map) dest = cleanDest((await prompt(this, "Where to? Any real place on Earth:")) || "");
     if (!map) {
       if (!dest) return false;
-      const known = Object.keys(G.s.cities).find(d => d.toLowerCase() === dest.toLowerCase());
-      if (known && !G.s.cities[known].generic) map = cityId(known);
-      else {
-        const name = known || dest, key = cityId(name);
-        const r = await waitFor(this, fetchAtlas(name), `Folding space to ${name}`);
-        G.s.cities[name] = { atlas: r.atlas, climate: r.climate, generic: r.source === "fallback" }; // generic: the gateway could not say anything about it
-        if (G.s.quest?.area === key) G.s.quest = null; // a rebuilt city has new people: an old job there no longer fits
-        if (G.s.offer?.area === key) G.s.offer = null;
-        map = key;
-      }
+      map = await ensureCity(this, dest);
     }
     if (map.startsWith("site:")) G.s.siteFrom = here;
     this.close();

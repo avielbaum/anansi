@@ -17,6 +17,7 @@ export const HOUSES = ROOFS.flatMap(r => WALLS.map(w => `house_${r}_${w}`));
 for (const k of HOUSES) STAMPS[k] = STAMPS.house;
 
 import { SITE_MAPS } from "./sites.js";
+import { WORLD } from "./overworld.js";
 
 export const MAPS = {
   town: {
@@ -34,7 +35,7 @@ export const MAPS = {
       { id: "local_f", qid: "ines", name: "Ines", x: 21, y: 12, dir: "down", talk: "ines", work: true },
       { id: "agent", qid: "agent", name: "Agent Kessler", x: 33, y: 11, dir: "left", talk: "agent" },
     ],
-    zones: [{ x: 31, y: 10, w: 1, h: 1, go: { map: "undercroft", x: 3, y: 6 } }],
+    zones: [{ x: 31, y: 10, w: 1, h: 1, go: { map: "undercroft", x: 3, y: 6 } }, { x: 0, y: 17, w: 1, h: 2, world: true }], // the road west leads out to the overworld
     spawn: [19, 12],
     intro: "arrived",
   },
@@ -75,7 +76,7 @@ export const MAPS = {
   },
 };
 
-Object.assign(MAPS, SITE_MAPS); // the Rift Sites and the Rift Gate (Acts III and IV)
+Object.assign(MAPS, SITE_MAPS, { world: WORLD }); // the Rift Sites and the Rift Gate (Acts III and IV)
 
 // Dialogue: lines are "text" (spoken by the NPC) or [speaker, "text"]; LEAD and MATE stand for the party.
 export const TALK = {
@@ -87,6 +88,7 @@ export const TALK = {
   agent: { before: ["You must be the jumper. The Directorate has a job offer for you.", "Folding space is wasted on errands for shopkeepers. Work for us.",
     "Our Warden waits in the Undercroft. Go and see what refusing us costs."],
     after: ["...You broke the Warden.", "The Director will hear of this. Blink wherever you like. We will be there first."] },
+  worldFirst: [["MATE", "Open country. Every gate on this map is a town, and the roads between them are ours to walk."], ["LEAD", "Then let's walk. Every city has a road out at either end, and Teleport in the menu still works when we're in a hurry."]],
   shop: ["Welcome to Tobias' Provisions! What'll it be?"],
 };
 

@@ -13,7 +13,7 @@ const TREE = { temperate: "tree", desert: "tree", snow: "pine", tropical: "tree"
 const TREES = { temperate: 7, desert: 2, snow: 7, tropical: 8 };
 export const LOCALS = ["local_f", "local_m", "local_f2", "local_m2", "shopkeeper"]; // sprites the people of a city wear
 // What you meet on the streets: the local wildlife, and now and then a Directorate drone sent after you
-const ENCOUNTERS = {
+export const ENCOUNTERS = {
   temperate: [["bat", "bat"], ["slime", "field_sprout"], ["snake", "bat"], ["field_sprout", "field_sprout", "bat"], ["spider_bot"], ["drone_tank"], ["spider_bot", "slime"]],
   desert: [["sand_viper", "sand_wasp"], ["dune_worm"], ["sand_wasp", "sand_wasp", "sand_viper"], ["burrower"], ["dune_worm", "sand_wasp"], ["spider_bot"], ["drone_tank"]],
   snow: [["frost_bat", "frost_bat"], ["ice_slime", "frost_bat"], ["frost_eye"], ["ice_slime", "ice_slime", "frost_eye"], ["snow_wisp"], ["spider_bot"], ["drone_tank"]],
@@ -171,7 +171,7 @@ function layout(dest, world, vibe, climate, ri, style = "street") {
   for (const o of objects) if (o[0] === "house") o[0] = `house_${pick(ROOF_POOL[climate])}_${look() < 0.7 ? wall : pick(WALL_POOL[climate])}`;
   const backdrop = pick(BACKDROPS[climate]), night = backdrop !== "snow" && look() < 0.3;
   const tints = { ground: pick(GROUND_TINTS[climate]), paving: pick(PAVING_TINTS) };
-  const map = { name: dest, w: W, h: H, ground: GROUND[climate], style, tints, battle: night ? backdrop + "_night" : backdrop, paint, objects, labels, npcs, zones: [], spawn, encounters: ENCOUNTERS[climate], vibe, climate, music: CITY_MUSIC[climate], relay: { x: relay[0], y: relay[1] }, rift: rift ? { x: rift[0], y: rift[1], region } : null };
+  const map = { name: dest, w: W, h: H, ground: GROUND[climate], style, tints, battle: night ? backdrop + "_night" : backdrop, paint, objects, labels, npcs, zones: [{ x: 0, y: roadY, w: 1, h: 4, world: true }, { x: W - 1, y: roadY, w: 1, h: 4, world: true }], spawn, encounters: ENCOUNTERS[climate], vibe, climate, music: CITY_MUSIC[climate], relay: { x: relay[0], y: relay[1] }, rift: rift ? { x: rift[0], y: rift[1], region } : null };
   const { seen } = walkable(map);
   const reach = (x, y) => [[x, y], [x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]].some(([a, b]) => seen.has(`${a},${b}`));
   const ok = npcs.every(n => reach(n.x, n.y)) && reach(relay[0], relay[1]) && Object.values(itemSpots).every(([, x, y]) => seen.has(`${x},${y}`));
