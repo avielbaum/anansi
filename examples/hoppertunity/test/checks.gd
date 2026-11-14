@@ -119,6 +119,17 @@ func run() -> int:
 	run_ticks(s, 100)
 	ok(s.contracts_done == 1 and "molder" in s.unlocked and s.contract.item == "casing", "finishing a contract unlocks the next machine")
 
+	for mood in [[20.0, 1], [50.0, 2], [80.0, 3]]:
+		s = line(["inbound", "press", "outbound"], 1000)
+		s.morale.qa = 100.0
+		s.morale.sales = mood[0]
+		s.contract.qty = 2
+		run_ticks(s, 60)
+		ok(s.offers.size() == mood[1] and s.contract == s.offers[0], "Penny at morale %d lines up %d contract(s)" % [mood[0], mood[1]])
+	var bulk: Dictionary = s.offers[2]
+	s.choose(2)
+	ok(s.contract == bulk and bulk.qty == 45 and bulk.reward == 700 and s.offers.is_empty(), "choosing the bulk order swaps the contract (%d %s for %d)" % [bulk.qty, bulk.item, bulk.reward])
+
 	s = Sim.new()
 	var m0 := s.money
 	run_ticks(s, Data.TICKS_PER_DAY * 2)

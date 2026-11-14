@@ -20,13 +20,15 @@ var talk_moved := {}  # crew id -> morale moved by talk today, for the daily cap
 var unlocked: Array = Data.START_UNLOCKS.duplicate()
 var contract := {}
 var contracts_done := 0
+var offers := []  # after a contract ends: the contracts Penny can get. The first is taken unless choose() picks another
+var history := []  # one entry per finished day: {"day", "net", "morale"}
 var contract_revealed := false  # a tip showed the player the next contract
 var quest := {}  # the active quest: the gateway's shape plus "giver", "step", "have", "need"
 var quests_done := {}  # crew id -> finished quests, which paces their storyline
 var beats_told := {}  # crew id -> storyline beats already told
 var perks := {}  # crew id -> true once their storyline is finished
 var walkout := false
-var today := {"revenue": 0, "costs": 0, "shipped": 0, "defects": 0}
+var today := {"revenue": 0, "costs": 0, "built": 0, "shipped": 0, "defects": 0}
 var rng := RandomNumberGenerator.new()
 var _done := {}  # belts already resolved this tick
 
@@ -53,7 +55,7 @@ func build(kind: String, pos: Vector2i, dir := 0) -> bool:
 	if not can_build(kind, pos):
 		return false
 	money -= Data.BUILD[kind].cost
-	today.costs += Data.BUILD[kind].cost
+	today.built += Data.BUILD[kind].cost  # kept apart from running costs, so a day's profit says how the line is doing
 	var c := {"kind": kind, "dir": dir}
 	match kind:
 		"belt", "splitter":
@@ -102,7 +104,7 @@ func expand() -> bool:
 	if money < expand_cost() or floor_size.x >= 28:
 		return false
 	money -= expand_cost()
-	today.costs += expand_cost()
+	today.built += expand_cost()
 	floor_size += Vector2i(2, 2)
 	return true
 
@@ -166,6 +168,30 @@ func _contract(n: int) -> Dictionary:
 			"reward": base.reward + 300 * extra}
 
 
+## The contracts on offer for the n-th deal. Penny's mood decides how many customers she can line up: sour, only the
+## standard one; fine, also a rush job (less to ship, less time, less pay); happy, also a bulk order (more of each).
+func _offers(n: int) -> Array:
+	var std := _contract(n)
+	std["label"] = "Standard"
+	var out := [std]
+	if morale.sales >= 35.0:
+		var rush := std.duplicate()
+		rush.merge({"label": "Rush", "qty": int(ceil(std.qty * 0.6)), "due": maxi(day, std.due - 1), "reward": int(std.reward * 0.7)}, true)
+		out.append(rush)
+	if morale.sales >= 60.0:
+		var bulk := std.duplicate()
+		bulk.merge({"label": "Bulk", "qty": int(std.qty * 1.8), "due": std.due + 1, "reward": std.reward * 2}, true)
+		out.append(bulk)
+	return out
+
+
+func choose(i: int) -> void:
+	if i >= 0 and i < offers.size():
+		contract = offers[i]
+		offers = []
+		contract_changed.emit(false)
+
+
 func won() -> bool:
 	return contracts_done >= Data.WIN_CONTRACTS
 
@@ -185,7 +211,8 @@ func _finish_contract() -> void:
 	contracts_done += 1
 	contract_revealed = false
 	add_morale("sales", 5.0)
-	contract = _contract(contracts_done)
+	offers = _offers(contracts_done)
+	contract = offers[0]
 	contract_changed.emit(true)
 
 
@@ -394,6 +421,7 @@ func _end_day() -> void:
 			pay += Data.UPKEEP
 	money -= pay
 	today.costs += pay
+	history.append({"day": day, "net": today.revenue - today.costs, "morale": int(team_morale())})
 	var summary := today.duplicate()
 	summary.merge({"day": day, "wages_rent": pay, "walkout": walkout, "missed": false})
 	for id in morale:
@@ -406,18 +434,19 @@ func _end_day() -> void:
 		money -= contract.reward / 4
 		add_morale("sales", -8.0)
 		contract_revealed = false
-		contract = _contract(contracts_done)
+		offers = _offers(contracts_done)
+		contract = offers[0]
 		contract_changed.emit(false)
 	walkout = team_morale() < 30.0
 	summary["walkout_next"] = walkout
-	today = {"revenue": 0, "costs": 0, "shipped": 0, "defects": 0}
+	today = {"revenue": 0, "costs": 0, "built": 0, "shipped": 0, "defects": 0}
 	day_ended.emit(summary)
 
 
 # ---------- saving ----------
 
 const _SAVED := ["money", "day", "tick", "ticks", "morale", "wages", "talk_moved", "unlocked", "contract", "contracts_done",
-		"contract_revealed", "quest", "quests_done", "beats_told", "perks", "walkout", "today"]
+		"contract_revealed", "offers", "history", "quest", "quests_done", "beats_told", "perks", "walkout", "today"]
 
 
 func save() -> Dictionary:

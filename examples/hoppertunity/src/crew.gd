@@ -75,7 +75,8 @@ func story_beat(id: String) -> String:
 	return text
 
 
-## Generate ahead of time, one request at a time: a quest for every coworker who has none queued, and at the start of
+## Generate ahead of time, one request at a time (and none after the first that fails, so a game with no gateway makes
+## one request per refill, not eight): a quest for every coworker who has none queued, and at the start of
 ## a game each coworker's storyline. Generation takes tens of seconds, so it never happens while the player waits.
 func refill() -> void:
 	if _filling:
@@ -84,8 +85,9 @@ func refill() -> void:
 	for id in Data.CREW:
 		if not queued.has(id):
 			var r: Dictionary = await api.quest(_world(), 3, Data.CREW[id].role, "normal", _story_so_far(id), Data.PLAYER)
-			if r.quest != null:
-				queued[id] = r.quest
+			if r.quest == null:
+				break  # the gateway is not answering: stop asking until the next refill
+			queued[id] = r.quest
 		if sim.beats_told[id] == 0 and stories[id] == Data.STORIES[id]:
 			var one := {"npcs": [_npc(id)], "locations": _world().locations, "items": []}
 			var s: Dictionary = await api.storyline(one, 4, Data.CREW[id].persona)

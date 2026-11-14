@@ -46,7 +46,10 @@ var acc := 0.0
 var tool := ""  # the building being placed, "" for none
 var tool_dir := 0
 var talking := ""  # the coworker in the talk panel
-var modal := false  # the day-end screen is up: time stands still
+var modal := false  # a question or report is up (see _ask): time stands still
+var modal_queue := []  # the ones waiting their turn
+var asked_offers := false
+var told_bankrupt := false
 var show_fps := false
 var tutorial := 0  # the step Pip is on; past the end means finished or skipped
 
@@ -78,8 +81,10 @@ var talk_log: RichTextLabel
 var talk_title: Label
 var talk_input: LineEdit
 var raise_row: HBoxContainer
-var day_panel: PanelContainer
-var day_text: RichTextLabel
+var modal_panel: PanelContainer
+var modal_text: RichTextLabel
+var modal_buttons: VBoxContainer
+var chart := Control.new()  # the day-end screen's picture of the last two weeks
 var net_label: Label
 var tut_panel: PanelContainer
 var tag_canvas := Control.new()  # building tags are painted here, under the panels
@@ -105,9 +110,16 @@ func _ready() -> void:
 	_world()
 	_ui()
 	var stress := "stress" in OS.get_cmdline_user_args() or (OS.has_feature("web") and "stress" in str(JavaScriptBridge.eval("location.search")))
-	_start({} if stress else _load())
+	var saved := {} if stress else _load()
+	_start(saved)
 	if stress:
 		_stress()
+	else:
+		_ask("[font_size=30][b]Hoppertunity[/b][/font_size]\n\nThe Hopper Works makes gadgets, when it makes anything at all. "
+				+ "The order book is thin, the crew is tired, and the bank has stopped being polite.\n\n"
+				+ "You are Pip Hopper, the new floor manager. Ship five contracts and the plant is saved. "
+				+ "Look after the four people who run it, or it will not be.",
+				[["Open the gates", Callable()]] if saved.is_empty() else [["Back to work (day %d)" % sim.day, Callable()], ["New game", _new_game]])
 
 
 ## Developer aid (`?stress` in the browser, `-- stress` on the desktop): the largest floor, every tile a moving conveyor,
@@ -166,8 +178,11 @@ func _start(saved: Dictionary) -> void:
 	_place_crew()
 	_build_buttons()
 	_close_talk()
-	day_panel.hide()
+	modal_queue.clear()
+	modal_panel.hide()
 	modal = false
+	asked_offers = false
+	told_bankrupt = false
 	acc = 0.0
 	crew.refill()
 
@@ -177,6 +192,60 @@ func _on_contract(done: bool) -> void:
 		_toast("Contract shipped! Check the build bar for anything new.")
 		_sfx("win")
 		_build_buttons()
+		if sim.contracts_done == Data.WIN_CONTRACTS:
+			_ask(("[font_size=24][b]Hoppertunity seized![/b][/font_size]\n\nFive contracts shipped by day %d. The bank has gone back to "
+					+ "being polite, and the Hopper Works stays open.\n\nCash: %d coins. Crew morale: %d.") % [sim.day, sim.money, int(sim.team_morale())],
+					[["Keep the plant running", Callable()], ["New game", _new_game]])
+
+
+## Put a report or a question in front of the player. Time stops until it is answered. buttons: [label, Callable] pairs
+## (an empty Callable just closes it). If one is already up, this one waits its turn.
+func _ask(text: String, buttons: Array, with_chart := false) -> void:
+	modal_queue.append({"text": text, "buttons": buttons, "chart": with_chart})
+	if not modal:
+		_next_modal()
+
+
+func _next_modal() -> void:
+	modal = not modal_queue.is_empty()
+	modal_panel.visible = modal
+	if not modal:
+		return
+	var m: Dictionary = modal_queue.pop_front()
+	modal_text.text = m.text
+	chart.visible = m.chart
+	chart.queue_redraw()
+	for ch in modal_buttons.get_children():
+		ch.queue_free()
+	for b in m.buttons:
+		_button(b[0], modal_buttons, _answer.bind(b[1]))
+
+
+## A modal's button was pressed: close it (or show the next one), then do what the button stands for.
+func _answer(act: Callable) -> void:
+	_next_modal()
+	if act.is_valid():
+		act.call()
+
+
+## Net result per day as bars (up is profit) and crew morale as a line, for the last 14 days.
+func _paint_chart() -> void:
+	var days: Array = sim.history.slice(-14)
+	var w := chart.size.x / 14.0
+	var mid := chart.size.y / 2.0
+	var top_net := 1.0
+	for d in days:
+		top_net = maxf(top_net, absf(d.net))
+	chart.draw_line(Vector2(0, mid), Vector2(chart.size.x, mid), Color("6b6890"))
+	var line := PackedVector2Array()
+	for i in days.size():
+		var h: float = days[i].net / top_net * (mid - 4.0)
+		chart.draw_rect(Rect2(i * w + 3, mid - maxf(h, 0.0), w - 6, absf(h)), Color("7fd68a") if h >= 0 else Color.TOMATO)
+		line.append(Vector2(i * w + w / 2, chart.size.y - 2.0 - days[i].morale / 100.0 * (chart.size.y - 4.0)))
+		chart.draw_string(ThemeDB.fallback_font, Vector2(i * w + 4, chart.size.y - 2), str(days[i].day), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color("9c99c4"))
+	if line.size() > 1:
+		chart.draw_polyline(line, ORANGE, 2.0)
+	chart.draw_string(ThemeDB.fallback_font, Vector2(4, 11), "bars: profit per day   line: crew morale", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color("9c99c4"))
 
 
 func _on_quest(done: bool) -> void:
@@ -190,9 +259,8 @@ func _new_game() -> void:
 	_start({})
 
 
-func _next_day() -> void:
-	day_panel.hide()
-	modal = false
+func _confirm_new_game() -> void:
+	_ask("Start over? The saved game will be erased.", [["Yes, start over", _new_game], ["No, keep playing", Callable()]])
 
 
 func _expand() -> void:
@@ -797,7 +865,7 @@ func _ui() -> void:
 	for s in [["||", 0.0], [">", 1.0], [">>", 2.0], [">>>", 4.0]]:
 		_button(s[0], row, func(): speed = s[1])
 	_button("?", row, func(): _toast(HELP))
-	_button("New game", row, _new_game)
+	_button("New game", row, _confirm_new_game)
 
 	var bottom := _panel(Control.PRESET_BOTTOM_WIDE, root)
 	build_bar = HBoxContainer.new()
@@ -847,14 +915,20 @@ func _ui() -> void:
 	uv.add_child(tut_text)
 	_button("Skip the tutorial", uv, func(): tutorial = TUTORIAL.size())
 
-	day_panel = _panel(Control.PRESET_CENTER, root, Vector2(460, 380))
+	modal_panel = _panel(Control.PRESET_CENTER, root, Vector2(480, 0))
 	var dv := VBoxContainer.new()
-	day_panel.add_child(dv)
-	day_text = RichTextLabel.new()
-	day_text.bbcode_enabled = true
-	day_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	dv.add_child(day_text)
-	_button("Start the next day", dv, _next_day)
+	dv.add_theme_constant_override("separation", 10)
+	modal_panel.add_child(dv)
+	modal_text = RichTextLabel.new()
+	modal_text.bbcode_enabled = true
+	modal_text.fit_content = true
+	modal_text.custom_minimum_size.x = 460  # a fixed width, so the text knows how tall it is
+	dv.add_child(modal_text)
+	chart.custom_minimum_size = Vector2(0, 90)
+	chart.draw.connect(_paint_chart)
+	dv.add_child(chart)
+	modal_buttons = VBoxContainer.new()
+	dv.add_child(modal_buttons)
 
 
 func _build_buttons() -> void:
@@ -877,15 +951,31 @@ func _hud() -> void:
 	if sim.walkout:
 		contract_label.text = "WALKOUT: the crew is too unhappy to work today.   " + contract_label.text
 	if sim.bankrupt():
-		contract_label.text = "BANKRUPT. The Hopper Works closes its doors. Press New game."
+		contract_label.text = "BANKRUPT. The Hopper Works has closed its doors."
+		if not told_bankrupt:
+			told_bankrupt = true
+			_ask("[font_size=24][b]The gates close[/b][/font_size]\n\nThe Hopper Works is %d coins in debt and the bank has called it in, on day %d."
+					% [-sim.money, sim.day], [["New game", _new_game]])
 	elif sim.won():
-		contract_label.text = "Hoppertunity seized! The Works is saved.   " + contract_label.text
+		contract_label.text = "The Works is saved.   " + contract_label.text
+	if sim.offers.size() > 1 and not asked_offers:  # Penny has more than one customer: the player picks
+		asked_offers = true
+		var picks := []
+		for i in sim.offers.size():
+			var o: Dictionary = sim.offers[i]
+			picks.append(["%s: %d %s by the end of day %d, pays %d" % [o.label, o.qty, Data.ITEMS[o.item].name, o.due, o.reward], sim.choose.bind(i)])
+		_ask("[b]Penny has customers on the line.[/b]\nWhich contract do you take? The happier Penny is, the more she can line up.", picks)
+	elif sim.offers.size() <= 1:
+		asked_offers = false
 	quest_label.visible = not sim.quest.is_empty()
 	if not sim.quest.is_empty():
 		var s: Dictionary = sim.quest.steps[sim.quest.step]
 		quest_label.text = "Quest for %s: %s%s" % [Data.CREW[sim.quest.giver].name, s.get("description", ""),
 				" (%d/%d)" % [sim.quest.have, sim.quest.need] if sim.quest.need > 1 else ""]
 	net_label.text = "Anansi live" if crew.online else "Anansi offline"
+	if modal:  # keep it as small as its content and in the middle; the container presets drift when the content changes
+		modal_panel.size = Vector2(480, 0)
+		modal_panel.position = ((modal_panel.get_parent() as Control).size - modal_panel.size) / 2
 	_tutorial()
 
 
@@ -948,13 +1038,12 @@ func _on_sold(pos: Vector2i, _item: String, amount: int) -> void:
 
 
 func _on_day_end(s: Dictionary) -> void:
-	modal = true
 	_sfx("day")
 	_save()
 	var lines := ["[b]End of day %d[/b]" % s.day, "",
 			"Shipped: %d units%s" % [s.shipped, ", %d returned as defective" % s.defects if s.defects > 0 else ""],
-			"Revenue: %d" % s.revenue, "Costs: %d (wages, rent and upkeep %d)" % [s.costs, s.wages_rent],
-			"[b]Net: %+d[/b]   Cash: %d" % [s.revenue - s.costs, sim.money], ""]
+			"Revenue: %d" % s.revenue, "Running costs: %d (wages, rent and upkeep %d, the rest materials)" % [s.costs, s.wages_rent],
+			"[b]Profit: %+d[/b]" % (s.revenue - s.costs), "Spent on building: %d   Cash: %d" % [s.built, sim.money], ""]
 	if s.walkout:
 		lines.append("The crew stayed home today. A day off cleared the air a little.")
 	if s.missed:
@@ -963,8 +1052,7 @@ func _on_day_end(s: Dictionary) -> void:
 		lines.append("[color=tomato]Morale is on the floor: the crew will not work tomorrow. Talk to them, help them, pay them.[/color]")
 	for id in Data.CREW:
 		lines.append("%s (%s): morale %d, wage %d" % [Data.CREW[id].name, Data.CREW[id].role, int(sim.morale[id]), sim.wages[id]])
-	day_text.text = "\n".join(lines)
-	day_panel.show()
+	_ask("\n".join(lines), [["Start the next day", Callable()]], true)
 	crew.refill()
 
 

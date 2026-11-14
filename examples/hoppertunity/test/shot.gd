@@ -13,6 +13,8 @@ func go() -> void:
 	var g: Node = load("res://main.tscn").instantiate()
 	root.add_child(g)
 	var s: Sim = g.sim
+	if "title" not in OS.get_cmdline_user_args():
+		g._next_modal()  # past the title screen
 	s.money = 5000
 	s.unlocked = Data.BUILD.keys() + Data.ITEMS.keys()
 	var plan := [["inbound", 1, 2, 0], ["belt", 2, 2, 0], ["splitter", 3, 2, 0], ["belt", 4, 2, 0], ["press", 5, 2, 0], ["belt", 6, 2, 0],
@@ -43,6 +45,12 @@ func go() -> void:
 			var p: Vector3 = g.crew_nodes[id].position
 			inside += int(s.cells.has(Vector2i(floori(p.x), floori(p.z))))
 		print("people inside buildings: ", inside)
+	if args.size() > 2 and args[2] == "offers":  # a happy Penny and a contract about to finish: the choice comes up
+		s.morale.sales = 80.0
+		s.contract = {"item": "boxed", "qty": 1, "done": 0, "due": 9, "reward": 100}
+		await create_timer(3.0).timeout
+		print("offers ", s.offers.size(), " modal ", g.modal, " asked ", g.asked_offers, " sales ", s.morale.sales, " done ", s.contracts_done,
+				" panel ", g.modal_panel.visible, g.modal_panel.get_rect(), " buttons ", g.modal_buttons.get_child_count(), " queue ", g.modal_queue.size())
 	if args.size() > 2 and args[2] == "talk":
 		g.tool = ""
 		g._open_talk("tech")

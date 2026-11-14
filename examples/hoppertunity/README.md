@@ -12,9 +12,12 @@ floor manager of the Hopper Works, a small gadget plant on its last chance.
   molders, assemblers and packers turn them into goods, and outbound docks sell them. Belts back up, docks stop
   ordering when there is nowhere to unload, and you pay only for crates that arrive.
 - **Contracts:** ship a set number of one product before the deadline for a bonus. Each finished contract unlocks the
-  next machine and material; five finished contracts save the plant. A missed deadline costs a penalty.
-- **Days:** a day is one minute at normal speed. At the end you pay wages and rent and see the day's numbers. Fall 500
-  coins into debt and the Works closes. Each machine also costs 5 coins a day to keep running.
+  next machine and material; five finished contracts save the plant. A missed deadline costs a penalty. After each
+  one, Penny lines up the next: sour (morale under 35) she has one customer; otherwise you also get a rush job (less
+  to ship, less time, less pay), and when she is happy (60 or more) a bulk order too.
+- **Days:** a day is one minute at normal speed. At the end you pay wages, rent and 5 coins of upkeep per machine,
+  and see the day's profit (building spend is listed apart), each coworker's morale and wage, and a chart of the last
+  two weeks. Fall 500 coins into debt and the Works closes.
 - **Tutorial:** eight steps walk a new manager from the first dock to the first errand, pulsing the button to press.
   It can be skipped, and a saved game remembers where you were.
 - **Trouble shows:** a machine that is jammed, blocked or short of an input says so above it.
@@ -81,7 +84,7 @@ wheel zooms, **Space** pauses, **M** mutes everything, **N** just the music.
 | `src/data.gd` | Every number and every written word: items, machines, contracts, the crew, fallback lines, quests, stories |
 | `src/sim.gd` | The whole game as plain data on a fixed tick: no nodes, so it runs headless and saves as one dictionary |
 | `src/crew.gd` | Every Anansi call, and what each answer may do to the sim |
-| `src/main.gd` | The 3D view, input, interface, tutorial and sound, all built in code |
+| `src/main.gd` | The 3D view, input, interface (title, day-end, contract choice, win and lose screens), tutorial and sound, all built in code |
 | `addons/anansi` | A copy of `sdk/godot/addons/anansi`; CI fails if the two differ |
 | `test/checks.gd` | Self-checks: `godot --headless --path examples/hoppertunity --script res://test/run.gd` |
 
