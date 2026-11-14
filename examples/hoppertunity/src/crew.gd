@@ -10,14 +10,25 @@ var online := false  # did the last chat come from the gateway?
 var history := {}  # crew id -> the last few messages, so a coworker remembers the conversation
 var queued := {}  # crew id -> a quest generated ahead of time
 var stories := {}  # crew id -> four beats (generated at the start of a game, else Data.STORIES)
+var told := {}  # crew id -> the gateway's summary of the last quest they gave, so their next one follows on
 var _filling := false
+var _talking := 0  # conversations waiting for an answer: generation holds off while there are any
+
+## What the gateway is asked for. Measured with qwen3:1.7b: with only the coworker's role as the theme, every quest came
+## out as the same errand for nobody in particular, and a storyline as a tour of the plant. These wordings gave "A Favor
+## for Sprocket" and a four-beat story about an old mistake and his father.
+const QUEST_THEME := "a favour that %s, the %s, asks of the new manager"
+const STORY_THEME := ("A personal story about %s, told in four beats: a worry they carry from their past, something that stirs it up, "
+		+ "a turning point, and how it is put to rest. Not a tour of the plant. %s")
 
 
 func setup(s: Sim, url: String, title: String, key: String, player_id: String) -> void:
 	sim = s
 	add_child(api)
 	api.setup(url, title, key, "dev:" + player_id)
-	api.timeout_s = 45.0  # a small local model on CPU: 30 s for a first reply was measured, the SDK's default is 3 s
+	# A small local model on CPU answers one request at a time: 30 s for a first reply was measured, and a reply can
+	# also have to wait for a quest that is being generated (20 to 40 s). The SDK's default of 3 s suits a GPU.
+	api.timeout_s = 75.0
 	for id in Data.CREW:
 		history[id] = []
 		if not stories.has(id):
@@ -30,7 +41,9 @@ func talk(id: String, text: String) -> Dictionary:
 	sim.quest_event("talk_to", id)
 	var msgs: Array = [{"role": "system", "content": _brief(id)}] + history[id] + [{"role": "user", "content": text}]
 	api.fallback = func(_m): return line(id)
+	_talking += 1
 	var r: Dictionary = await api.chat(msgs, id, true)
+	_talking -= 1
 	online = r.source == "gateway"
 	history[id] = (history[id] + [{"role": "user", "content": text}, {"role": "assistant", "content": r.say}]).slice(-6)
 	var out := {"say": r.say, "source": r.source, "note": "", "raise": false}
@@ -56,6 +69,8 @@ func offer_quest(id: String) -> String:
 		return "Finish \"%s\" first." % sim.quest.title
 	var q = queued.get(id)
 	queued.erase(id)
+	if q != null:
+		told[id] = str(q.get("story_summary", ""))
 	if q == null or not sim.start_quest(q, id):
 		var pool: Array = Data.QUESTS[id]
 		sim.start_quest(pool[sim.quests_done[id] % pool.size()], id)
@@ -84,27 +99,42 @@ func refill() -> void:
 	_filling = true
 	for id in Data.CREW:
 		if not queued.has(id):
-			var r: Dictionary = await api.quest(_world(), 3, Data.CREW[id].role, "normal", _story_so_far(id), Data.PLAYER)
+			await _quiet()
+			var r: Dictionary = await api.quest(_world(), 3, QUEST_THEME % [Data.CREW[id].name, Data.CREW[id].role], "normal",
+					(_story_so_far(id) + " " + str(told.get(id, ""))).strip_edges(), Data.PLAYER)
 			if r.quest == null:
 				break  # the gateway is not answering: stop asking until the next refill
 			queued[id] = r.quest
 		if sim.beats_told[id] == 0 and stories[id] == Data.STORIES[id]:
 			var one := {"npcs": [_npc(id)], "locations": _world().locations, "items": []}
-			var s: Dictionary = await api.storyline(one, 4, Data.CREW[id].persona)
+			await _quiet()
+			var s: Dictionary = await api.storyline(one, 4, STORY_THEME % [Data.CREW[id].name, Data.CREW[id].persona])
 			if s.storyline != null and s.storyline.get("beats") is Array and s.storyline.beats.size() >= 4:
 				stories[id] = s.storyline.beats.slice(0, 4).map(func(b): return str(b.get("summary", "")))
 	_filling = false
 
 
-## Everything a quest may refer to: the coworkers, the stations and goods unlocked so far.
+## Wait until nobody is waiting for a coworker to answer: the player's conversation goes before background generation.
+func _quiet() -> void:
+	while _talking > 0:
+		await get_tree().create_timer(0.5).timeout
+
+
+## Everything a quest may refer to: the coworkers, the kinds of building standing on the floor (all the unlocked kinds
+## while it is still empty), and the goods the plant can make. So a quest never sends the player to something they
+## would first have to buy, or asks them to ship raw steel.
 func _world() -> Dictionary:
 	var w := {"npcs": [], "locations": [], "items": []}
 	for id in Data.CREW:
 		w.npcs.append(_npc(id))
+	var built := {}
+	for c in sim.cells.values():
+		built[c.kind] = true
 	for u in sim.unlocked:
 		if Data.BUILD.has(u):
-			w.locations.append({"id": u, "name": Data.BUILD[u].place})
-		elif Data.ITEMS[u].sell > 0:
+			if built.is_empty() or built.has(u):
+				w.locations.append({"id": u, "name": Data.BUILD[u].place})
+		elif Data.BUILD.values().any(func(b): return b.get("out") == u):
 			w.items.append({"id": u, "name": Data.ITEMS[u].name})
 	return w
 

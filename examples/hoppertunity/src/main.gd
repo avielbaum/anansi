@@ -173,6 +173,7 @@ func _start(saved: Dictionary) -> void:
 		tutorial = int(saved.get("tutorial", TUTORIAL.size()))
 		sim.restore(saved.sim)
 		crew.stories = saved.stories
+		crew.told = saved.get("told", {})
 		player_id = saved.player
 	add_child(crew)
 	crew.setup(sim, GATEWAY, "hoppertunity", "change-me", player_id)
@@ -195,7 +196,8 @@ func _start(saved: Dictionary) -> void:
 	asked_offers = false
 	told_bankrupt = false
 	acc = 0.0
-	crew.refill()
+	if sim.cells.size() >= 4:  # a new game waits for a first line to stand, so quests are about what is there
+		crew.refill()
 
 
 func _on_contract(done: bool) -> void:
@@ -303,7 +305,7 @@ func _save() -> void:
 		return
 	var f := FileAccess.open(SAVE, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"sim": sim.save(), "stories": crew.stories, "player": player_id, "tutorial": tutorial}))
+		f.store_string(JSON.stringify({"sim": sim.save(), "stories": crew.stories, "told": crew.told, "player": player_id, "tutorial": tutorial}))
 
 
 # ---------- the 3D world ----------
@@ -795,6 +797,8 @@ func _click(pos: Vector2i) -> void:
 		if sim.build(tool, pos, tool_dir):
 			_refresh(pos)
 			_sfx("place")
+			if sim.cells.size() == 4:
+				crew.refill()
 		elif not sim.cells.has(pos) and sim.money < Data.BUILD[tool].cost:
 			_toast("Not enough money for that.")
 			_sfx("error")

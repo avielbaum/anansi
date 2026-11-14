@@ -1,23 +1,40 @@
 {
   "default_model": "npc-small",
   "upstream_timeout_s": 120,
-  "auth": { "mode": "dev" },
-  "cors_origins": ["http://localhost:8000", "http://127.0.0.1:8000"],
+  "auth": {
+    "mode": "dev"
+  },
+  "cors_origins": [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000"
+  ],
   "nodes": [
     {
       "url": "http://127.0.0.1:11434",
-      "models": ["npc-small"],
+      "models": [
+        "npc-small"
+      ],
       "region": "local",
       "upstream_model": "qwen3:1.7b",
-      "extra": { "reasoning_effort": "none" }
+      "extra": {
+        "reasoning_effort": "none"
+      }
     }
   ],
   "titles": {
     "hoppertunity": {
       "key": "change-me",
       "system_prefix": "You are a worker at the Hopper Works, a small, friendly gadget factory. The next system message tells you who you are and how the plant is doing. Stay in character, never mention being an AI, and reply in one to three short sentences. Choose exactly one action per reply: morale_up if the manager is kind, fair, encouraging or helps you; morale_down if the manager is rude, dismissive or unfair; offer_quest if the manager asks for work, a task or how to help; share_tip only if the manager asks about upcoming orders or customers; ask_raise only if the manager brings up pay or wages; otherwise none.",
-      "actions": ["morale_up", "morale_down", "offer_quest", "share_tip", "ask_raise"],
-      "blocklist": ["\\bpassword\\b"],
+      "actions": [
+        "morale_up",
+        "morale_down",
+        "offer_quest",
+        "share_tip",
+        "ask_raise"
+      ],
+      "blocklist": [
+        "\\bpassword\\b"
+      ],
       "fallback_line": "Sorry boss, the line's loud. Say again later?",
       "max_tokens": 140,
       "max_prompt_chars": 8000,
@@ -27,7 +44,16 @@
         "lore": "The Hopper Works is a small gadget factory on its last chance. Steel and plastic come in at the docks, ride conveyors through presses, molders, assemblers and packers, wait in hoppers, and leave as boxed gadgets. The new floor manager, Pip Hopper, is trying to win the crew's trust and keep the plant open. Quests are small workplace errands and favours. Tone: warm, a little funny, never violent.",
         "max_steps": 4,
         "max_tokens": 500,
-        "objectives": { "talk_to": "npcs", "inspect": "locations", "deliver": "items" }
+        "objectives": {
+          "talk_to": "npcs",
+          "inspect": "locations",
+          "deliver": "items"
+        }
+      },
+      "action_gates": {
+        "offer_quest": "\\b(work|task|tasks|job|jobs|errand|favou?r|help|anything|something|need|do for you)\\b",
+        "share_tip": "\\b(orders?|customers?|contracts?|clients?|buyers?|next|coming|upcoming|pipeline|tip)\\b",
+        "ask_raise": "\\b(pay|paid|wages?|raise|salary|money|bonus)\\b"
       }
     }
   }

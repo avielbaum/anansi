@@ -260,6 +260,11 @@ func run() -> int:
 	fake.next = "offer_quest"
 	r = await crew.talk("tech", "Anything I can do?")
 	ok(r.note.begins_with("New quest") and s.quest.giver == "tech", "offer_quest starts that coworker's quest")
+	var w := crew._world()
+	s.build("inbound", Vector2i(0, 0), 0)
+	var w2 := crew._world()
+	ok(w.locations.size() == 6 and w2.locations.size() == 1 and w2.locations[0].id == "inbound" and w.items == [{"id": "panel", "name": "steel panels"}],
+			"a quest may only name buildings on the floor and goods the plant makes")
 	ok(crew.history.tech.size() == 6 and fake.seen[0].role == "system" and "Sprocket" in fake.seen[0].content,
 			"the coworker gets a brief of who they are, and the last three exchanges")
 
