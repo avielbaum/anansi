@@ -986,6 +986,27 @@ def t_statistics_store():
         assert gone
 
 
+def t_adapter_lines_skip_eval_cases():
+    from tools.lora_data import too_close, words
+    cases = [json.loads(x) for x in open(os.path.join(os.path.dirname(__file__), "..", "evals", "g1_shopkeeper.jsonl"), encoding="utf-8") if x.strip()]
+    refs = [words(c["user"]) for c in cases]
+    assert all(too_close(c["user"].upper() + "!", refs) for c in cases)  # every G1 case, recased and repunctuated, is refused as training text
+    assert too_close("Could I have a discount? I'm buying six potions.", refs)  # one word changed: still a near copy
+    assert not too_close("Do you sell rope for climbing the cliffs?", refs) and too_close("", refs)
+
+
+def t_backspace_in_a_pattern_is_refused():
+    for where in ("blocklist", "action_gates"):
+        cfg = copy.deepcopy(CFG)
+        t = next(iter(cfg["titles"].values()))
+        t[where] = ["\bpassword\b"] if where == "blocklist" else {"call_guard": "\bthief\b"}  # what "\bthief\b" in a JSON file becomes
+        try:
+            make_app(cfg)
+            assert False, where
+        except ValueError as e:
+            assert "control character" in str(e)
+
+
 def t_leaderboard_config_is_checked():
     for bad in ({"privacy_url": "http://x.example/privacy"}, {"hidden_hardware": ["("]}, {"hidden_hardware": [5]}, {"min_group": 0},
                 {"min_group": "5"}, {"min_group": True}, {"min_group": -2}):

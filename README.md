@@ -86,7 +86,7 @@ Ollama Cloud and OpenRouter. See
 
 | | |
 |---|---|
-| Gateway: auth, budgets, constrained actions, filter, leak guard, failover, streaming | working, 76 self-checks |
+| Gateway: auth, budgets, constrained actions, filter, leak guard, failover, streaming | working, 78 self-checks |
 | Quest and storyline generation (`/v1/quest`, `/v1/storyline`) with Python and C# SDK methods | working: constrained to your game's own ids; 6 of 6 structurally valid with Qwen3-1.7B (33 s) and Qwen3-4B (65 s, more varied rewards and richer text) on CPU; writing quality unrated |
 | Real model end to end (Ollama on CPU; vLLM and llama-server on GPU) | working: replies in 0.07 to 0.2 s on the A10, 2 to 5 s on CPU; action accuracy 76% on 106 held-out self-written cases (G1 set; **G1 not passed**: needs blind rating against a large model) |
 | Safety judge (second model call) | working with Qwen3-4B: blocked 3 of 8 leak attacks, no false positives; doubles latency |
@@ -114,7 +114,7 @@ Needs Python 3.10 or newer. For a real model, install [Ollama](https://ollama.co
 git clone https://github.com/avielbaum/anansi
 cd anansi
 pip install -r requirements.txt
-python tests/test_gateway.py          # 76 self-checks, no GPU or network needed
+python tests/test_gateway.py          # 78 self-checks, no GPU or network needed
 ```
 
 Run the gateway against a local model:

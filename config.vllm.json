@@ -30,7 +30,7 @@
         "call_guard"
       ],
       "blocklist": [
-        "\bpassword\b"
+        "\\bpassword\\b"
       ],
       "fallback_line": "Hm, let us talk of something else.",
       "max_tokens": 120,

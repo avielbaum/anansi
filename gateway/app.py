@@ -236,6 +236,10 @@ def make_app(config=None, transport=None):
         missing = [n for n, t in cfg["titles"].items() if not t.get("appid")]
         if missing:
             raise ValueError(f"auth mode steam needs an appid on every title: {', '.join(missing)}")
+    for n, t in cfg["titles"].items():  # "\b" in JSON is a backspace: the pattern would silently never match
+        for p in list(t.get("blocklist", [])) + list((t.get("action_gates") or {}).values()):
+            if re.search(r"[\x00-\x1f]", p):
+                raise ValueError(f"title {n}: pattern {p!r} contains a control character; in JSON write \\\\b, not \\b")
     if os.environ.get("ANANSI_ENV") == "production":  # set by the Dockerfile and the systemd unit
         weak = [n for n, t in cfg["titles"].items() if t["key"] == "change-me"]
         if auth["mode"] == "dev" or weak:
