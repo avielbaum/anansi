@@ -208,7 +208,10 @@ for (const s of Object.values(SKILLS)) assert(s.sound && audio.sfx[s.sound], "ev
   }
   assert(looks.size >= 10, `only ${looks.size} different battle backdrops`);
   const M = genCity("Kyoto", parseAtlas(atlasText), "temperate").map;
-  assert(new Set(M.objects.filter(o => o[0] === "house").map(o => o[3].tint)).size > 1, "houses differ in colour");
+  assert(new Set(M.objects.filter(o => o[0].startsWith("house")).map(o => o[0])).size > 1, "houses differ in colour");
+  const styles = new Set();
+  for (let i = 0; i < 60; i++) { const c = genCity("Town" + i, parseAtlas(atlasText), CLIMATES[i % 4]).map; styles.add(c.style); for (const o of c.objects) assert(existsSync(here(`assets/tiles/${o[0]}.png`)) && STAMPS[o[0]], `${c.name}: no picture or stamp for ${o[0]}`); for (const [t] of c.paint) assert(existsSync(here(`assets/tiles/${t}.png`)), t); }
+  assert(styles.has("harbor") && styles.has("river") && styles.has("street"), `layout styles seen: ${[...styles]}`);
 }
 // equipment
 {

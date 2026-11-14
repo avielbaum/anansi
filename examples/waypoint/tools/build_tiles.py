@@ -5,7 +5,7 @@ python tools/build_tiles.py [--src DIR]   (DIR: the folder holding the downloads
 LPC tiles are small modular pieces; the game uses whole objects instead (ground textures, a house front, trees,
 dungeon walls) placed in code, each with a solid footprint. Credits for everything copied go to assets/CREDITS_TILES.csv.
 """
-import argparse, csv, os
+import colorsys, argparse, csv, os
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -29,6 +29,24 @@ ENEMIES = {  # LPC in-battle sheet: name -> top-left of the sprite on the sheet 
     "sprout2": (199, 119), "balloon": (102, 159), "slime": (21, 196), "spider_bot": (176, 195), "drill_beast": (76, 254),
     "minotaur_mage": (164, 245), "snake": (9, 285), "worm": (7, 350), "eyeball": (98, 350), "wasp": (184, 349),
 }
+
+
+# Houses are a wall under a roof, each in a few colours, so a city's houses differ (city.js picks from these; keep the names in step with data.js)
+ROOFS = {"slate": {}, "terracotta": dict(to=0.04, s=4, v=1.5), "green": dict(to=0.36, s=4, v=1.3), "blue": dict(to=0.58, s=5, v=1.5), "ochre": dict(to=0.11, s=4, v=1.6)}
+WALLS = {"brick": {}, "plaster": dict(to=0.1, s=0.25, v=1.7), "sand": dict(to=0.1, s=0.5, v=1.5), "timber": dict(to=0.08, s=0.8, v=0.8), "snow": dict(to=0.58, s=0.15, v=1.9)}
+
+
+def shift(img, to=None, s=1.0, v=1.0):
+    """Move every visible pixel to hue `to` (0-1; None keeps it), scaling its saturation and brightness."""
+    img = img.copy()
+    px = img.load()
+    for y in range(img.height):
+        for x in range(img.width):
+            r, g, b, a = px[x, y]
+            if a:
+                h, ss, vv = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+                px[x, y] = tuple(int(c * 255) for c in colorsys.hsv_to_rgb(h if to is None else to, min(1, ss * s), min(1, vv * v))) + (a,)
+    return img
 
 
 def tile(img, cx, cy, w=1, h=1):
@@ -124,6 +142,26 @@ def main():
     h.alpha_composite(tile(house, 0, 3, 3, 4), (0, 0))
     h.alpha_composite(tile(house, 3, 0), (32, 160))  # door
     save(h, "tiles/house.png")
+
+    for rn, rk in ROOFS.items():
+        for wn, wk in WALLS.items():
+            hv = Image.new("RGBA", (96, 192))
+            hv.alpha_composite(shift(tile(house, 0, 0, 3, 3), **wk), (0, 96))
+            hv.alpha_composite(shift(tile(house, 0, 3, 3, 4), **rk), (0, 0))
+            hv.alpha_composite(tile(house, 3, 0), (32, 160))
+            save(hv, f"tiles/house_{rn}_{wn}.png")
+
+    # water for the harbours and rivers: LPC's rippling water in three looks; planks for quays and bridges; barrels
+    water, bridges, barrels = S(BASE + "water.png"), S(BASE + "bridges.png"), S(BASE + "barrel.png")
+    wmix = Image.new("RGBA", (64, 64))
+    for i, (cx, cy) in enumerate([(0, 5), (1, 5), (2, 5), (0, 5)]):
+        wmix.alpha_composite(tile(water, cx, cy), ((i % 2) * 32, (i // 2) * 32))
+    save(wmix, "tiles/water.png")
+    save(recolour(wmix, hue=140, sat=0.35, val=1.5), "tiles/water_ice.png")
+    save(recolour(wmix, hue=122, sat=0.9, val=1.35), "tiles/water_lagoon.png")
+    save(tile(bridges, 0, 3), "tiles/plank.png")
+    save(barrels.crop((0, 0, 32, 64)), "tiles/barrel.png")
+    save(barrels.crop((64, 0, 128, 64)), "tiles/barrels.png")
 
     # trees: canopy over trunk
     for name, (cy, ch) in {"tree": (0, 3), "pine": (3, 4)}.items():

@@ -231,14 +231,22 @@ Limits to plan around:
   are in the shared database. Within one machine, route `/node/*` to one process.
 - **Postgres:** every budget check is a round trip on the request path (about a millisecond to a database in the same data
   centre), and if the database restarts, the requests that were using the connection fail once and the next ones reconnect.
-  Tested against Postgres 16 (locally and in CI); no load test across real machines.
+  Tested against Postgres 16 (locally and in CI) and under load (below); not across real machines.
 - **Local load test** (one 4-core Windows PC running the load client, two gateway processes on one SQLite file and two mock
   nodes with 50 ms latency; `tools/loadtest.py --url a,b`, 2,000 requests): 121 requests/s at 10 in flight (p99 156 ms), 179 at
   50 (p99 812 ms); one process alone managed 97 at 50. At 200 in flight everything shares the CPU and it falls to 54 to 64
   requests/s with p99 around 13 s and a few dropped connections; the same run without a database file reached 84, so the CPU,
   not the database, is the main limit here, and the shared file costs about a third more at that level. Budgets held under
   load: one player with a 3,000-token budget, 500 requests at 100 in flight across both processes, ended at 2,985 tokens (199
-  served, 301 refused with 429, split evenly between the processes). Postgres was not load-tested.
+  served, 301 refused with 429, split evenly between the processes).
+- **Postgres load test** (the manual `load` workflow, `.github/workflows/load.yml`: a free GitHub Linux runner with 2 vCPUs and
+  8 GB, two gateway processes sharing one Postgres 16 service on the same machine, two mock nodes with 50 ms latency, 3,000
+  requests per level, against the same two processes in memory): 10 in flight 162 requests/s (p99 87 ms) on Postgres vs 172 in
+  memory; 50 in flight 177 vs 160 (p99 about 1.0 s both); 200 in flight 119 vs 136 (p99 7.9 s vs 6.9 s). No errors in 9,000
+  requests. The same budget test as above, on Postgres: a 3,000-token budget, 500 requests at 100 in flight across both
+  processes, ended at exactly 3,000 tokens (200 served, 300 refused with `429`, split evenly). So at this scale the database
+  is not the limit; the two CPUs are. This says nothing about a database on another machine (a network round trip per
+  request), a busy shared database, or more than two gateways.
 
 ## Production switches
 

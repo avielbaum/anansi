@@ -8,7 +8,13 @@ export const STAMPS = {
   gate: { w: 32, h: 64, foot: [0, 0, 32, 64] },
   chest: { w: 32, h: 32, foot: [2, 8, 28, 24] },
   dungeon_wall: { w: 96, h: 128, foot: null, flat: true },
+  barrel: { w: 32, h: 64, foot: [4, 38, 24, 20] },
+  barrels: { w: 64, h: 64, foot: [4, 30, 56, 28] },
 };
+// the colours houses come in (tools/build_tiles.py makes a picture for each pair); each is the same shape as the plain house
+export const ROOFS = ["slate", "terracotta", "green", "blue", "ochre"], WALLS = ["brick", "plaster", "sand", "timber", "snow"];
+export const HOUSES = ROOFS.flatMap(r => WALLS.map(w => `house_${r}_${w}`));
+for (const k of HOUSES) STAMPS[k] = STAMPS.house;
 
 export const MAPS = {
   town: {

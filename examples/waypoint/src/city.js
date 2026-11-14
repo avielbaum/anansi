@@ -16,7 +16,27 @@ const CITY_MUSIC = { temperate: "road", desert: "ruins", snow: "snow", tropical:
 // What a city looks like besides its streets: battle backdrops (each also by night), and colours for roofs, paving and ground.
 // Drawn from their own generator seeded by the name, so adding or changing them never moves a street.
 const BACKDROPS = { temperate: ["town", "forest", "meadow", "castle", "ruins"], desert: ["desert", "dunes", "ruins"], snow: ["snow", "castle", "town"], tropical: ["beach", "meadow", "forest"] };
-const ROOFS = { temperate: [0xffffff, 0xffd9b0, 0xb8d8ff, 0xc8f0c0, 0xf0c0d0, 0xe8d8ff], desert: [0xffffff, 0xffd9a0, 0xffc08a, 0xf5e6b0, 0xe8b8a0], snow: [0xffffff, 0xc8dcff, 0xb0c8f0, 0xe0d0ff, 0xd0e8e8], tropical: [0xffffff, 0xffe890, 0xffb8a8, 0xa8f0d8, 0xb8e0ff, 0xf8c0e8] };
+const ROOF_POOL = { temperate: ["slate", "terracotta", "green", "blue"], desert: ["terracotta", "ochre", "slate"], snow: ["slate", "blue", "green"], tropical: ["green", "terracotta", "blue", "ochre"] };
+const WALL_POOL = { temperate: ["brick", "plaster", "timber"], desert: ["sand", "plaster"], snow: ["snow", "timber", "plaster"], tropical: ["plaster", "sand", "timber"] };
+const WATER = { temperate: "water", desert: "water", snow: "water_ice", tropical: "water_lagoon" };
+const STYLES = ["street", "street", "street", "harbor", "harbor", "river", "river"]; // how a city is laid out; the name picks one
+
+/** Water over [x, y, w, h] as solid rectangles that leave out `holes` (the planks laid across it): [tex, x, y, w, h, true]. */
+function waterRects(tex, x, y, w, h, holes) {
+  const out = [];
+  let open = new Map(); // "a,b": the rectangle still growing down over columns a to b
+  for (let row = y; row < y + h; row++) {
+    let runs = [[x, x + w]];
+    for (const [hx, hy, hw, hh] of holes) if (row >= hy && row < hy + hh) runs = runs.flatMap(([a, b]) => [[a, Math.min(b, hx)], [Math.max(a, hx + hw), b]].filter(([p, q]) => q > p));
+    const next = new Map();
+    for (const [a, b] of runs) {
+      const k = `${a},${b}`, rect = open.get(k) || (out.push([tex, a, row, b - a, 0, true]), out[out.length - 1]);
+      rect[4]++; next.set(k, rect);
+    }
+    open = next;
+  }
+  return out;
+}
 const GROUND_TINTS = { temperate: [0xffffff, 0xd8f0c0, 0xf0f0c8], desert: [0xffffff, 0xf0c8a0, 0xffe0b0], snow: [0xffffff, 0xd8e8ff], tropical: [0xffffff, 0xc0f0d0, 0xe8ffc0] };
 const PAVING_TINTS = [0xffffff, 0xe8d0b8, 0xc8c8d8, 0xd8e8d0, 0xf0d8c0];
 const BANDS = [[0, 13], [13, 27], [27, W]]; // the three districts, one per landmark, left to right
@@ -55,12 +75,15 @@ export function walkable(M) {
 export function genCity(dest, atlas, climate = "temperate") {
   const { world, vibe } = buildWorld(dest, atlas);
   const r = rng(hash(dest.toLowerCase())), ri = n => Math.floor(r() * n);
+  const sr = rng(hash(dest.toLowerCase() + "|style")), picked = STYLES[Math.floor(sr() * STYLES.length)];
   let city;
-  for (let attempt = 0; attempt < 40; attempt++) { city = layout(dest, world, vibe, GROUND[climate] ? climate : "temperate", ri); if (city.ok) break; }
+  for (const style of picked === "street" ? ["street"] : [picked, "street"]) { // a layout that cannot be made to work falls back to the plain street
+    for (let attempt = 0; attempt < 40; attempt++) { city = layout(dest, world, vibe, GROUND[climate] ? climate : "temperate", ri, style); if (city.ok) return city; }
+  }
   return city;
 }
 
-function layout(dest, world, vibe, climate, ri) {
+function layout(dest, world, vibe, climate, ri, style = "street") {
   const id = "city:" + dest;
   const roadY = 11 + ri(3), avX = 17 + ri(6); // the road's first sidewalk row; where the avenue crosses it
   const paint = [
@@ -70,12 +93,30 @@ function layout(dest, world, vibe, climate, ri) {
     ["cobble", avX, roadY, 3, 4], // the crossing
   ];
   const objects = [];
-  for (let x = 1 + ri(2); x + 3 <= W - 1; x += 4) if (!(x + 3 > avX - 4 && x < avX + 7) && ri(100) >= 15) objects.push(["house", x, roadY - 7]); // north of the plaza row
-  for (let x = 1 + ri(2); x + 3 <= W - 1; x += 4) if (!(x + 3 > avX - 1 && x < avX + 4) && ri(100) >= 15) objects.push(["house", x, roadY + 5]);
+  // a river runs north to south, 3 tiles wide, west or east of the plaza; the road crosses it on planks
+  const rx = style === "river" ? (ri(2) ? 6 + ri(4) : 31 + ri(3)) : -99;
+  const wet = x => x + 3 > rx - 1 && x < rx + 4; // would a 3-wide thing at x touch the river?
+  if (style === "river") {
+    paint.unshift(...waterRects(WATER[climate], rx, 0, 3, H, [[rx, roadY, 3, 4]]));
+    paint.push(["plank", rx, roadY, 3, 4]);
+  }
+  // a harbour fills the south: the avenue ends in a quay and a pier, with another pier or two beside it
+  if (style === "harbor") {
+    const y0 = roadY + 5, holes = [[avX, y0, 3, H - y0]];
+    paint.push(["flagstone", 0, roadY + 4, W, 1], ["plank", avX, y0, 3, H - y0]);
+    for (const px of [avX - 9 - ri(5), avX + 7 + ri(6)]) {
+      const len = 4 + ri(4);
+      holes.push([px, y0, 2, len]); paint.push(["plank", px, y0, 2, len]);
+    }
+    paint.unshift(...waterRects(WATER[climate], 0, y0, W, H - y0, holes));
+    for (let i = 0, x = 2 + ri(4); i < 3; i++, x += 8 + ri(6)) if (x + 2 < W && !(x + 2 > avX - 1 && x < avX + 4) && !holes.some(([hx, , hw]) => x + 2 > hx - 1 && x < hx + hw + 1)) objects.push([ri(2) ? "barrel" : "barrels", x, roadY + 4]);
+  }
+  for (let x = 1 + ri(2); x + 3 <= W - 1; x += 4) if (!(x + 3 > avX - 4 && x < avX + 7) && !wet(x) && ri(100) >= 15) objects.push(["house", x, roadY - 7]); // north of the plaza row
+  for (let x = 1 + ri(2); x + 3 <= W - 1; x += 4) if (style !== "harbor" && !(x + 3 > avX - 1 && x < avX + 4) && !wet(x) && ri(100) >= 15) objects.push(["house", x, roadY + 5]);
   const tree = TREE[climate];
   for (let i = 0; i < TREES[climate]; i++) {
     const x = ri(W - 3);
-    if (!(x + 3 > avX - 1 && x < avX + 4) && !objects.some(o => o[0] === tree && Math.abs(o[1] - x) < 4)) objects.push([tree, x, ri(2)]);
+    if (!(x + 3 > avX - 1 && x < avX + 4) && !wet(x) && !objects.some(o => o[0] === tree && Math.abs(o[1] - x) < 4)) objects.push([tree, x, ri(2)]);
   }
   const labels = world.locations.map((l, i) => [l.name.slice(0, 26), (BANDS[i][0] + BANDS[i][1]) / 2, roadY + 0.5]);
   const spawn = [avX + 1, roadY - 2];
@@ -118,10 +159,11 @@ function layout(dest, world, vibe, climate, ri) {
   }
 
   const look = rng(hash(dest.toLowerCase() + "|look")), pick = list => list[Math.floor(look() * list.length)];
-  for (const o of objects) if (o[0] === "house") o[3] = { tint: pick(ROOFS[climate]) }; // every house its own colour
+  const wall = pick(WALL_POOL[climate]); // most houses share a wall, each has its own roof
+  for (const o of objects) if (o[0] === "house") o[0] = `house_${pick(ROOF_POOL[climate])}_${look() < 0.7 ? wall : pick(WALL_POOL[climate])}`;
   const backdrop = pick(BACKDROPS[climate]), night = backdrop !== "snow" && look() < 0.3;
   const tints = { ground: pick(GROUND_TINTS[climate]), paving: pick(PAVING_TINTS) };
-  const map = { name: dest, w: W, h: H, ground: GROUND[climate], tints, battle: night ? backdrop + "_night" : backdrop, paint, objects, labels, npcs, zones: [], spawn, encounters: ENCOUNTERS, vibe, climate, music: CITY_MUSIC[climate], relay: { x: relay[0], y: relay[1] } };
+  const map = { name: dest, w: W, h: H, ground: GROUND[climate], style, tints, battle: night ? backdrop + "_night" : backdrop, paint, objects, labels, npcs, zones: [], spawn, encounters: ENCOUNTERS, vibe, climate, music: CITY_MUSIC[climate], relay: { x: relay[0], y: relay[1] } };
   const { seen } = walkable(map);
   const reach = (x, y) => [[x, y], [x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]].some(([a, b]) => seen.has(`${a},${b}`));
   const ok = npcs.every(n => reach(n.x, n.y)) && reach(relay[0], relay[1]) && Object.values(itemSpots).every(([, x, y]) => seen.has(`${x},${y}`));
