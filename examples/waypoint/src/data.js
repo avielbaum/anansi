@@ -16,6 +16,8 @@ export const ROOFS = ["slate", "terracotta", "green", "blue", "ochre"], WALLS = 
 export const HOUSES = ROOFS.flatMap(r => WALLS.map(w => `house_${r}_${w}`));
 for (const k of HOUSES) STAMPS[k] = STAMPS.house;
 
+import { SITE_MAPS } from "./sites.js";
+
 export const MAPS = {
   town: {
     name: "Old Town", w: 40, h: 26, ground: "grass", battle: "town", music: "town",
@@ -72,6 +74,8 @@ export const MAPS = {
     arrival: "spireArrive",
   },
 };
+
+Object.assign(MAPS, SITE_MAPS); // the Rift Sites and the Rift Gate (Acts III and IV)
 
 // Dialogue: lines are "text" (spoken by the NPC) or [speaker, "text"]; LEAD and MATE stand for the party.
 export const TALK = {

@@ -2,12 +2,13 @@
 import assert from "node:assert";
 import { readFileSync, existsSync } from "node:fs";
 import { damage, gainXp, newHero, newGame, atbFill, useItem, xpToNext, ENEMIES, HEROES, SKILLS, questStep, payQuest, questFits, tidyQuest, canGift, markGift, resetGifts } from "./src/rules.js";
-import { EQUIP, START_GEAR, SHOP_GEAR, SHOP_GEAR2, WARDEN_GEAR, RELAY_GEAR, SLOTS, kit, addGear, equip, unequip, preview, canEquip } from "./src/rules.js";
+import { SITE_GEAR, EQUIP, START_GEAR, SHOP_GEAR, SHOP_GEAR2, WARDEN_GEAR, RELAY_GEAR, SLOTS, kit, addGear, equip, unequip, preview, canEquip } from "./src/rules.js";
 import { upgrade } from "./src/state.js";
 import { MAPS, STAMPS, TALK, QUEST_WORLD, REGIONS, ITEM_SPOTS, PERSONAS, FALLBACK_QUESTS, SHORT_NAMES } from "./src/data.js";
 import { pages } from "./src/ui.js";
-import { banter, newPlot, destroyRelay, objective, situation, BEATS, ENDINGS, ACTS, RELAYS_NEEDED, epilogueFallback } from "./src/story.js";
+import { SITE_BEATS, completeSite, banter, newPlot, destroyRelay, objective, situation, BEATS, ENDINGS, ACTS, RELAYS_NEEDED, epilogueFallback } from "./src/story.js";
 import { genCity, walkable, LOCALS } from "./src/city.js";
+import { REGIONS as WORLD, REGION_IDS, regionOf, anchorOf } from "./src/regions.js";
 import { hash, parseAtlas, parseClimate, cityPrompt, CLIMATES, suggest, DESTINATIONS } from "./src/atlas.js";
 
 // long dialogue splits into pages that fit the box, losing no words
@@ -147,15 +148,21 @@ assert.deepEqual(destroyRelay(plot, "city:Kyoto"), { count: 1, last: false }, "o
 destroyRelay(plot, "city:Cairo");
 assert.deepEqual(destroyRelay(plot, "city:Oslo"), { count: 3, last: true });
 assert(situation(plot, false).includes("3 of 3") && situation(newPlot(), true).includes("Warden") && situation(newPlot(), false) === "");
-plot.act = 3; assert(objective(plot).includes("Director")); plot.ending = "burn"; assert(objective(plot).includes("finished"));
-assert.equal(ACTS.length, 4);
-const speakers = new Set(["", "LEAD", "MATE", "Agent Kessler", "The Director"]);
-const lines = [...BEATS.wardenWon, ...BEATS.spireArrive, ...BEATS.directorWon, ...BEATS.bossIntro.director, ...BEATS.relayFound("X"), ...BEATS.relayDown(1, "X"), ...BEATS.relayDown(3, "X"), ...Object.values(BEATS.endings).flat()];
+plot.act = 3; assert(objective(plot).includes("Rift Sites") && objective(plot).includes("0 of 4"));
+assert.deepEqual(completeSite(plot, "pacific"), { count: 1, fresh: true, rivalNow: false, last: false });
+assert.deepEqual(completeSite(plot, "pacific"), { count: 1, fresh: false, rivalNow: false, last: false }, "one jumper per region");
+assert(completeSite(plot, "europe").rivalNow, "Kessler ambushes after the second site"); plot.rival = true;
+completeSite(plot, "sahara"); assert(completeSite(plot, "americas").last);
+plot.act = 4; assert(objective(plot).includes("Vesper"));
+plot.act = 5; assert(objective(plot).includes("Director")); plot.ending = "burn"; assert(objective(plot).includes("finished"));
+assert.equal(ACTS.length, 6);
+const speakers = new Set(["", "LEAD", "MATE", "Agent Kessler", "The Director", "Vesper", ...REGION_IDS.map(r => WORLD[r].ally)]);
+const lines = [...BEATS.wardenWon, ...BEATS.spireArrive, ...BEATS.directorWon, ...BEATS.bossIntro.director, ...BEATS.relayFound("X"), ...BEATS.relayDown(1, "X"), ...BEATS.relayDown(3, "X"), ...Object.values(BEATS.endings).flat(), ...BEATS.kesslerAmbush, ...BEATS.kesslerWon, ...BEATS.allFree, ...BEATS.vesperWon, ...BEATS.bossIntro.kessler.map(l => ["", l]), ...BEATS.bossIntro.vesper.map(l => ["", l]), ...Object.values(SITE_BEATS).flatMap(b => [...b.won, ...b.boss.map(l => ["", l]), ["", b.door]])];
 for (const l of lines) { assert(Array.isArray(l) && speakers.has(l[0]) && l[1].length > 5, JSON.stringify(l)); assert(l[1].length < 330, "a line must fit three pages of the dialogue box: " + l[1].slice(0, 30)); }
 assert(BEATS.bossIntro.warden.every(l => typeof l === "string"));
 assert.deepEqual(Object.keys(BEATS.endings).sort(), Object.keys(ENDINGS).sort(), "each ending has its words");
 assert(epilogueFallback("burn", ["Cairo", "Kyoto"]).includes("Cairo") && epilogueFallback("keep", []).length > 30);
-assert(BEATS.relayDown(3, "X").some(l => l[1].includes("bringing you")), "the third relay leads to the Spire");
+assert(BEATS.relayDown(3, "X").some(l => l[1].includes("RIFT SITES")), "the third relay leads to the Rift Sites");
 // a save from before the story: after the Warden it starts in Act II, before it in Act I
 assert.equal(upgrade({ v: 1, map: "town", flags: { warden: true } }).plot.act, 2);
 assert.equal(upgrade({ v: 1, map: "town", flags: {} }).plot.act, 1);
@@ -214,6 +221,20 @@ for (const s of Object.values(SKILLS)) assert(s.sound && audio.sfx[s.sound], "ev
   for (let i = 0; i < 60; i++) { const c = genCity("Town" + i, parseAtlas(atlasText), CLIMATES[i % 4]).map; styles.add(c.style); for (const o of c.objects) assert(existsSync(here(`assets/tiles/${o[0]}.png`)) && STAMPS[o[0]], `${c.name}: no picture or stamp for ${o[0]}`); for (const [t] of c.paint) assert(existsSync(here(`assets/tiles/${t}.png`)), t); }
   assert(styles.has("harbor") && styles.has("river") && styles.has("street"), `layout styles seen: ${[...styles]}`);
 }
+// regions and the world map
+for (const id of REGION_IDS) {
+  const R = WORLD[id];
+  assert(R.places.includes(R.anchor) && regionOf(R.anchor) === id && anchorOf(R.anchor) === id && R.ally, id);
+  const M = genCity(R.anchor, parseAtlas(atlasText), "temperate").map;
+  assert(M.rift?.region === id, `${R.anchor} has no Rift Door`);
+  assert(MAPS[`site:${id}`] && BEATS.bossIntro[`site_${id}`] && SITE_GEAR[id] && SITE_BEATS[id].won.length, `${id}: the site is incomplete`);
+  assert(genCity("Somewhere", parseAtlas(atlasText), "temperate").map.rift === null);
+}
+assert.equal(regionOf("kyōto"), "pacific"); assert.equal(regionOf("Nowhereville"), null); assert.equal(anchorOf("Cairo, Egypt"), "sahara");
+assert(MAPS["site:gate"] && BEATS.bossIntro.vesper, "the Rift Gate");
+const allPlaces = REGION_IDS.flatMap(id => WORLD[id].places.map(p => p.toLowerCase())); assert.equal(new Set(allPlaces).size, allPlaces.length, "a place is in two regions");
+// a save from before the Rift Sites: the Spire was Act III
+assert.equal(upgrade({ v: 1, map: "town", flags: {}, plot: { act: 3, relays: [], spire: true, ending: null } }).plot.act, 5);
 // companion banter
 for (const c of CLIMATES) for (const st of ["street", "harbor", "river"]) for (let i = 0; i < 6; i++) assert(banter(c, st, hash("x" + i)).length > 10, `${c}/${st}: no banter`);
 // wildlife
@@ -237,7 +258,7 @@ for (const [id, e] of Object.entries(ENEMIES)) assert(existsSync(here(`assets/en
   assert(kai.hp <= kai.maxhp, "hp is clamped when the maximum drops");
   addGear(g, "vital_pendant");
   assert.equal(preview(kai, "accessory", "vital_pendant").maxhp, kai.maxhp + EQUIP.vital_pendant.hp, "the preview shows the real result");
-  const ids = new Set([...Object.values(START_GEAR).flat(), ...SHOP_GEAR, ...SHOP_GEAR2, ...WARDEN_GEAR, ...RELAY_GEAR]);
+  const ids = new Set([...Object.values(START_GEAR).flat(), ...SHOP_GEAR, ...SHOP_GEAR2, ...WARDEN_GEAR, ...RELAY_GEAR, ...Object.values(SITE_GEAR)]);
   for (const M of Object.values(MAPS)) for (const e of M.things || M.objects || []) if (e[3]?.equip) ids.add(e[3].equip);
   for (const id of Object.keys(EQUIP)) { assert(ids.has(id), `${id} cannot be obtained`); assert(existsSync(here(`assets/icons/${id}.png`)), `${id}: no icon`); assert(SLOTS.includes(EQUIP[id].slot)); }
   for (const id of ids) assert(EQUIP[id], `unknown gear ${id}`);

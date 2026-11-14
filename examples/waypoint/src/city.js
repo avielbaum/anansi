@@ -3,6 +3,7 @@
 // Pure functions: check.mjs generates cities in Node and proves everything in them can be reached on foot.
 import { STAMPS } from "./data.js";
 import { hash, rng, buildWorld } from "./atlas.js";
+import { anchorOf } from "./regions.js";
 
 export const T = 32, W = 40, H = 26;
 export const feet = (tx, ty) => ({ x: tx * T + 16, y: ty * T + 28 });
@@ -147,7 +148,8 @@ function layout(dest, world, vibe, climate, ri, style = "street") {
     choose((x, y) => x >= W - 8 && rows.includes(y)), // Kessler waits at the east end
   ];
   const relay = choose((x, y) => Math.hypot(x - spawn[0], y - spawn[1]) >= 8); // the Directorate relay of Act II, away from the spawn point
-  if (spots.some(s => !s) || !relay) return { ok: false };
+  const region = anchorOf(dest), rift = region ? choose((x, y) => Math.hypot(x - spawn[0], y - spawn[1]) >= 6 && y !== roadY && y !== roadY + 3) : null; // the Rift Door of an anchor city (Act III)
+  if (spots.some(s => !s) || !relay || (region && !rift)) return { ok: false };
 
   const used = new Set();
   const sprite = name => { let i = hash(name) % LOCALS.length; while (used.has(LOCALS[i])) i = (i + 1) % LOCALS.length; used.add(LOCALS[i]); return LOCALS[i]; };
@@ -169,7 +171,7 @@ function layout(dest, world, vibe, climate, ri, style = "street") {
   for (const o of objects) if (o[0] === "house") o[0] = `house_${pick(ROOF_POOL[climate])}_${look() < 0.7 ? wall : pick(WALL_POOL[climate])}`;
   const backdrop = pick(BACKDROPS[climate]), night = backdrop !== "snow" && look() < 0.3;
   const tints = { ground: pick(GROUND_TINTS[climate]), paving: pick(PAVING_TINTS) };
-  const map = { name: dest, w: W, h: H, ground: GROUND[climate], style, tints, battle: night ? backdrop + "_night" : backdrop, paint, objects, labels, npcs, zones: [], spawn, encounters: ENCOUNTERS[climate], vibe, climate, music: CITY_MUSIC[climate], relay: { x: relay[0], y: relay[1] } };
+  const map = { name: dest, w: W, h: H, ground: GROUND[climate], style, tints, battle: night ? backdrop + "_night" : backdrop, paint, objects, labels, npcs, zones: [], spawn, encounters: ENCOUNTERS[climate], vibe, climate, music: CITY_MUSIC[climate], relay: { x: relay[0], y: relay[1] }, rift: rift ? { x: rift[0], y: rift[1], region } : null };
   const { seen } = walkable(map);
   const reach = (x, y) => [[x, y], [x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]].some(([a, b]) => seen.has(`${a},${b}`));
   const ok = npcs.every(n => reach(n.x, n.y)) && reach(relay[0], relay[1]) && Object.values(itemSpots).every(([, x, y]) => seen.has(`${x},${y}`));

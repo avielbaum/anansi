@@ -80,6 +80,19 @@ prototype, with real-world destinations, is in `prototype/`.
   only picks Fight. The Director falls to a skilled party at about L5 to L6 and to a Fight-only one at about L8 to L9;
   the XP of the story fights and the Spire's encounters is meant to bring a party there without grinding.
 
+**Milestone 5, a bigger world and a longer story** (`src/regions.js`, `src/sites.js`, `src/story.js`):
+- **The World Map** (Menu → Teleport → World Map): four regions (the Pacific Rim, Old Europe, Africa and the Gulf, the Americas), each
+  with an anchor city and a list of places. Any real place can still be typed in; one that is not listed is "in the Margins".
+- **Five acts:** I Cold Trail (the Warden), II The Relays (three), **III The Rift Sites**, **IV The Traitor**, V The Spire.
+  When the last relay falls, its final signal names four Rift Sites, one in each anchor city (Kyoto, Lisbon, Cairo, Mexico City).
+  Each city has a Rift Door (a pulsing seam of light) leading to a dungeon with a guardian boss; beating it frees a jumper
+  (Sora, Ilse, Oluwa, Vesper) who gives you a sigil, an accessory with its own bonuses.
+- **Kessler turns rival** after the second site. **Vesper betrays you** after the fourth: he takes all four sigils, even the
+  ones you are wearing, and waits in the Rift Gate (World Map or Teleport). Beat him to get the sigils back and open the Spire.
+- Everything in the spine is hand-written, so it holds together whatever the model says; the Anansi model still writes each city's
+  people and side quests, and now knows how far you are in the five acts.
+- Old saves: a save from before the Rift Sites, with the Spire open, becomes Act V.
+
 **Sound:** twelve music tracks and 36 effects (`src/audio.js`). Old Town, each climate of generated city, the
 Undercroft, the Spire, the title and the ending have their own music; battles have theirs, with a tenser track for
 bosses and relay fights, and the field music resumes where it stopped. Menus, dialogue, chests, spells, hits, teleports

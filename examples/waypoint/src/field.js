@@ -3,8 +3,9 @@
 import { STAMPS, TALK } from "./data.js";
 import { mapFor, areaOf, areaLabel } from "./world.js";
 import { G } from "./state.js";
-import { ITEMS, ENEMIES, EQUIP, SHOP_GEAR, SHOP_GEAR2, WARDEN_GEAR, RELAY_GEAR, addGear, bonusText, questStep, payQuest, canGift, markGift, resetGifts } from "./rules.js";
-import { BEATS, ENDINGS, destroyRelay, banter } from "./story.js";
+import { ITEMS, ENEMIES, EQUIP, SHOP_GEAR, SHOP_GEAR2, WARDEN_GEAR, RELAY_GEAR, SITE_GEAR, addGear, unequip, bonusText, questStep, payQuest, canGift, markGift, resetGifts } from "./rules.js";
+import { BEATS, SITE_BEATS, ENDINGS, destroyRelay, completeSite, banter } from "./story.js";
+import { REGIONS, REGION_IDS } from "./regions.js";
 import { hash } from "./atlas.js";
 import { sfx, music, musicPush, musicPop } from "./audio.js";
 import { W, H, drawWindow, text, talk, choose, say, prompt, waitFor } from "./ui.js";
@@ -37,6 +38,7 @@ export class Field extends Phaser.Scene {
     for (const [s, tx, ty] of M.labels || []) this.add.text(tx * T, ty * T, s, { fontFamily: "monospace", fontSize: "11px", color: "#fff", stroke: "#000", strokeThickness: 3 }).setOrigin(0.5).setDepth(5000);
     for (const n of M.npcs || []) this.addNpc(n);
     if (M.relay) this.addRelay(M.relay);
+    if (M.rift) this.addRift(M.rift);
     for (const pad of M.pads || []) this.addPad(pad);
     if (M.boss && !G.s.flags[M.boss.flag]) {
       const p = feet(M.boss.x, M.boss.y);
@@ -61,7 +63,8 @@ export class Field extends Phaser.Scene {
     music(M.music);
     const banner = this.add.text(W / 2, 30, M.name, { fontFamily: "monospace", fontSize: "18px", color: "#fff", stroke: "#000", strokeThickness: 4 }).setOrigin(0.5).setScrollFactor(0).setDepth(9000);
     this.tweens.add({ targets: banner, alpha: 0, delay: 1500, duration: 600, onComplete: () => banner.destroy() });
-    if (M.intro && !G.s.flags[M.intro]) { G.s.flags[M.intro] = true; this.run(() => this.lines(TALK[M.intro])); }
+    if (G.s.pending) { const p = G.s.pending; G.s.pending = null; this.run(() => this.pendingScene(p)); }
+    else if (M.intro && !G.s.flags[M.intro]) { G.s.flags[M.intro] = true; this.run(() => this.lines(TALK[M.intro])); }
     else if (M.arrival && !G.s.flags[`seen:${this.mapId}`]) { G.s.flags[`seen:${this.mapId}`] = true; this.run(() => this.lines(BEATS[M.arrival])); }
     else if (M.vibe && !G.s.flags[`seen:${this.mapId}`]) { G.s.flags[`seen:${this.mapId}`] = true; this.run(async () => { await say(this, "", M.vibe); if (M.climate) await say(this, G.s.party[1].name, banter(M.climate, M.style, hash(M.name))); }); } // a new city: what it feels like
     this.refreshMarker();
@@ -309,6 +312,7 @@ export class Field extends Phaser.Scene {
       this.inZone = true;
       const z = zones[0];
       if (z.go) return this.goTo(z.go);
+      if (z.back) return this.teleportTo(G.s.siteFrom && G.s.siteFrom !== this.mapId ? G.s.siteFrom : "town");
       if (z.boss && !G.s.flags[this.M.boss.flag]) return this.bossFight();
     }
     if (!zones.length) this.inZone = false;
@@ -364,8 +368,24 @@ export class Field extends Phaser.Scene {
       const salvage = RELAY_GEAR[count - 1];
       if (salvage) { addGear(G.s, salvage); sfx("pickup"); await say(this, "", `Salvaged from the relay: ${EQUIP[salvage].name}. Put it on from the menu.`); }
       await this.lines(BEATS.relayDown(count, name));
-      if (last) { plot.act = 3; plot.spire = true; this.teleportTo("spire"); }
+      if (last) plot.act = 3; // the relays' last signal names the Rift Sites
     });
+  }
+
+  /** The Rift Door of an anchor city (Act III): a seam of light into the region's Rift Site. */
+  addRift(r) {
+    const p = feet(r.x, r.y), plot = G.s.plot, open = plot.act >= 3 && !plot.sites[r.region];
+    const g = this.add.graphics().setDepth(p.y).fillStyle(open ? 0x9ffff0 : 0x55565f, open ? 0.85 : 0.5).fillRoundedRect(p.x - 10, p.y - 52, 20, 52, 8);
+    if (open) this.tweens.add({ targets: g, alpha: 0.4, yoyo: true, repeat: -1, duration: 700 });
+    const box = { x: p.x - 14, y: p.y - 12, w: 28, h: 14 };
+    this.solids.push(box);
+    this.things.push({ box, act: () => this.run(async () => {
+      if (plot.sites[r.region]) return say(this, "", "The Rift Site beyond is empty now. The jumper you freed is long gone.");
+      if (plot.act < 3) return say(this, "", "A seam of light shivers in the wall here, too faint to step through. Not yet.");
+      await say(this, "", SITE_BEATS[r.region].door);
+      G.s.siteFrom = this.mapId;
+      this.goTo({ map: `site:${r.region}`, x: 3, y: 10 }, "teleport");
+    }) });
   }
 
   /** A recovery pad (Act III): confirm on it to restore the party. */
@@ -390,7 +410,7 @@ export class Field extends Phaser.Scene {
     });
   }
 
-  /** What follows a boss: the Warden opens Act II; the Director ends the story. */
+  /** What follows a boss: the Warden opens Act II, a site guardian frees a jumper, Vesper opens the Spire, the Director ends the story. */
   async afterBoss(b) {
     if (b.flag === "warden") {
       await this.lines(BEATS.wardenWon);
@@ -400,11 +420,52 @@ export class Field extends Phaser.Scene {
       await say(this, "", `The Warden drops a ${EQUIP[WARDEN_GEAR[0]].name} and a ${EQUIP[WARDEN_GEAR[1]].name}. Put them on from the menu.`);
       return;
     }
+    if (b.flag.startsWith("site_")) return this.afterSite(b.flag.slice(5));
+    if (b.flag === "vesper") {
+      const plot = G.s.plot;
+      await this.lines(BEATS.vesperWon);
+      for (const r of REGION_IDS) addGear(G.s, SITE_GEAR[r]); // the four sigils come back
+      plot.act = 5; plot.spire = true;
+      sfx("chest");
+      await say(this, "", "The four sigils are yours again. The Spire opens.");
+      this.teleportTo("spire");
+      return;
+    }
     await this.lines(BEATS.directorWon);
     const kinds = Object.keys(ENDINGS), k = await choose(this, W / 2 - 110, 90, 220, kinds.map(e => ENDINGS[e]), { cancel: false });
     G.s.plot.ending = kinds[k];
     await this.lines(BEATS.endings[kinds[k]]);
     this.scene.start("ending");
+  }
+
+  /** A Rift Site guardian is down: the jumper is freed and leaves a sigil, and the party is sent home. The second site brings
+   *  Kessler and the fourth Vesper's betrayal; both play when the party arrives (pendingScene), since the map is rebuilt. */
+  async afterSite(region) {
+    const plot = G.s.plot;
+    await this.lines(SITE_BEATS[region].won);
+    const { fresh, rivalNow, last } = completeSite(plot, region);
+    if (fresh) { addGear(G.s, SITE_GEAR[region]); sfx("chest"); await say(this, "", `${REGIONS[region].ally}'s sigil: ${EQUIP[SITE_GEAR[region]].name}. Put it on from the menu.`); }
+    if (rivalNow) { plot.rival = true; G.s.pending = "kessler"; }
+    if (last) G.s.pending = "allFree";
+    this.teleportTo(G.s.siteFrom && G.s.siteFrom !== this.mapId ? G.s.siteFrom : "town");
+  }
+
+  /** A story scene that waits for the next map: Kessler's ambush, or Vesper taking the sigils. */
+  async pendingScene(which) {
+    const plot = G.s.plot;
+    if (which === "kessler") {
+      await this.lines(BEATS.kesslerAmbush);
+      if ((await this.battle(["kessler"], true)) !== "won") return;
+      this.busy = true;
+      await this.lines(BEATS.kesslerWon);
+    } else if (which === "allFree") {
+      await this.lines(BEATS.allFree);
+      for (const r of REGION_IDS) { // Vesper takes the sigils, even off the party's backs
+        for (const h of G.s.party) if (h.eq?.accessory === SITE_GEAR[r]) unequip(G.s, h, "accessory");
+        delete G.s.gear[SITE_GEAR[r]];
+      }
+      plot.act = 4;
+    }
   }
 
   /** Starts a battle over this scene; resolves with "won", "fled" ... when it ends and the field is back.

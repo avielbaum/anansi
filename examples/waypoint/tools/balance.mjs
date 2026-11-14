@@ -62,8 +62,15 @@ function report(label, lvl, foes, opts = {}) {
 const REPORT = [
   ["Act I: the Warden (starting gear)", [2, 3, 4], ["minotaur_mage"], "start"],
   ["Act II: guard + 2 drones (steel/tome, vest)", [3, 4, 5], ["relay_guard", "relay_drone", "relay_drone"], "act2"],
-  ["Act III: 2 spire guards (Spire gear)", [5, 6, 7], ["spire_guard", "spire_guard"], "act3"],
-  ["Act III: the Director (Spire gear)", [5, 6, 7, 8], ["director"], "act3"],
+  ["Act III: site guard + drones", [5, 6, 7], ["site_guard", "site_drone", "site_drone"], "act2"],
+  ["Act III: Lantern Warden", [5, 6, 7], ["lantern_warden"], "act2"],
+  ["Act III: Clock Sentinel", [5, 6, 7], ["clock_sentinel"], "act2"],
+  ["Act III: Sand Colossus", [5, 6, 7], ["sand_colossus"], "act2"],
+  ["Act III: Jungle Hydra", [5, 6, 7], ["hydra"], "act2"],
+  ["Act III: Kessler's Walker (after 2 sites)", [6, 7, 8], ["kessler"], "act2"],
+  ["Act IV: Vesper", [7, 8, 9], ["vesper"], "act3"],
+  ["Act V: 2 spire guards (Spire gear)", [7, 8, 9], ["spire_guard", "spire_guard"], "act3"],
+  ["Act V: the Director (Spire gear)", [7, 8, 9, 10], ["director"], "act3"],
 ];
 for (const policy of ["smart", "casual"]) {
   POLICY = policy;

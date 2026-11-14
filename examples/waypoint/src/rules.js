@@ -40,11 +40,16 @@ export const EQUIP = {
   quick_boots: { name: "Quick Boots", slot: "accessory", spd: 3, desc: "Salvaged from the first relay." },
   mana_ring: { name: "Mana Ring", slot: "accessory", mp: 10, desc: "Salvaged from the second relay." },
   vital_pendant: { name: "Vital Pendant", slot: "accessory", hp: 30, def: 2, desc: "Salvaged from the third relay." },
+  lantern_sigil: { name: "Lantern Sigil", slot: "accessory", spd: 4, mag: 3, desc: "Sora's sigil: a slow-burning lantern flame." },
+  clock_sigil: { name: "Clock Sigil", slot: "accessory", def: 4, hp: 20, desc: "Ilse's sigil: it ticks when danger is near." },
+  dune_sigil: { name: "Dune Sigil", slot: "accessory", atk: 4, hp: 15, desc: "Oluwa's sigil: warm as sun on sand." },
+  vine_sigil: { name: "Vine Sigil", slot: "accessory", mp: 14, hp: 10, desc: "Vesper's sigil: it grows if you let it." },
   spire_helm: { name: "Spire Helm", slot: "accessory", def: 4, hp: 15, desc: "A helm from the Director's guards." },
 };
 export const START_GEAR = { lead_m: ["training_blade", "travel_coat"], lead_f: ["training_rod", "travel_coat"] };
 export const SHOP_GEAR = ["iron_sword", "oak_wand", "leather_vest", "brass_charm"];
 export const SHOP_GEAR2 = ["tempered_blade", "ash_staff", "chain_vest", "silver_charm"]; // Tobias stocks these once the Warden has fallen
+export const SITE_GEAR = { pacific: "lantern_sigil", europe: "clock_sigil", sahara: "dune_sigil", americas: "vine_sigil" }; // the sigil each Rift Site
 export const WARDEN_GEAR = ["steel_blade", "crystal_tome"]; // dropped when the Warden falls
 export const RELAY_GEAR = ["quick_boots", "mana_ring", "vital_pendant"]; // one from each of the first three relays
 
@@ -124,7 +129,18 @@ export const ENEMIES = {
   // Act II: the guards of a Directorate relay. `sprite` reuses another enemy's picture.
   relay_guard: { name: "Relay Guard", sprite: "drone_tank", hp: 125, atk: 19, mag: 0, def: 12, spd: 8, xp: 50, gold: 40 },
   relay_drone: { name: "Relay Drone", sprite: "spider_bot", hp: 72, atk: 15, mag: 0, def: 9, spd: 10, xp: 35, gold: 25 },
-  // Act III: inside the Spire
+  // Act III: the guardians of the four Rift Sites, then Kessler and the traitor
+  lantern_warden: { name: "Lantern Warden", sprite: "eyeball", tint: 0xffc860, scale: 2.4, hp: 520, atk: 14, mag: 24, def: 11, spd: 11, xp: 160, gold: 90, magic: true, boss: true },
+  clock_sentinel: { name: "Clock Sentinel", sprite: "drone_tank", tint: 0xc8d8ff, scale: 2.3, hp: 600, atk: 25, mag: 0, def: 17, spd: 8, xp: 160, gold: 90, boss: true },
+  sand_colossus: { name: "Sand Colossus", sprite: "drill_beast", tint: 0xffd890, scale: 2.2, hp: 640, atk: 24, mag: 0, def: 15, spd: 7, xp: 170, gold: 90, boss: true },
+  hydra: { name: "Jungle Hydra", sprite: "vine", scale: 3, hp: 560, atk: 22, mag: 18, def: 12, spd: 10, xp: 170, gold: 90, boss: true },
+  site_guard: { name: "Rift Guard", sprite: "drone_tank", tint: 0xb8c0d8, hp: 140, atk: 21, mag: 0, def: 13, spd: 9, xp: 55, gold: 30 },
+  site_drone: { name: "Rift Drone", sprite: "spider_bot", tint: 0xb8c0d8, hp: 85, atk: 17, mag: 0, def: 10, spd: 11, xp: 40, gold: 22 },
+  kessler: { name: "Kessler's Walker", sprite: "drone_tank", tint: 0xffe08a, scale: 2.2, hp: 700, atk: 26, mag: 0, def: 16, spd: 11, xp: 200, gold: 150, boss: true,
+    waveEvery: 4, rage: { at: 0.5, waveEvery: 3, atk: 31, note: "Kessler overrides the safeties!" } },
+  vesper: { name: "Vesper, Unbound", sprite: "wraith", tint: 0xd09aff, scale: 2.0, hp: 800, atk: 15, mag: 28, def: 14, spd: 13, xp: 250, gold: 150, magic: true, boss: true,
+    waveEvery: 3, rage: { at: 0.5, waveEvery: 2, atk: 18, note: "Vesper tears the room apart!" } },
+  // Act V: inside the Spire
   spire_guard: { name: "Spire Guard", sprite: "drone_tank", hp: 150, atk: 23, mag: 0, def: 14, spd: 9, xp: 70, gold: 35 },
   spire_drone: { name: "Spire Drone", sprite: "spider_bot", hp: 90, atk: 19, mag: 0, def: 11, spd: 11, xp: 50, gold: 25 },
   wraith: { name: "Null Wraith", hp: 115, atk: 8, mag: 21, def: 7, spd: 12, xp: 65, gold: 30, magic: true },

@@ -5,6 +5,7 @@ import { mapFor, areaOf, areaLabel, cityId } from "./world.js";
 import { fetchAtlas, atlasCached, suggestions } from "./anansi.js";
 import { cleanDest } from "./atlas.js";
 import { ACTS, objective } from "./story.js";
+import { REGIONS, REGION_IDS } from "./regions.js";
 import { settings, setMuted, cycleVolume, sfx } from "./audio.js";
 import { ITEMS, SKILLS, HEROES, xpToNext, useItem, EQUIP, SLOTS, SLOT_NAMES, canEquip, equip, unequip, preview, bonusText } from "./rules.js";
 import { W, H, drawWindow, text, choose, say, prompt, waitFor } from "./ui.js";
@@ -128,6 +129,7 @@ export class Menu extends Phaser.Scene {
     const p = G.s.plot;
     const lines = [ACTS[p.act] || ACTS[1], "", objective(p)];
     if (p.act === 2) lines.push("", `Relays destroyed: ${p.relays.length ? p.relays.join(", ") : "none yet"}`);
+    if (p.act >= 3 && p.act < 5) lines.push("", ...REGION_IDS.map(id => `${p.sites[id] ? "✔" : "·"} ${REGIONS[id].name}: ${REGIONS[id].ally}, held in ${REGIONS[id].anchor}`));
     await this.page(lines.join("\n"));
   }
 
@@ -150,18 +152,40 @@ export class Menu extends Phaser.Scene {
     await this.page(`${a.q.title} (${areaLabel(a.area)})\n\n${a.q.summary}\n\n${steps}`);
   }
 
-  /** Teleport: to Old Town, a city you have been to, or a new place named by the player. Returns true if the party left. */
+  /** The World Map: pick a region, then one of its places (its anchor city first; "More" shows others). Returns {dest} or null. */
+  async worldMap() {
+    const plot = G.s.plot, ids = REGION_IDS;
+    const mark = id => (plot.act >= 3 ? (plot.sites[id] ? "  ✔" : "  !") : "");
+    const r = await choose(this, 250, 40, 260, [...ids.map(id => REGIONS[id].name + mark(id)), "Back"]);
+    if (r < 0 || r === ids.length) return null;
+    const R = REGIONS[ids[r]], visited = Object.keys(G.s.cities).map(d => d.toLowerCase());
+    let offset = 0;
+    for (;;) {
+      const rest = R.places.filter(p => p !== R.anchor), pick = Array.from({ length: Math.min(6, rest.length) }, (_, i) => rest[(offset + i) % rest.length]);
+      const entries = [R.anchor, ...pick].map((d, i) => ({ dest: d, label: `${i === 0 ? "★ " : ""}${d}${visited.includes(d.toLowerCase()) ? " •" : atlasCached(d) ? " ✦" : ""}` }));
+      const help = text(this, 26, H - 40, `${R.blurb} ★ anchor city, • visited.`, { fontSize: "12px" });
+      const k = await choose(this, 250, 40, 260, [...entries, { label: "More places…" }, "Back"]);
+      help.destroy();
+      if (k < 0 || k === entries.length + 1) return null;
+      if (k === entries.length) { offset += 6; continue; }
+      return { dest: entries[k].dest };
+    }
+  }
+
+  /** Teleport: to Old Town, a city you have been to, a place from the World Map, or a new place named by the player. Returns true if the party left. */
   async teleport() {
-    const here = G.s.map;
-    const entries = [{ label: "Type a place…" }, ...suggestions().map(d => ({ label: d + (atlasCached(d) ? " ✦" : ""), dest: d })), // ✦: ready, no waiting
-      ...(G.s.plot.spire && here !== "spire" ? [{ label: "Directorate Spire", map: "spire" }] : []),
+    const here = G.s.map, plot = G.s.plot;
+    const entries = [{ label: "World Map", world: true }, { label: "Type a place…" },
+      ...(plot.spire && here !== "spire" ? [{ label: "Directorate Spire", map: "spire" }] : []),
+      ...(plot.act === 4 && !G.s.flags.vesper && here !== "site:gate" ? [{ label: "The Rift Gate", map: "site:gate" }] : []),
       ...(here === "town" ? [] : [{ label: "Old Town", map: "town" }]),
       ...Object.keys(G.s.cities).filter(d => cityId(d) !== here).slice(-6).map(d => ({ label: d.slice(0, 20), map: cityId(d) }))];
     const k = await choose(this, 250, 40, 220, entries.map(e => e.label));
     if (k < 0) return false;
-    let map = entries[k].map;
+    let map = entries[k].map, dest = null;
+    if (entries[k].world) { const w = await this.worldMap(); if (!w) return false; dest = w.dest; }
+    else if (!map) dest = cleanDest((await prompt(this, "Where to? Any real place on Earth:")) || "");
     if (!map) {
-      const dest = entries[k].dest || cleanDest((await prompt(this, "Where to? Any real place on Earth:")) || "");
       if (!dest) return false;
       const known = Object.keys(G.s.cities).find(d => d.toLowerCase() === dest.toLowerCase());
       if (known && !G.s.cities[known].generic) map = cityId(known);
@@ -174,6 +198,7 @@ export class Menu extends Phaser.Scene {
         map = key;
       }
     }
+    if (map.startsWith("site:")) G.s.siteFrom = here;
     this.close();
     this.scene.get("field").teleportTo(map);
     return true;
