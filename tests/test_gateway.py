@@ -863,9 +863,13 @@ async def t_leaderboard():
         a = asyncio.create_task(serve(gw, local(), "tok", log=lambda m: None, agent="vol-a", telemetry_name="Rig <b>1</b>"))
         b = asyncio.create_task(serve(gw, local(), "tok", log=lambda m: None, agent="vol-b"))  # does not opt in
         await asyncio.sleep(1.0)  # both registered; vol-a has reported
-        for _ in range(12):
-            assert (await gw.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 200
-        await asyncio.sleep(0.5)
+        for i in range(80):  # a request for a given NPC sticks to one node, so ask for different NPCs until both volunteers have served jobs
+            body = {**BODY, "anansi": {"npc_id": f"npc{i}"}}
+            assert (await gw.post("/v1/chat/completions", json=body, headers=H)).status_code == 200
+            if {r["agent"] for r in store.report()["agents"] if r["tokens"] > 0} >= {"vol-a", "vol-b"}:
+                break
+        assert {r["agent"] for r in store.report()["agents"] if r["tokens"] > 0} >= {"vol-a", "vol-b"}
+        await asyncio.sleep(0.5)  # a report is sent every 0.2 s: the last one is in
         board = (await gw.get("/v1/leaderboard")).json()
         assert [n["node"] for n in board["nodes"]] == [lb.node_label("vol-a")], board  # vol-b served jobs too, but is not on the board
         n = board["nodes"][0]
