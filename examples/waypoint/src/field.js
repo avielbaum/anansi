@@ -93,6 +93,13 @@ export class Field extends Phaser.Scene {
     return a;
   }
 
+  /** A story character standing beside the hero for one scene; returns a function that removes them. */
+  cameo(id) {
+    const { x, y } = this.hero.s, a = this.addActor(id, x + 36, y, "down");
+    a.s.setDepth(y);
+    return () => a.s.destroy();
+  }
+
   addNpc(n) {
     const p = feet(n.x, n.y), a = this.addActor(n.id, p.x, p.y, n.dir);
     a.s.setDepth(p.y);
@@ -442,7 +449,9 @@ export class Field extends Phaser.Scene {
    *  Kessler and the fourth Vesper's betrayal; both play when the party arrives (pendingScene), since the map is rebuilt. */
   async afterSite(region) {
     const plot = G.s.plot;
+    const gone = this.cameo(REGIONS[region].ally.toLowerCase());
     await this.lines(SITE_BEATS[region].won);
+    gone();
     const { fresh, rivalNow, last } = completeSite(plot, region);
     if (fresh) { addGear(G.s, SITE_GEAR[region]); sfx("chest"); await say(this, "", `${REGIONS[region].ally}'s sigil: ${EQUIP[SITE_GEAR[region]].name}. Put it on from the menu.`); }
     if (rivalNow) { plot.rival = true; G.s.pending = "kessler"; }
@@ -454,10 +463,14 @@ export class Field extends Phaser.Scene {
   async pendingScene(which) {
     const plot = G.s.plot;
     if (which === "kessler") {
+      const gone = this.cameo("kessler");
       await this.lines(BEATS.kesslerAmbush);
+      gone();
       if ((await this.battle(["kessler"], true)) !== "won") return;
       this.busy = true;
+      const back = this.cameo("kessler");
       await this.lines(BEATS.kesslerWon);
+      back();
     } else if (which === "allFree") {
       await this.lines(BEATS.allFree);
       for (const r of REGION_IDS) { // Vesper takes the sigils, even off the party's backs

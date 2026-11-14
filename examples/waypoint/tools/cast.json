@@ -284,6 +284,14 @@
    [
     "torso/shirts/shortsleeve/torso_clothes_tshirt.json",
     "orange"
+   ],
+   [
+    "legs/pants/legs_pants2.json",
+    "navy"
+   ],
+   [
+    "feet/shoes/feet_shoes_basic.json",
+    "brown"
    ]
   ]
  },
@@ -307,6 +315,14 @@
    [
     "torso/shirts/torso_clothes_blouse_longsleeve.json",
     "navy"
+   ],
+   [
+    "legs/pants/legs_pants2.json",
+    "charcoal"
+   ],
+   [
+    "feet/shoes/feet_shoes_basic.json",
+    "brown"
    ]
   ]
  },
@@ -330,6 +346,14 @@
    [
     "torso/shirts/shortsleeve/torso_clothes_tshirt.json",
     "yellow"
+   ],
+   [
+    "legs/pants/legs_pants2.json",
+    "brown"
+   ],
+   [
+    "feet/shoes/feet_shoes_basic.json",
+    "brown"
    ]
   ]
  },
@@ -357,6 +381,14 @@
    [
     "torso/shirts/shortsleeve/torso_clothes_tshirt.json",
     "white"
+   ],
+   [
+    "legs/pants/legs_pants2.json",
+    "navy"
+   ],
+   [
+    "feet/shoes/feet_shoes_basic.json",
+    "black"
    ]
   ]
  },
@@ -384,6 +416,14 @@
    [
     "headwear/accessories/glasses/facial_glasses_sunglasses.json",
     "black"
+   ],
+   [
+    "legs/pants/legs_pants2.json",
+    "black"
+   ],
+   [
+    "feet/shoes/feet_shoes_basic.json",
+    "black"
    ]
   ]
  },
@@ -406,6 +446,14 @@
    ],
    [
     "torso/jacket/torso_jacket_collared.json",
+    "black"
+   ],
+   [
+    "legs/pants/legs_pants2.json",
+    "black"
+   ],
+   [
+    "feet/shoes/feet_shoes_basic.json",
     "black"
    ]
   ]
