@@ -6,14 +6,14 @@ import { Field } from "./field.js";
 import { Battle } from "./battle.js";
 import { Menu } from "./menu.js";
 import { Ending } from "./ending.js";
-import { EQUIP } from "./rules.js";
+import { EQUIP, ENEMIES } from "./rules.js";
 import { HOUSES } from "./data.js";
 import { preloadAudio, initAudio, music } from "./audio.js";
 
 const DIRS = ["up", "left", "down", "right"]; // LPC row order
 const LEADS = ["lead_m", "lead_f"];
 const TILES = ["grass", "ground_sand", "ground_snow", "ground_lush", "flagstone", "road", "road_line", "sidewalk", "cobble", "brick", "house", "tree", "pine", "gate", "chest", "dungeon_wall", "battle_town", "battle_dungeon", ...["dunes", "desert", "beach", "snow", "forest", "ruins", "meadow", "castle"].flatMap(n => [`battle_${n}`, `battle_${n}_night`]), "battle_town_night", "water", "water_ice", "water_lagoon", "plank", "barrel", "barrels", ...HOUSES];
-const ENEMY_IMGS = ["bat", "slime", "snake", "eyeball", "spider_bot", "drone_tank", "minotaur_mage", "wraith"];
+const ENEMY_IMGS = [...new Set(Object.entries(ENEMIES).map(([id, e]) => e.sprite || id))];
 
 class Boot extends Phaser.Scene {
   constructor() { super("boot"); }

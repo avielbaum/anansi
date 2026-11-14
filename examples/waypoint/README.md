@@ -17,6 +17,9 @@ prototype, with real-world destinations, is in `prototype/`.
   quay and piers over the water, with barrels) and a river (it splits the town, the road crosses on planks); the same name
   always gives the same town. Houses come in 25 roof and wall colours, the ground and paving are tinted, and the battle
   backdrop is chosen by climate (17 in all, day or night). Water is frozen in snow cities and turquoise in tropical ones.
+- **Local wildlife:** the streets of a generated city have the creatures of its climate: sand vipers, wasps, dune worms and burrowers
+  in the desert; frost bats, ice slimes and wisps in snow; vines, spore sprouts and pollen puffs in the tropics; the usual bats and
+  slimes elsewhere. A Directorate drone still turns up now and then. Some are the same picture in another colour.
 - **Equipment:** Menu → Equip. Each hero has a weapon, armor and accessory slot; the stats show what a piece would change before you
   choose it. Weapons are for one lead (Kai: blades, Mira: rods and tomes). Gear comes from Tobias' shop (Buy → Gear), chests in the
   Undercroft and the Spire, the Warden, and the first three relays. Icons: Ninja Adventure pack (CC0), `tools/build_icons.py`.

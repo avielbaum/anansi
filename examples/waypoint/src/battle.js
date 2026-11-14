@@ -18,6 +18,7 @@ export class Battle extends Phaser.Scene {
       const [x, y] = FOE_SPOTS[d.enemies.length][i], e = ENEMIES[id];
       this.add.ellipse(x, y, 60, 14, 0x000000, 0.3);
       const img = this.add.image(x, y, `enemy-${e.sprite || id}`).setOrigin(0.5, 1).setScale(e.scale || (e.boss ? 2 : 1.5));
+      if (e.tint) img.setTint(e.tint);
       return { ...e, id, maxhp: e.hp, atb: Math.random() * 60, turns: 0, img };
     });
     // the same name twice gets letters: Rift Bat A, Rift Bat B
@@ -158,7 +159,7 @@ export class Battle extends Phaser.Scene {
     f.hp = Math.max(0, f.hp - dmg);
     this.pop(f.img, dmg);
     this.tweens.add({ targets: f.img, x: f.img.x - 6, yoyo: true, repeat: 2, duration: 50 });
-    f.img.setTintFill(0xffffff); this.time.delayedCall(90, () => f.img.clearTint());
+    f.img.setTintFill(0xffffff); this.time.delayedCall(90, () => { f.img.clearTint(); if (f.tint) f.img.setTint(f.tint); });
     if (f.hp <= 0) this.tweens.add({ targets: f.img, alpha: 0, duration: 400, delay: 150 });
     this.refresh();
   }

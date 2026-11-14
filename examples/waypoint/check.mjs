@@ -213,6 +213,12 @@ for (const s of Object.values(SKILLS)) assert(s.sound && audio.sfx[s.sound], "ev
   for (let i = 0; i < 60; i++) { const c = genCity("Town" + i, parseAtlas(atlasText), CLIMATES[i % 4]).map; styles.add(c.style); for (const o of c.objects) assert(existsSync(here(`assets/tiles/${o[0]}.png`)) && STAMPS[o[0]], `${c.name}: no picture or stamp for ${o[0]}`); for (const [t] of c.paint) assert(existsSync(here(`assets/tiles/${t}.png`)), t); }
   assert(styles.has("harbor") && styles.has("river") && styles.has("street"), `layout styles seen: ${[...styles]}`);
 }
+// wildlife
+for (const c of CLIMATES) {
+  const enc = genCity("Wildville", parseAtlas(atlasText), c).map.encounters;
+  assert(enc.length >= 5 && enc.some(f => ENEMIES[f[0]].tint || !["spider_bot", "drone_tank", "bat", "slime", "snake"].includes(f[0])), `${c}: no local wildlife`);
+}
+for (const [id, e] of Object.entries(ENEMIES)) assert(existsSync(here(`assets/enemies/${e.sprite || id}.png`)), `${id}: no picture`);
 // equipment
 {
   const g = newGame("lead_m"), kai = g.party[0], mira = g.party[1];
