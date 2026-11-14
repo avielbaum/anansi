@@ -51,18 +51,18 @@ const CONTRACTS := [
 	{"item": "boxed", "qty": 50, "days": 4, "reward": 1000},
 ]
 
-## The coworkers. perk: what finishing their storyline gives, applied in sim.gd.
+## The coworkers. perk: what finishing their storyline gives, applied in sim.gd. beat: the buildings they walk between.
 const CREW := {
-	"dock": {"name": "Dot", "role": "dock supervisor", "wage": 15, "station": "inbound",
+	"dock": {"name": "Dot", "role": "dock supervisor", "wage": 15, "beat": ["inbound", "outbound"],
 		"persona": "Dot runs the loading docks. Brisk, dry humour, counts everything twice, hates late trucks.",
 		"perk": "Trucks unload faster for good."},
-	"tech": {"name": "Sprocket", "role": "machine technician", "wage": 15, "station": "press",
+	"tech": {"name": "Sprocket", "role": "machine technician", "wage": 15, "beat": ["press", "molder", "assembler"],
 		"persona": "Sprocket keeps the machines alive. Gentle, tinkers constantly, talks to the machines by name.",
 		"perk": "The machines never jam again."},
-	"qa": {"name": "Tilly", "role": "packing and quality lead", "wage": 15, "station": "packer",
+	"qa": {"name": "Tilly", "role": "packing and quality lead", "wage": 15, "beat": ["packer", "outbound"],
 		"persona": "Tilly checks every unit that leaves. Exacting, proud of the work, soft spot for a tidy box.",
 		"perk": "No more defective units."},
-	"sales": {"name": "Penny", "role": "sales rep", "wage": 15, "station": "outbound",
+	"sales": {"name": "Penny", "role": "sales rep", "wage": 15, "beat": ["outbound"],
 		"persona": "Penny sells what the floor makes. Cheerful, always on the phone, promises a little too much.",
 		"perk": "Everything sells for 10% more."},
 }

@@ -18,8 +18,8 @@ floor manager of the Hopper Works, a small gadget plant on its last chance.
 - **Tutorial:** eight steps walk a new manager from the first dock to the first errand, pulsing the button to press.
   It can be skipped, and a saved game remembers where you were.
 - **Trouble shows:** a machine that is jammed, blocked or short of an input says so above it.
-- **The crew:** Dot (docks), Sprocket (machines), Tilly (packing and quality) and Penny (sales) each have a morale from
-  0 to 100. Morale scales their station from 0.8x to 1.2x: truck turnaround, machine speed and jams, defective units
+- **The crew:** Dot (docks), Sprocket (machines), Tilly (packing and quality) and Penny (sales) walk between the
+  buildings they look after, and each have a morale from 0 to 100. Morale scales their station from 0.8x to 1.2x: truck turnaround, machine speed and jams, defective units
   that come back unpaid, and selling prices. Everyone loses 3 morale on an ordinary day, so a crew left alone sours.
   Below 30 on average the crew walks out for a day; above 70 everything sells for 10% more.
 
@@ -72,7 +72,7 @@ title key, so do not put it on the public internet as it is (see `docs/sdk.md`, 
 Click a build button, then the floor. **R** turns the piece (or the building under the mouse), right-click cancels
 the tool or removes a building for half its price. Drag to lay conveyor. Click a coworker to talk, a building to
 inspect it, an inbound dock to change what it orders. **WASD** or the arrows move the view, **Q**/**E** turn it, the
-wheel zooms, **Space** pauses, **M** mutes.
+wheel zooms, **Space** pauses, **M** mutes everything, **N** just the music.
 
 ## Code
 
@@ -92,9 +92,9 @@ misses three deadlines and has not won by day 20. A full 28x24 floor of moving b
 
 ## Not done yet
 
-- Coworkers that walk the floor (they stand along the back wall; Pip walks to whatever you click, in a straight
-  line), forklifts, music.
-- The sound effects (Kenney, CC0) were wired up on a machine with no audio device: nobody has listened to the mix yet.
+- Forklifts, and paths: Pip and the coworkers walk in straight lines, through machines if need be.
+- The sound effects (Kenney, CC0) and the music loop ("Bossa Nova" by Joth, CC0) were chosen by name and wired up on
+  a machine with no audio device: nobody has listened to them in the game yet.
 - The browser build was run by hand in Chrome on a 2013 laptop GPU (Quadro K1100M), without a gateway and with one
   (Ollama, `qwen3:1.7b` on CPU: a first reply took 30 s, so the chat timeout is 45 s). It held 55 frames a second for
   a new game and for the largest floor with every tile a moving conveyor (`?stress` in the address, or `-- stress` on

@@ -22,7 +22,7 @@ const ITEM_LOOK := {
 	"boxed": ["box-large", 0.5, Color.WHITE],
 }
 const CREW_LOOK := {"dock": "character-worker", "tech": "character-male-c", "qa": "character-female-e", "sales": "character-female-b"}
-const HELP := "Click a build button, then the floor. R turns the piece, right-click cancels or removes. Click a coworker to talk, a building to inspect it, an inbound dock to change what it orders. WASD or arrows move, Q and E turn the view, the wheel zooms, Space pauses, M mutes, F3 shows the frame rate."
+const HELP := "Click a build button, then the floor. R turns the piece, right-click cancels or removes. Click a coworker to talk, a building to inspect it, an inbound dock to change what it orders. WASD or arrows move, Q and E turn the view, the wheel zooms, Space pauses, M mutes everything, N just the music, F3 shows the frame rate."
 ## The tutorial: what Pip is told, and the build button that pulses while she is told it. _tutorial_done() says when
 ## each step is finished.
 const TUTORIAL := [
@@ -31,7 +31,7 @@ const TUTORIAL := [
 	["Panels need to leave. Place an [b]Outbound dock[/b] a tile or two past the press.", "outbound"],
 	["Join them with [b]Conveyor[/b] so crates travel dock, press, dock. Drag to lay a run. Right-click removes a mistake.", "belt"],
 	["First sale! The contract up top wants 20 panels by the end of day 2. The buttons > >> >>> speed time up; || or Space pauses.", ""],
-	["Your crew stands along the back wall. Their mood changes how fast their part of the plant runs. Click one of them.", ""],
+	["Your crew walks between the buildings they look after. Their mood changes how fast their part of the plant runs. Click one of them.", ""],
 	["Type anything and press Enter: kindness lifts morale, rudeness sinks it. Or click [b]Any work?[/b] for an errand that pays.", ""],
 	["Do the errand: the orange line up top says how. Everyone loses a little morale each day, so keep talking, helping and paying fairly. That is the job. Good luck!", ""],
 ]
@@ -63,6 +63,10 @@ var ghost := Node3D.new()
 var ghost_key := ""
 var crew_nodes := {}  # crew id (and "pip") -> Node3D
 var pip_goal := Vector3.ZERO  # where Pip is walking to
+var crew_home := {}  # crew id -> their spot by the back wall
+var crew_goal := {}  # crew id -> where they are walking to
+var crew_stop := {}  # crew id -> which stop of their beat they are on
+var crew_wait := {}  # crew id -> seconds until they move on
 
 var top: Label
 var contract_label: Label
@@ -84,6 +88,7 @@ var tags_seen := []
 var tut_text: RichTextLabel
 var build_buttons := {}  # kind -> its button in the build bar
 var sounds := {}  # sound name -> its AudioStreamPlayer
+var music := AudioStreamPlayer.new()
 var last_sell := 0  # when the sale sound last played, so a busy dock does not machine-gun it
 
 
@@ -93,6 +98,11 @@ func _ready() -> void:
 		a.stream = load("res://assets/audio/%s.ogg" % f)
 		add_child(a)
 		sounds[f] = a
+	music.stream = load("res://assets/audio/music.mp3")
+	music.stream.loop = true
+	music.volume_db = -20.0
+	add_child(music)
+	music.play()
 	_world()
 	_ui()
 	var stress := "stress" in OS.get_cmdline_user_args() or (OS.has_feature("web") and "stress" in str(JavaScriptBridge.eval("location.search")))
@@ -416,6 +426,10 @@ func _place_crew() -> void:
 		n.add_child(tag)
 		add_child(n)
 		crew_nodes[id] = n
+		crew_home[id] = n.position
+		crew_goal[id] = n.position
+		crew_stop[id] = 0
+		crew_wait[id] = 4.0 + i * 3.0
 	pip_goal = crew_nodes.pip.position
 
 
@@ -429,6 +443,7 @@ func _process(delta: float) -> void:
 				acc = 0.0
 				break
 	_walk_pip(delta)
+	_walk_crew(delta)
 	_camera(delta)
 	if belts_dirty:
 		_draw_belts()
@@ -447,6 +462,45 @@ func _walk_pip(delta: float) -> void:
 		pip.position += to.limit_length(4.0 * delta)
 		pip.rotation.y = atan2(to.x, to.z)
 	_play(pip, "walk" if moving else "idle")
+
+
+## Coworkers walk their beat: every so often on to the next building they look after, to stand beside it. They are not
+## part of the sim either: where they stand changes nothing, their morale does. They stay put while you talk to them,
+## stand still while the game is paused, and go back to the wall on a walkout day.
+func _walk_crew(delta: float) -> void:
+	for id in Data.CREW:
+		var n: Node3D = crew_nodes[id]
+		if id == talking:
+			crew_goal[id] = n.position
+		else:
+			crew_wait[id] -= delta * speed
+			if crew_wait[id] <= 0.0:
+				crew_wait[id] = 10.0 + randf() * 10.0
+				crew_goal[id] = _next_stop(id)
+		var to: Vector3 = crew_goal[id] - n.position
+		var moving := to.length() > 0.05 and speed > 0.0
+		if moving:
+			n.position += to.limit_length(2.5 * delta)
+			n.rotation.y = atan2(to.x, to.z)
+		_play(n, "walk" if moving else "idle")
+
+
+## The next place on a coworker's beat: a free tile beside one of their buildings, or home when there is none.
+func _next_stop(id: String) -> Vector3:
+	var spots := []
+	var ground := Rect2i(Vector2i(-1, -1), sim.floor_size + Vector2i(2, 2))
+	if not sim.walkout:
+		for pos in sim.cells:
+			if sim.cells[pos].kind in Data.CREW[id].beat:
+				for d in Data.DIRS:
+					if not sim.cells.has(pos + d) and ground.has_point(pos + d):
+						spots.append(_center(pos).lerp(_center(pos + d), 0.85))
+						break
+	if spots.is_empty() or id == "sales":  # Penny keeps coming back to her phone
+		spots.append(crew_home[id])
+	crew_stop[id] = (crew_stop[id] + 1) % spots.size()
+	var nudge := Data.CREW.keys().find(id) - 1.5  # so two people sent to the same tile do not stand inside each other
+	return spots[crew_stop[id]] + Vector3(nudge * 0.4, 0, nudge * 0.25)
 
 
 ## Loop an animation, or play one once and fall back to idle. Does nothing if that animation is already looping.
@@ -606,6 +660,7 @@ func _unhandled_input(e: InputEvent) -> void:
 				_close_talk()
 			KEY_SPACE: speed = 0.0 if speed > 0.0 else 1.0
 			KEY_M: AudioServer.set_bus_mute(0, not AudioServer.is_bus_mute(0))
+			KEY_N: music.stream_paused = not music.stream_paused
 			KEY_F3: show_fps = not show_fps
 
 
