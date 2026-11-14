@@ -26,6 +26,7 @@
   "vine_sigil": { "skill": "Ring", "hue": 100 },
   "skill_blink_strike": { "skill": "Permutation", "dir": "Spell" },
   "skill_rift_burst": { "skill": "Explosion", "dir": "Spell" },
+  "skill_lantern_flare": { "skill": "Fireball", "dir": "Spell" },
   "skill_mend": { "skill": "Heal", "dir": "Spell" },
   "skill_static_lance": { "skill": "BookThunder", "dir": "Spell" }
 }

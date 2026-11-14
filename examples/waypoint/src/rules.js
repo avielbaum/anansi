@@ -10,6 +10,7 @@ export const ITEMS = {
 export const SKILLS = {
   blink_strike: { name: "Blink Strike", mp: 4, kind: "phys", power: 2, target: "enemy", anim: "thrust", sound: "blink", desc: "Teleport behind a foe and strike twice as hard." },
   rift_burst: { name: "Rift Burst", mp: 8, kind: "mag", power: 1.1, target: "enemies", anim: "spellcast", sound: "burst", desc: "Tear space open around every foe." },
+  lantern_flare: { name: "Lantern Flare", mp: 10, kind: "mag", power: 1.4, target: "enemies", anim: "spellcast", sound: "burst", desc: "Sora's lantern flares and burns every foe." },
   mend: { name: "Mend", mp: 5, kind: "heal", power: 35, target: "ally", anim: "spellcast", sound: "heal", desc: "Heal one ally." },
   static_lance: { name: "Static Lance", mp: 5, kind: "mag", power: 1.8, target: "enemy", anim: "spellcast", sound: "lance", desc: "A bolt of folded lightning." },
 };
@@ -116,7 +117,7 @@ export function preview(h, slot, id) {
 export const HEROES = {
   lead_m: { name: "Kai", base: { hp: 62, mp: 14, atk: 12, mag: 7, def: 7, spd: 11 }, grow: { hp: 9, mp: 2, atk: 3, mag: 1, def: 2, spd: 1 }, skills: ["blink_strike", "rift_burst"], attack: "slash" },
   // Freed jumpers who travel with the party for a while (see joinParty). Vesper is not one of them.
-  sora: { name: "Sora", base: { hp: 48, mp: 24, atk: 8, mag: 12, def: 6, spd: 12 }, grow: { hp: 7, mp: 3, atk: 2, mag: 3, def: 1, spd: 1 }, skills: ["mend", "rift_burst"], attack: "thrust" },
+  sora: { name: "Sora", base: { hp: 48, mp: 24, atk: 8, mag: 12, def: 6, spd: 12 }, grow: { hp: 7, mp: 3, atk: 2, mag: 3, def: 1, spd: 1 }, skills: ["mend", "lantern_flare"], attack: "thrust" },
   ilse: { name: "Ilse", base: { hp: 56, mp: 16, atk: 11, mag: 9, def: 8, spd: 10 }, grow: { hp: 8, mp: 2, atk: 2, mag: 2, def: 2, spd: 1 }, skills: ["static_lance", "blink_strike"], attack: "slash" },
   oluwa: { name: "Oluwa", base: { hp: 72, mp: 10, atk: 13, mag: 5, def: 9, spd: 8 }, grow: { hp: 11, mp: 1, atk: 3, mag: 1, def: 2, spd: 1 }, skills: ["blink_strike", "mend"], attack: "slash" },
   lead_f: { name: "Mira", base: { hp: 50, mp: 22, atk: 9, mag: 12, def: 6, spd: 13 }, grow: { hp: 7, mp: 3, atk: 2, mag: 3, def: 1, spd: 1 }, skills: ["mend", "static_lance"], attack: "thrust" },
