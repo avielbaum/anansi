@@ -621,6 +621,112 @@ async def t_escalation():
     assert s["escalations"] == 4
 
 
+async def t_node_token_cap():
+    import tempfile
+    path = os.path.join(tempfile.mkdtemp(), "cap.db")
+
+    def build():
+        cfg = copy.deepcopy(CFG)
+        cfg["db_path"] = path
+        cfg["max_inflight_per_player"] = 100
+        cfg["nodes"] = [{"url": "http://node-a", "models": ["npc-small"]},
+                        {"url": "http://node-o", "models": ["npc-small"], "overflow": True, "max_tokens_per_day": 40}]
+        cfg["titles"]["demo"]["allow_overflow"] = True
+        a, o = make_node("a"), make_node("o")
+        a.state.fail = True  # the mesh is down, so every request overflows to the paid node (15 tokens each)
+        gw = make_app(cfg, Router({"node-a": a, "node-o": o}))
+        return o, gw, httpx.AsyncClient(transport=httpx.ASGITransport(app=gw), base_url="http://gw")
+    o, gw, c = build()
+    codes = [(await c.post("/v1/chat/completions", json=BODY, headers=H)).status_code for _ in range(5)]
+    assert codes == [200, 200, 200, 503, 503], codes  # 3 x 15 = 45 reaches the cap of 40; after that the node gets nothing
+    assert o.state.calls == 3
+    snap = [n for n in gw.state.sched.snapshot() if n["overflow"]][0]
+    assert snap["capped"] and snap["tokens_today"] == 45 and snap["cap"] == 40
+    o2, _, c2 = build()  # a restart (same database): the allowance is not renewed
+    assert (await c2.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 503 and o2.state.calls == 0
+    o3, gw3, c3 = build()
+    next(n for n in gw3.state.sched.nodes if n.cap).day = "1999-01-01"  # a new UTC day starts the node again
+    assert (await c3.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 200
+    from gateway.scheduler import Scheduler
+    for bad in (0, -5, "100", 1.5):
+        try:
+            Scheduler([{"url": "http://x", "models": ["m"], "max_tokens_per_day": bad}])
+            assert False, bad
+        except ValueError:
+            pass
+
+
+async def t_host_that_ignores_the_json_schema():
+    cfg = copy.deepcopy(CFG)
+    cfg["nodes"] = [{"url": "http://node-a", "models": ["npc-small"], "schema": False}]
+    a = make_node("a")
+    gw = make_app(cfg, Router({"node-a": a}))
+    c = httpx.AsyncClient(transport=httpx.ASGITransport(app=gw), base_url="http://gw")
+    body = {**BODY, "anansi": {"npc_id": "x", "structured": True}}
+    a.state.reply = 'Sure! ```json\n{"say": "Deal.", "action": "give_discount"}\n```'  # JSON in a code fence, as chat models do
+    r = (await c.post("/v1/chat/completions", json=body, headers=H)).json()
+    assert json.loads(r["choices"][0]["message"]["content"]) == {"say": "Deal.", "action": "give_discount"} and not r["anansi"]["filtered"]
+    sent = a.state.last
+    assert "response_format" not in sent  # this host ignores it
+    first = sent["messages"][0]["content"]
+    assert first.startswith(CFG["titles"]["demo"]["system_prefix"]) and "Reply with only a JSON object" in first
+    assert '"action": "give_discount" | "call_guard" | "none"' in first and '"say": "<string>"' in first
+    # the same node, the quest route: nested schemas are sent whole, and the fenced reply still parses
+    from gateway.app import schema_hint
+    assert schema_hint({"type": "object", "properties": {"a": {"type": "array", "items": {}}}}).startswith('{"type":"object"')
+    cfg["titles"]["demo"]["quest"] = {"lore": "A mining town."}
+    a2 = make_node("a")
+    gw2 = make_app(cfg, Router({"node-a": a2}))
+    c2 = httpx.AsyncClient(transport=httpx.ASGITransport(app=gw2), base_url="http://gw")
+    quest = {"title": "Ore", "summary": "Brom needs ore.", "reward_tier": "small", "story_summary": "Ore found.",
+             "steps": [{"objective": "talk_to", "target_id": "brom", "description": "Hear Brom."}]}
+    a2.state.reply = "Here is your quest:\n```json\n" + json.dumps(quest) + "\n```"
+    r = await c2.post("/v1/quest", json={"world": WORLD, "theme": "mining"}, headers=H)
+    assert r.status_code == 200 and r.json()["quest"]["title"] == "Ore", r.text
+    assert "response_format" not in a2.state.last and '"target_id"' in a2.state.last["messages"][0]["content"]
+    # a host that does enforce schemas keeps response_format and gets no extra sentence
+    cfg["nodes"][0].pop("schema")
+    a3 = make_node("a")
+    c3 = httpx.AsyncClient(transport=httpx.ASGITransport(app=make_app(cfg, Router({"node-a": a3}))), base_url="http://gw")
+    a3.state.reply = json.dumps({"say": "Hi.", "action": "none"})
+    await c3.post("/v1/chat/completions", json=body, headers=H)
+    assert "response_format" in a3.state.last and "Reply with only a JSON object" not in a3.state.last["messages"][0]["content"]
+
+
+async def t_plain_reply_has_no_action_chatter():
+    from gateway.app import PLAIN_NOTE
+    cfg = copy.deepcopy(CFG)
+    a, b, gw, c = setup(cfg)
+    prefix = CFG["titles"]["demo"]["system_prefix"]
+    await c.post("/v1/chat/completions", json=BODY, headers=H)  # plain request on a title that has actions
+    sent = (a.state.last or b.state.last)["messages"]
+    assert sent[0] == {"role": "system", "content": prefix + PLAIN_NOTE} and sent[-1]["content"] == "hi"
+    a.state.last = b.state.last = None
+    await c.post("/v1/chat/completions", json={**BODY, "anansi": {"npc_id": "x", "structured": True}}, headers=H)
+    assert (a.state.last or b.state.last)["messages"][0] == {"role": "system", "content": prefix}  # structured: the actions are wanted
+    # the prompt sentence is not a guarantee (gemma4:31b still wrote "Action: none"): a trailing label is removed, as are replies that
+    # are only "none"; real speech with those words in it is left alone
+    fb = CFG["titles"]["demo"]["fallback_line"]
+    plain = lambda text: (a.state.__setattr__("reply", text), b.state.__setattr__("reply", text))
+
+    async def say():
+        r = (await c.post("/v1/chat/completions", json=BODY, headers=H)).json()
+        return r["choices"][0]["message"]["content"], r["anansi"]["filtered"]
+    for got, want in (("A quiet place. Action: none", ("A quiet place.", False)), ("Hello.\n\n*Action: call_guard*", ("Hello.", False)),
+                      ("Ten gold pieces for the lantern, traveler.  none", ("Ten gold pieces for the lantern, traveler.", False)),
+                      ("I have none.", ("I have none.", False)), ("None.", (fb, True)), ("Action: none", (fb, True)),
+                      ("None of these are cheap.", ("None of these are cheap.", False)), ("None. I have no dragons.", ("None. I have no dragons.", False))):
+        plain(got)
+        assert await say() == want, got
+    plain("A quiet place. Action: none")
+    status, pieces, meta, err = await sse(c)  # streamed: the label is not sent either
+    assert status == 200 and not err and "".join(pieces).strip() == "A quiet place."
+    cfg["titles"]["demo"]["actions"] = []  # a title without actions: nothing to hide
+    a2, b2, _, c2 = setup(cfg)
+    await c2.post("/v1/chat/completions", json=BODY, headers=H)
+    assert (a2.state.last or b2.state.last)["messages"][0]["content"] == prefix
+
+
 async def t_one_agent_serves_several_gateways():
     import tempfile
     from gateway.store import Store
@@ -953,7 +1059,7 @@ def t_store():
     pg = os.environ.get("ANANSI_TEST_PG")  # a throwaway Postgres URL: the same checks run against it (CI sets one)
     for path in [os.path.join(tempfile.mkdtemp(), "a.db")] + ([pg] if pg else []):
         if path == pg:
-            for t in ("usage", "bans", "ledger"):
+            for t in ("usage", "bans", "ledger", "node_spend"):
                 Store(path)._x(f"DROP TABLE IF EXISTS {t}")
         d = today()
         s = Store(path)
@@ -974,6 +1080,8 @@ def t_store():
         assert r["titles"] == [{"title": "demo", "accounts": 1, "tokens": 15}]
         other = Store(path)  # a second gateway on the same database sees the same budget
         assert not other.reserve("demo", "76561", d, 5, limit=15) and other.reserve("demo", "76561", d, 5, limit=20)
+        assert s.add_node_spend("https://paid.example", 30) == 30 and other.add_node_spend("https://paid.example", 12) == 42  # one total
+        assert s.node_spend("https://paid.example") == 42 and s.node_spend("https://paid.example", "1999-01-01") == 0 and s.node_spend("https://other") == 0
         assert s.usage("demo", "76561", d) == 20 and other.reserve("demo", "new", d, 5, limit=1)  # a new day row always starts
         s.add_usage("demo", "old", "2020-01-01", 1)
         s.purge(35)  # old usage rows hold Steam ids and go; the ledger stays
@@ -1319,6 +1427,7 @@ async def t_agent_pauses_while_the_owner_is_busy():
         task = asyncio.gather(*(ag.worker(net, local, "tok", "a", log=logs.append, idle=(60, 60), check_s=0.05) for _ in range(2)))
         await asyncio.sleep(1.2)
         task.cancel()
+        await asyncio.gather(task, return_exceptions=True)  # let the cancellation finish quietly
         assert polls and any("pausing" in m for m in logs), logs
         assert left.count("/node/leave") == 2  # every worker tells the gateway, so no job is queued for this machine
         assert sum("pausing" in m for m in logs) == 1  # one decision and one log line for the machine

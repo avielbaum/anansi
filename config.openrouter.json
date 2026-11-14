@@ -26,6 +26,7 @@
       "api_key_env": "OPENROUTER_API_KEY",
       "upstream_model": "qwen/qwen3-32b",
       "max_inflight": 10,
+      "max_tokens_per_day": 500000,
       "extra": {
         "provider": {
           "data_collection": "deny"

@@ -31,7 +31,7 @@ JSON file named by `ANANSI_CONFIG`.
 | `default_model` | Logical model name when a request names none |
 | `upstream_timeout_s` | Per-attempt timeout to a node (default 20) |
 | `auth.mode` | How player tokens are checked. `"dev"` accepts `dev:<player id>` (never in production); `"steam"` checks the Steam Web API with `STEAM_PUBLISHER_KEY`. Other platforms (Epic, GOG, itch.io, consoles, mobile, your own launcher) need a check added in `player_id()` in `gateway/app.py`; an unknown mode, or no `auth` block at all, stops startup (there is no default). The old key `steam` still works |
-| `nodes[]` | Static nodes: `url`, `models` (logical names), `region`, `upstream_model` (the server's own name), `extra` (merged into every request, e.g. to switch thinking off) |
+| `nodes[]` | Static nodes: `url`, `models` (logical names), `region`, `upstream_model` (the server's own name), `extra` (merged into every request, e.g. to switch thinking off), `schema` (`false` for a host that ignores JSON schemas, see below), `max_tokens_per_day` (a daily token cap for a paid node, see below) |
 | `titles.<id>` | One entry per game, see below |
 | `db_path` | SQLite file, or a `postgresql://` URL for gateways on several machines, holding daily budgets, agent bans and the volunteer work ledger. Unset means in memory (nothing survives a restart) |
 | `cors_origins` | Origins allowed to call the gateway from a browser, e.g. `["https://game.example"]`. Empty by default: no page on another origin can call it. Never `"*"` with a title key in the page |
@@ -74,10 +74,40 @@ dev split a question listing exceptions ("asking a price is not haggling") confi
 
 ### Hosts that ignore the JSON schema
 
-Ollama Cloud ignored `response_format` (and Ollama's own `format`) in a test, so the model answered in free text. On such a
-host, say in the title's `system_prefix` that the reply must be only `{"say": ..., "action": ...}`; with that, every G1
-reply from gemma4:31b was valid JSON. Judge and action-check answers that come back as a bare word are accepted when the
-word is exactly one of the allowed verdicts (`YES`, `"SAFE".`), and anything longer still fails closed.
+Ollama Cloud ignored `response_format` (and Ollama's own `format`) in a test, so the model answered in free text and every
+structured reply and quest failed. Mark such a node `"schema": false`: the gateway then drops `response_format` for it and
+adds one sentence to the request, `Reply with only a JSON object, no other text, shaped like this: {"say": "<string>",
+"action": "give_discount" | "call_guard" | "none"}` (a quest's schema, which is nested, is given whole), and it finds the JSON
+in a reply that wraps it in prose or a code fence. Studios do not edit their prompts per host. Live on Ollama Cloud
+(gemma4:31b, the shopkeeper prompt unedited): the G1 test split scored 93 of 106 with no fallback lines, the same as with a
+hand-edited prompt, and both quests came back valid. Judge and action-check answers that come back as a bare word are
+accepted when the word is exactly one of the allowed verdicts (`YES`, `"SAFE".`), and anything longer still fails closed.
+OpenRouter enforced the schema and needs nothing.
+
+### Plain replies without action chatter
+
+A title with `actions` has a prompt that says "choose an action", and a model answering a plain (not structured) request can
+answer that instruction inside its reply: `...the valley!  Action: none`, or a first sentence that is just `None.`. The gateway
+handles this for plain and streamed replies of any title with actions, in two steps. It appends one sentence to the prompt
+(`PLAIN_NOTE`: reply with only the words the character says, no action names, no "Action:" line, no reasoning), and it removes
+what still gets through: a trailing `Action: <word>` label, a bare `none` set apart by a blank or double space at the end, and a
+reply that is only `none` (which becomes the fallback line). Speech that merely contains the words ("None of these are cheap",
+"I have none.") is left alone. Structured requests are not changed. Measured on the 96 G1 prompts that expect no action
+(plain replies, no actions wanted): Qwen3-1.7B on CPU, replies with chatter 20 of 96 before, 1 of 96 with the sentence;
+gemma4:31b on Ollama Cloud 96 of 96 before (it ended every reply in `Action: none`), 4 of 96 with the sentence alone, 0 of 96
+with the backstop alone or with both.
+
+### Spending cap for a paid node (`max_tokens_per_day`)
+
+`{"url": "https://openrouter.ai/api", ..., "overflow": true, "max_tokens_per_day": 500000}` stops sending anything to the
+node once it has been sent that many tokens today (UTC). The gateway counts the host's own token numbers, or estimates from the
+text when a stream or a host reports none, for replies, judge calls and action checks alike. The count is kept in the
+database (`db_path`), so a restart does not renew the allowance, and gateways sharing a database add to one total (each sees the
+others' tokens at its next charge). After the cap the node is skipped like an ejected one; with no other node the request gets
+`503` and the SDK falls back. It applies to any node, not only overflow ones. Convert dollars to tokens with the host's price
+(both input and output tokens count). `/admin/nodes` shows `tokens_today`, `cap` and `capped`. shortcut: the cap is checked when
+a request is routed, so requests already in flight can overshoot it (live test: a 2,000-token cap stopped after 2,065 tokens,
+and the gateway's count matched OpenRouter's exactly).
 
 ### Escalation (`escalate`)
 
@@ -173,11 +203,11 @@ Example (`config.openrouter.json`):
 ```json
 {"url": "https://openrouter.ai/api", "models": ["npc-small"], "overflow": true,
  "api_key_env": "OPENROUTER_API_KEY", "upstream_model": "qwen/qwen3-32b",
- "max_inflight": 10, "extra": {"provider": {"data_collection": "deny"}, "reasoning": {"enabled": false}}}
+ "max_inflight": 10, "max_tokens_per_day": 500000, "extra": {"provider": {"data_collection": "deny"}, "reasoning": {"enabled": false}}}
 ```
 
 - The key is read from the environment variable named by `api_key_env` (never put it in the config); startup fails if it is unset. Any OpenAI-compatible API with bearer auth works the same way.
-- `max_inflight` caps how many paid requests run at once, so a traffic spike cannot run up an unbounded bill.
+- `max_inflight` caps how many paid requests run at once, and `max_tokens_per_day` caps how many tokens it is sent per day (see [Spending cap](#spending-cap-for-a-paid-node-max_tokens_per_day)), so a traffic spike cannot run up an unbounded bill.
 - **Opt-in per title:** set `"allow_overflow": true` on a title. Without it that title never reaches the paid API, even when the mesh is down (it gets a 503 and your SDK falls back). Opting in means player messages **and the NPC's system prompt** are sent to the provider and its upstream model hosts; the example's `data_collection: deny` asks OpenRouter to route only to providers that do not store prompts, but check their terms.
 - Safety judges and the guard never use overflow nodes, because they receive the secret prompt; they stay on your own nodes.
 - Overflow replies go through the same output checks, budgets and token accounting as any other reply. Your OpenRouter bill is separate from the per-player token budgets, so set a spending limit on the OpenRouter key too.

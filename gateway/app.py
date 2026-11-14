@@ -54,6 +54,31 @@ def leaks(prefix, text, n=5):
     return any(tuple(r[i:i + n]) in grams for i in range(len(r) - n + 1))
 
 
+def json_slice(text):
+    """The outermost {...} of a reply that wraps its JSON in prose or a code fence; the text unchanged if there is none."""
+    a, b = text.find("{"), text.rfind("}")
+    return text[a:b + 1] if 0 <= a < b else text
+
+
+def schema_hint(s):
+    """A JSON schema as a one-line shape a model can copy, e.g. {"say": "<text>", "action": "give_discount" | "none"}. Schemas with
+    nested parts (quests) are given whole."""
+    props = s.get("properties") if isinstance(s, dict) else None
+    if s.get("type") != "object" or not props or not all(isinstance(v, dict) and (v.get("enum") or v.get("type") in ("string", "number", "integer", "boolean")) for v in props.values()):
+        return json.dumps(s, separators=(",", ":"))
+    one = lambda v: " | ".join(json.dumps(x) for x in v["enum"]) if v.get("enum") else '"<' + v["type"] + '>"'
+    return "{" + ", ".join(f'"{k}": {one(v)}' for k, v in props.items()) + "}"
+
+
+PLAIN_NOTE = (' Reply with only the words the character says out loud: no action names, no "Action:" line, no reasoning, '
+              "no notes about what you chose.")  # added to a title's prompt when it has actions but this request wants plain text
+
+
+# What a model writes when it answers the prompt's "choose an action" instruction in a plain reply: a trailing "Action: none"
+# label, a bare "none" set apart by a blank or double space at the end, or a reply that is only "none". Never part of what a character says. Removed from plain replies of titles with actions.
+ACTION_LABEL = re.compile(r"[\s*_(\[]*\baction\s*[:=]\s*\w+[\s*_)\].]*$|\s{2,}\W*none\W*$|^\W*none\W*$", re.I)
+
+
 def reply_text(data):
     """Assistant text of an OpenAI-style reply, with leaked <think> blocks removed. Empty if missing."""
     try:
@@ -68,6 +93,10 @@ def make_app(config=None, transport=None):
     credits = cfg.get("credits") or {}
     store = Store(cfg.get("db_path"), credits.get("hold_days", 7), credits.get("max_per_day"))
     store.purge(cfg.get("retention_days", 35))
+    for n in sched.nodes:
+        if n.cap is not None:  # a restart must not give a paid node a fresh daily allowance
+            n.full()
+            n.used = store.node_spend(n.url)
     purged = [datetime.date.today()]
     hub = PullHub(sched, cfg["pull_tokens"], transport or httpx.AsyncHTTPTransport(), cfg.get("pull_poll_s", 20),
                   cfg.get("pull_ttl_s"), cfg.get("upstream_timeout_s", 20), reply_text, cfg.get("canaries"),
@@ -234,11 +263,12 @@ def make_app(config=None, transport=None):
             r = await client.post(node.url + "/v1/chat/completions", json=payload_for(req, node), headers=node.headers)
             if r.status_code == 200:
                 out = reply_text(r.json())
+                charge(node, r.json(), req["messages"], out)
                 if guard:
                     verdict = out.strip().upper()
                 else:
                     try:
-                        verdict = str(json.loads(out).get("verdict", "")).strip().upper()
+                        verdict = str(json.loads(json_slice(out) if not node.schema else out).get("verdict", "")).strip().upper()
                     except (ValueError, AttributeError):  # a host that ignores the JSON schema (Ollama Cloud did): accept the bare word, nothing more
                         word = out.strip().strip("\"'`.*").upper()
                         verdict = word if word in req["response_format"]["json_schema"]["schema"]["properties"]["verdict"]["enum"] else ""
@@ -309,7 +339,26 @@ def make_app(config=None, transport=None):
         p = {**up, **node.extra}
         if node.upstream_model:
             p["model"] = node.upstream_model
+        rf = p.get("response_format")
+        if rf and not node.schema:  # a host that ignores response_format (Ollama Cloud did): ask for the JSON in words
+            del p["response_format"]
+            ask = "Reply with only a JSON object, no other text, shaped like this: " + schema_hint(rf["json_schema"]["schema"])
+            m = [dict(x) for x in p["messages"]]
+            if m and m[0]["role"] == "system":
+                m[0]["content"] += "\n\n" + ask
+            else:
+                m.insert(0, {"role": "system", "content": ask})
+            p["messages"] = m
         return p
+
+    def charge(node, data, messages, reply):
+        """Count what a request cost against the node's daily cap (`max_tokens_per_day`); nothing for a node without one.
+        Uses the host's own token count, or an estimate from the text when it gives none."""
+        if node.cap is None:
+            return
+        n = (data.get("usage") or {}).get("total_tokens") if isinstance(data, dict) and isinstance(data.get("usage"), dict) else None
+        n = n if isinstance(n, int) and n > 0 else (len(json.dumps(messages)) + len(reply)) // 4 + 1
+        node.used = store.add_node_spend(node.url, n)
 
     async def stream_reply(t, up, key, ukey, prompt_chars, held):
         """Wraps _stream_reply so the budget reservation is always settled, also when the client disconnects."""
@@ -332,6 +381,8 @@ def make_app(config=None, transport=None):
         cap, fb = t.get("max_reply_chars", 1000), t.get("fallback_line", "...")
         typed = up["messages"][-1]["content"]  # the player's latest line (the system prefix is always first)
         sent, filtered, stop, node, tried, t_start, ttft = "", False, False, None, [], time.monotonic(), 0
+
+        shown = lambda raw: ACTION_LABEL.sub("", visible(raw)) if t.get("actions") else visible(raw)
 
         def sse(delta, fin=None, **extra):
             c = {"id": "anansi", "object": "chat.completion.chunk", "model": up["model"],
@@ -385,12 +436,12 @@ def make_app(config=None, transport=None):
                             raw += json.loads(line[5:])["choices"][0]["delta"].get("content") or ""
                         except (ValueError, KeyError, IndexError, TypeError, AttributeError):
                             continue
-                        for s in advance(visible(raw), False):
+                        for s in advance(shown(raw), False):
                             ttft = ttft or time.monotonic() - t_start
                             yield sse({"content": s})
                         if stop:
                             break
-                for s in advance(visible(raw), True):
+                for s in advance(shown(raw), True):
                     ttft = ttft or time.monotonic() - t_start
                     yield sse({"content": s})
                 ok = bool(sent or filtered)  # an empty reply counts as a node failure
@@ -398,6 +449,7 @@ def make_app(config=None, transport=None):
                 pass
             finally:
                 sched.end(node, ok, (time.monotonic() - t0) * 1000)
+                charge(node, None, up["messages"], raw)  # a stream reports no usage: estimated from the text
             if ok or sent:
                 break
         if sent or filtered:
@@ -490,6 +542,8 @@ def make_app(config=None, transport=None):
         if t.get("system_prefix"):
             up["messages"] = [{"role": "system", "content": t["system_prefix"]}] + msgs
         structured = bool(meta.get("structured")) and bool(t.get("actions"))
+        if t.get("system_prefix") and t.get("actions") and not structured:  # plain text wanted: keep the action instructions out of it
+            up["messages"][0] = {"role": "system", "content": t["system_prefix"] + PLAIN_NOTE}
         if structured:  # constrained decoding: the model can only emit whitelisted actions
             up["response_format"] = {"type": "json_schema", "json_schema": {"name": "npc_reply", "schema": {
                 "type": "object", "additionalProperties": False, "required": ["say", "action"],
@@ -535,6 +589,8 @@ def make_app(config=None, transport=None):
                 data = r.json() if ok else None
             except (httpx.HTTPError, ValueError):
                 data = None
+            if data is not None:
+                charge(node, data, up["messages"], reply_text(data))
             if data is not None and not reply_text(data):  # empty reply (e.g. a thinking model out of tokens) is a node failure
                 data = None
             sched.end(node, ok and data is not None, (time.monotonic() - t0) * 1000)
@@ -545,6 +601,8 @@ def make_app(config=None, transport=None):
             raise HTTPException(503, "no node available")
 
         text = reply_text(data)
+        if not node.schema and "response_format" in up:
+            text = json_slice(text)  # the host was asked for JSON in words: it may wrap it in a code fence
         filtered = False
         if structured:
             try:
@@ -562,7 +620,9 @@ def make_app(config=None, transport=None):
             filtered = filtered or f2
             text = json.dumps({"say": say, "action": "none" if f2 else act})
         else:
-            text, filtered = await vet(t, msgs, text, key)
+            if t.get("actions"):
+                text = ACTION_LABEL.sub("", text)
+            text, filtered = await vet(t, msgs, text, key) if text.strip() else (t.get("fallback_line", "..."), True)
 
         est = (sum(len(m["content"]) for m in msgs) + len(text)) // 4
         reported = (data.get("usage") or {}).get("total_tokens")  # a volunteer node could report 0 or a huge number

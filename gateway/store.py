@@ -14,6 +14,7 @@ import time
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS usage(title TEXT, player TEXT, day TEXT, tokens BIGINT, PRIMARY KEY(title, player, day));
+CREATE TABLE IF NOT EXISTS node_spend(node TEXT, day TEXT, tokens BIGINT, PRIMARY KEY(node, day));
 CREATE TABLE IF NOT EXISTS bans(agent TEXT PRIMARY KEY, reason TEXT, at TEXT);
 CREATE TABLE IF NOT EXISTS ledger(agent TEXT, day TEXT, jobs BIGINT DEFAULT 0, tokens BIGINT DEFAULT 0,
                                   probes_ok BIGINT DEFAULT 0, probes_failed BIGINT DEFAULT 0, PRIMARY KEY(agent, day));
@@ -109,6 +110,19 @@ class Store:
     def add_usage(self, title, player, day, tokens):
         self._x("INSERT INTO usage VALUES(?,?,?,?) ON CONFLICT(title, player, day) "
                 "DO UPDATE SET tokens = usage.tokens + excluded.tokens", (title, player, str(day), int(tokens)))
+
+    # what paid nodes have been sent today (max_tokens_per_day), shared by every gateway on this database
+    def node_spend(self, node, day=None):
+        row = self._x("SELECT tokens FROM node_spend WHERE node=? AND day=?", (node, day or today())).fetchone()
+        return int(row[0]) if row else 0
+
+    def add_node_spend(self, node, tokens, day=None):
+        """Add tokens to a node's day and return the day's total, which includes other gateways' tokens."""
+        day = day or today()
+        with self.tx():
+            self._x("INSERT INTO node_spend VALUES(?,?,?) ON CONFLICT(node, day) DO UPDATE SET tokens = node_spend.tokens + excluded.tokens",
+                    (node, day, int(tokens)))
+            return int(self._x("SELECT tokens FROM node_spend WHERE node=? AND day=?", (node, day)).fetchone()[0])
 
     # bans
     def bans(self):
