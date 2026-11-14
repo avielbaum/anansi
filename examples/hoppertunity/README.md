@@ -38,8 +38,8 @@ can do more than the table below.
 | `storyline` | Once per coworker at the start of a game | Four beats, told one at a time as you finish that coworker's quests. The last beat gives a permanent perk (no more jams, no more defects, faster docks, better prices). |
 
 Each coworker is sent who they are, their morale, the day, the cash and the contract, so what they say fits the plant.
-**Without a gateway the game plays the same:** written lines by mood, eight written quests and four written stories
-(`src/data.gd`). The Any work? and Offer a raise buttons work either way. The top bar shows whether the last answer
+**Without a gateway the game plays the same:** written lines by mood, written quests and four written stories
+(`src/data.gd`: twelve quests, three per coworker). The Any work? and Offer a raise buttons work either way. The top bar shows whether the last answer
 was live.
 
 ## Run it
@@ -72,10 +72,11 @@ title key, so do not put it on the public internet as it is (see `docs/sdk.md`, 
 
 ## Controls
 
-Click a build button, then the floor. **R** turns the piece (or the building under the mouse), right-click cancels
+Click a build button (or press its number), then the floor. Hover a button to read what the building does. **R** turns the piece (or the building under the mouse), right-click cancels
 the tool or removes a building for half its price. Drag to lay conveyor. Click a coworker to talk, a building to
 inspect it, an inbound dock to change what it orders. **WASD** or the arrows move the view, **Q**/**E** turn it, the
-wheel zooms, **Space** pauses, **M** mutes everything, **N** just the music.
+wheel zooms, **Space** pauses, **M** mutes everything, **N** just the music. The **?** button has the controls and two volume sliders, which are
+remembered.
 
 ## Code
 

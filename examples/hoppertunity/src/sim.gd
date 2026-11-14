@@ -162,10 +162,9 @@ func answer_raise(crew: String, grant: bool) -> void:
 # ---------- contracts ----------
 
 func _contract(n: int) -> Dictionary:
-	var base: Dictionary = Data.CONTRACTS[mini(n, Data.CONTRACTS.size() - 1)]
-	var extra := maxi(0, n - Data.CONTRACTS.size() + 1)  # past the list: the last contract, bigger each time
-	return {"item": base.item, "qty": base.qty + 10 * extra, "done": 0, "due": day + base.days - 1,
-			"reward": base.reward + 300 * extra}
+	var base: Dictionary = Data.CONTRACTS[n % Data.CONTRACTS.size()]
+	var more := 1.0 + 0.5 * (n / Data.CONTRACTS.size())  # past the list it comes round again, half as big again each time
+	return {"item": base.item, "qty": int(base.qty * more), "done": 0, "due": day + base.days - 1, "reward": int(base.reward * more)}
 
 
 ## The contracts on offer for the n-th deal. Penny's mood decides how many customers she can line up: sour, only the

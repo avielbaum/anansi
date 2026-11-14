@@ -27,11 +27,11 @@ const ITEMS := {
 
 ## in/out/time make a kind a machine. crew: whose morale scales it. place: how quests and coworkers call it.
 const BUILD := {
-	"belt": {"name": "Conveyor", "cost": 5, "place": "the conveyor line"},
-	"splitter": {"name": "Splitter", "cost": 25, "place": "the splitter"},
-	"hopper": {"name": "Hopper", "cost": 30, "place": "the hoppers"},
-	"inbound": {"name": "Inbound dock", "cost": 100, "crew": "dock", "place": "the inbound dock"},
-	"outbound": {"name": "Outbound dock", "cost": 100, "crew": "dock", "place": "the outbound dock"},
+	"belt": {"name": "Conveyor", "cost": 5, "place": "the conveyor line", "does": "Carries things one tile along its arrow."},
+	"splitter": {"name": "Splitter", "cost": 25, "place": "the splitter", "does": "Sends things ahead, right and left in turn."},
+	"hopper": {"name": "Hopper", "cost": 30, "place": "the hoppers", "does": "Holds up to 20 things and feeds them on, so a line can ride out a hiccup."},
+	"inbound": {"name": "Inbound dock", "cost": 100, "crew": "dock", "place": "the inbound dock", "does": "Orders raw materials. Click it to change which."},
+	"outbound": {"name": "Outbound dock", "cost": 100, "crew": "dock", "place": "the outbound dock", "does": "Sells whatever reaches it."},
 	"press": {"name": "Press", "cost": 150, "crew": "tech", "in": {"steel": 1}, "out": "panel", "time": 8.0, "place": "the press"},
 	"molder": {"name": "Molder", "cost": 200, "crew": "tech", "in": {"plastic": 1}, "out": "casing", "time": 8.0, "place": "the molder"},
 	"assembler": {"name": "Assembler", "cost": 400, "crew": "tech", "in": {"panel": 1, "casing": 1}, "out": "gadget", "time": 12.0, "place": "the assembler"},
@@ -115,6 +115,10 @@ const QUESTS := {
 			{"objective": "inspect", "target_id": "hopper", "description": "Check what is really sitting in the hoppers."},
 			{"objective": "talk_to", "target_id": "tech", "description": "Ask Sprocket whether a sensor is miscounting."},
 			{"objective": "talk_to", "target_id": "dock", "description": "Bring the real count back to Dot."}]},
+		{"title": "Truck at the gate", "summary": "A driver is early and Dot needs the bay turned round fast.", "reward_tier": "large", "steps": [
+			{"objective": "inspect", "target_id": "inbound", "description": "Check the inbound dock is clear for the early truck."},
+			{"objective": "deliver", "target_id": "panel", "description": "Get panels out of the door to make room."},
+			{"objective": "talk_to", "target_id": "dock", "description": "Tell Dot the bay is turned round."}]},
 	],
 	"tech": [
 		{"title": "Bertha's rattle", "summary": "The press is making a noise Sprocket does not like.", "reward_tier": "small", "steps": [
@@ -123,6 +127,10 @@ const QUESTS := {
 		{"title": "A proper test run", "summary": "Sprocket wants the line run hard to prove the repairs.", "reward_tier": "medium", "steps": [
 			{"objective": "deliver", "target_id": "panel", "description": "Ship panels from a line running flat out."},
 			{"objective": "talk_to", "target_id": "tech", "description": "Report back on how the machines held up."}]},
+		{"title": "Spare parts", "summary": "Sprocket needs a part that Dot may have filed under something else.", "reward_tier": "small", "steps": [
+			{"objective": "talk_to", "target_id": "dock", "description": "Ask Dot where the last parts delivery went."},
+			{"objective": "inspect", "target_id": "hopper", "description": "Look in the hoppers: that is where it ended up."},
+			{"objective": "talk_to", "target_id": "tech", "description": "Bring Sprocket the part."}]},
 	],
 	"qa": [
 		{"title": "Spot check", "summary": "Tilly wants the boss to see what quality means.", "reward_tier": "small", "steps": [
@@ -131,6 +139,10 @@ const QUESTS := {
 		{"title": "A perfect batch", "summary": "Tilly wants one batch she can sign her name to.", "reward_tier": "medium", "steps": [
 			{"objective": "deliver", "target_id": "panel", "description": "Ship a clean batch of panels."},
 			{"objective": "talk_to", "target_id": "qa", "description": "Let Tilly sign off the batch."}]},
+		{"title": "The wobble", "summary": "Tilly thinks a conveyor is shaking units out of true.", "reward_tier": "small", "steps": [
+			{"objective": "inspect", "target_id": "belt", "description": "Watch the conveyor line for a wobble."},
+			{"objective": "talk_to", "target_id": "tech", "description": "Ask Sprocket to steady it."},
+			{"objective": "talk_to", "target_id": "qa", "description": "Tell Tilly it is fixed."}]},
 	],
 	"sales": [
 		{"title": "A sample for the client", "summary": "Penny promised a client a look at the goods.", "reward_tier": "small", "steps": [
@@ -140,6 +152,10 @@ const QUESTS := {
 			{"objective": "talk_to", "target_id": "dock", "description": "Ask Dot to keep a bay free for the visitor."},
 			{"objective": "inspect", "target_id": "inbound", "description": "Make sure the inbound dock looks the part."},
 			{"objective": "talk_to", "target_id": "sales", "description": "Tell Penny the floor is ready."}]},
+		{"title": "Proof of quality", "summary": "A buyer doubts the Works. Penny wants Tilly's word and the goods to back it.", "reward_tier": "large", "steps": [
+			{"objective": "talk_to", "target_id": "qa", "description": "Ask Tilly to vouch for this week's units."},
+			{"objective": "deliver", "target_id": "panel", "description": "Ship a batch the buyer can inspect."},
+			{"objective": "talk_to", "target_id": "sales", "description": "Give Penny the good news."}]},
 	],
 }
 

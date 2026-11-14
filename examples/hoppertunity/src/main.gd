@@ -4,6 +4,7 @@ extends Node3D
 
 const GATEWAY := "http://127.0.0.1:8080"  # the local Anansi gateway (see README); the game plays without it
 const SAVE := "user://hoppertunity.json"
+const SETTINGS := "user://hoppertunity_settings.json"
 const TICK := 0.25
 const MODELS := "res://assets/models/"
 const PEOPLE := "res://assets/characters/"
@@ -22,7 +23,7 @@ const ITEM_LOOK := {
 	"boxed": ["box-large", 0.5, Color.WHITE],
 }
 const CREW_LOOK := {"dock": "character-worker", "tech": "character-male-c", "qa": "character-female-e", "sales": "character-female-b"}
-const HELP := "Click a build button, then the floor. R turns the piece, right-click cancels or removes. Click a coworker to talk, a building to inspect it, an inbound dock to change what it orders. WASD or arrows move, Q and E turn the view, the wheel zooms, Space pauses, M mutes everything, N just the music, F3 shows the frame rate."
+const HELP := "Click a build button (or press its number), then the floor. R turns the piece, right-click cancels or removes. Click a coworker to talk, a building to inspect it, an inbound dock to change what it orders. WASD or arrows move, Q and E turn the view, the wheel zooms, Space pauses, M mutes everything, N just the music, F3 shows the frame rate."
 ## The tutorial: what Pip is told, and the build button that pulses while she is told it. _tutorial_done() says when
 ## each step is finished.
 const TUTORIAL := [
@@ -51,6 +52,10 @@ var modal_queue := []  # the ones waiting their turn
 var asked_offers := false
 var told_bankrupt := false
 var show_fps := false
+var stress := false  # the developer's full-floor test (see _stress)
+var music_vol := 0.5  # 0 to 1, set in the ? screen and kept in SETTINGS
+var sfx_vol := 0.8
+var speed_buttons := {}  # speed -> its button
 var tutorial := 0  # the step Pip is on; past the end means finished or skipped
 
 var cam := Camera3D.new()
@@ -85,6 +90,7 @@ var modal_panel: PanelContainer
 var modal_text: RichTextLabel
 var modal_buttons: VBoxContainer
 var chart := Control.new()  # the day-end screen's picture of the last two weeks
+var sound_box := VBoxContainer.new()  # the ? screen's volume sliders
 var net_label: Label
 var tut_panel: PanelContainer
 var tag_canvas := Control.new()  # building tags are painted here, under the panels
@@ -102,14 +108,19 @@ func _ready() -> void:
 		a.stream = load("res://assets/audio/%s.ogg" % f)
 		add_child(a)
 		sounds[f] = a
+	if FileAccess.file_exists(SETTINGS):
+		var set = JSON.parse_string(FileAccess.get_file_as_string(SETTINGS))
+		if set is Dictionary:
+			music_vol = clampf(float(set.get("music", music_vol)), 0.0, 1.0)
+			sfx_vol = clampf(float(set.get("sfx", sfx_vol)), 0.0, 1.0)
 	music.stream = load("res://assets/audio/music.mp3")
 	music.stream.loop = true
-	music.volume_db = -20.0
+	_volumes()
 	add_child(music)
 	music.play()
 	_world()
 	_ui()
-	var stress := "stress" in OS.get_cmdline_user_args() or (OS.has_feature("web") and "stress" in str(JavaScriptBridge.eval("location.search")))
+	stress = "stress" in OS.get_cmdline_user_args() or (OS.has_feature("web") and "stress" in str(JavaScriptBridge.eval("location.search")))
 	var saved := {} if stress else _load()
 	_start(saved)
 	if stress:
@@ -200,8 +211,8 @@ func _on_contract(done: bool) -> void:
 
 ## Put a report or a question in front of the player. Time stops until it is answered. buttons: [label, Callable] pairs
 ## (an empty Callable just closes it). If one is already up, this one waits its turn.
-func _ask(text: String, buttons: Array, with_chart := false) -> void:
-	modal_queue.append({"text": text, "buttons": buttons, "chart": with_chart})
+func _ask(text: String, buttons: Array, extra := "") -> void:
+	modal_queue.append({"text": text, "buttons": buttons, "extra": extra})
 	if not modal:
 		_next_modal()
 
@@ -213,12 +224,20 @@ func _next_modal() -> void:
 		return
 	var m: Dictionary = modal_queue.pop_front()
 	modal_text.text = m.text
-	chart.visible = m.chart
+	chart.visible = m.extra == "chart"
+	sound_box.visible = m.extra == "sound"
 	chart.queue_redraw()
 	for ch in modal_buttons.get_children():
 		ch.queue_free()
 	for b in m.buttons:
 		_button(b[0], modal_buttons, _answer.bind(b[1]))
+
+
+func _set_volume(value: float, which: String) -> void:
+	set(which, value)
+	_volumes()
+	if which == "sfx_vol":
+		_sfx("click")
 
 
 ## A modal's button was pressed: close it (or show the next one), then do what the button stands for.
@@ -280,6 +299,8 @@ func _load() -> Dictionary:
 
 
 func _save() -> void:
+	if stress:  # a floor full of test conveyors must not replace a real game
+		return
 	var f := FileAccess.open(SAVE, FileAccess.WRITE)
 	if f != null:
 		f.store_string(JSON.stringify({"sim": sim.save(), "stories": crew.stories, "player": player_id, "tutorial": tutorial}))
@@ -341,8 +362,17 @@ func _world() -> void:
 
 
 func _sfx(sound: String, db := 0.0) -> void:
-	sounds[sound].volume_db = db
-	sounds[sound].play()
+	sounds[sound].volume_db = db + linear_to_db(maxf(sfx_vol, 0.001)) + 2.0
+	if sfx_vol > 0.0:
+		sounds[sound].play()
+
+
+## Apply the two volume sliders (the music sits well under the effects) and remember them.
+func _volumes() -> void:
+	music.volume_db = linear_to_db(maxf(music_vol, 0.001)) - 14.0
+	var f := FileAccess.open(SETTINGS, FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify({"music": music_vol, "sfx": sfx_vol}))
 
 
 ## A small flat orange arrowhead pointing along +X: every building wears one to show which way it sends things.
@@ -753,6 +783,11 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_M: AudioServer.set_bus_mute(0, not AudioServer.is_bus_mute(0))
 			KEY_N: music.stream_paused = not music.stream_paused
 			KEY_F3: show_fps = not show_fps
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9:
+				var n: int = (e.physical_keycode if e.physical_keycode != 0 else e.keycode) - KEY_1
+				if n < build_buttons.size():
+					tool = build_buttons.keys()[n]
+					_sfx("click", -6.0)
 
 
 func _click(pos: Vector2i) -> void:
@@ -785,10 +820,12 @@ func _click(pos: Vector2i) -> void:
 		_toast("This dock now orders %s (%d a crate)." % [Data.ITEMS[c.raw].name, Data.ITEMS[c.raw].buy])
 	elif Data.BUILD[c.kind].has("in"):
 		var b: Dictionary = Data.BUILD[c.kind]
-		var needs: Array = b["in"].keys().map(func(i): return Data.ITEMS[i].name)
-		_toast("%s: makes %s from %s.%s" % [b.name, Data.ITEMS[b.out].name, " and ".join(needs), " JAMMED!" if c.jam > 0 else ""])
+		var held: Array = c.buf.keys().filter(func(i): return c.buf[i] > 0).map(func(i): return "%d %s" % [c.buf[i], Data.ITEMS[i].name])
+		var state := "Jammed: Sprocket is on it." if c.jam > 0 else ("Blocked: nowhere to put what it made." if c.out != "" else
+				("Working, %d%% done." % int(100.0 * c.prog / b.time) if c.busy else "Waiting for materials."))
+		_toast("%s. %s\n%s Holding %s." % [b.name, _does(c.kind), state, ", ".join(held) if not held.is_empty() else "nothing"])
 	else:
-		_toast("%s. R turns it, right-click removes it." % Data.BUILD[c.kind].name)
+		_toast("%s. %s\nR turns it, right-click removes it for half its price." % [Data.BUILD[c.kind].name, _does(c.kind)])
 
 
 # ---------- the interface ----------
@@ -863,8 +900,8 @@ func _ui() -> void:
 	net_label = Label.new()
 	row.add_child(net_label)
 	for s in [["||", 0.0], [">", 1.0], [">>", 2.0], [">>>", 4.0]]:
-		_button(s[0], row, func(): speed = s[1])
-	_button("?", row, func(): _toast(HELP))
+		speed_buttons[s[1]] = _button(s[0], row, func(): speed = s[1])
+	_button("?", row, func(): _ask("[b]How to play[/b]\n" + HELP, [["Close", Callable()]], "sound"))
 	_button("New game", row, _confirm_new_game)
 
 	var bottom := _panel(Control.PRESET_BOTTOM_WIDE, root)
@@ -927,6 +964,21 @@ func _ui() -> void:
 	chart.custom_minimum_size = Vector2(0, 90)
 	chart.draw.connect(_paint_chart)
 	dv.add_child(chart)
+	for v in [["Music", "music_vol"], ["Sound effects", "sfx_vol"]]:
+		var line := HBoxContainer.new()
+		var name_label := Label.new()
+		name_label.text = v[0]
+		name_label.custom_minimum_size.x = 130
+		line.add_child(name_label)
+		var slider := HSlider.new()
+		slider.max_value = 1.0
+		slider.step = 0.05
+		slider.value = get(v[1])
+		slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		slider.value_changed.connect(_set_volume.bind(v[1]))
+		line.add_child(slider)
+		sound_box.add_child(line)
+	dv.add_child(sound_box)
 	modal_buttons = VBoxContainer.new()
 	dv.add_child(modal_buttons)
 
@@ -937,8 +989,19 @@ func _build_buttons() -> void:
 	build_buttons = {}
 	for kind in Data.BUILD:
 		if kind in sim.unlocked:
-			build_buttons[kind] = _button("%s %d" % [Data.BUILD[kind].name, Data.BUILD[kind].cost], build_bar, func(): tool = kind)
-	_button("Bigger floor %d" % sim.expand_cost(), build_bar, _expand)
+			var b := _button("%d  %s %d" % [build_buttons.size() + 1, Data.BUILD[kind].name, Data.BUILD[kind].cost], build_bar, func(): tool = kind)
+			b.tooltip_text = _does(kind)
+			build_buttons[kind] = b
+	_button("Bigger floor %d" % sim.expand_cost(), build_bar, _expand).tooltip_text = "Two more rows and columns of floor."
+
+
+## What a kind of building does, in a sentence: for the build bar's tooltips and for clicking on one.
+func _does(kind: String) -> String:
+	var b: Dictionary = Data.BUILD[kind]
+	if b.has("does"):
+		return b.does
+	var needs: Array = b["in"].keys().map(func(i): return Data.ITEMS[i].name)
+	return "Makes %s from %s. %s looks after it." % [Data.ITEMS[b.out].name, " and ".join(needs), Data.CREW[b.crew].name]
 
 
 func _hud() -> void:
@@ -973,6 +1036,8 @@ func _hud() -> void:
 		quest_label.text = "Quest for %s: %s%s" % [Data.CREW[sim.quest.giver].name, s.get("description", ""),
 				" (%d/%d)" % [sim.quest.have, sim.quest.need] if sim.quest.need > 1 else ""]
 	net_label.text = "Anansi live" if crew.online else "Anansi offline"
+	for sp in speed_buttons:
+		speed_buttons[sp].modulate = Color(1.6, 1.3, 0.8) if is_equal_approx(sp, speed) else Color.WHITE
 	if modal:  # keep it as small as its content and in the middle; the container presets drift when the content changes
 		modal_panel.size = Vector2(480, 0)
 		modal_panel.position = ((modal_panel.get_parent() as Control).size - modal_panel.size) / 2
@@ -1052,7 +1117,7 @@ func _on_day_end(s: Dictionary) -> void:
 		lines.append("[color=tomato]Morale is on the floor: the crew will not work tomorrow. Talk to them, help them, pay them.[/color]")
 	for id in Data.CREW:
 		lines.append("%s (%s): morale %d, wage %d" % [Data.CREW[id].name, Data.CREW[id].role, int(sim.morale[id]), sim.wages[id]])
-	_ask("\n".join(lines), [["Start the next day", Callable()]], true)
+	_ask("\n".join(lines), [["Start the next day", Callable()]], "chart")
 	crew.refill()
 
 
