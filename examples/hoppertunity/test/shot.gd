@@ -1,4 +1,5 @@
 ## Developer aid, not a check: runs the real game with a small factory, saves a screenshot and quits.
+## It starts from a new game, so it deletes the desktop save (user://hoppertunity.json).
 ## Run (needs a display): godot --path examples/hoppertunity --script res://test/shot.gd -- out.png
 extends SceneTree
 

@@ -4,6 +4,8 @@ A 3D factory tycoon for the browser: Godot 4.3, the Compatibility renderer (WebG
 coworkers who talk, hand out quests and tell their stories through Anansi (`sdk/godot`). You are Pip Hopper, the new
 floor manager of the Hopper Works, a small gadget plant on its last chance.
 
+![A small Hoppertunity factory: docks, conveyors, a hopper, machines and the crew](docs/screenshot.png)
+
 ## The game
 
 - **Build a line:** inbound docks order raw materials, conveyors and splitters move them, hoppers buffer them, presses,
@@ -83,7 +85,7 @@ wheel zooms, **Space** pauses.
 
 CI (`.github/workflows/ci.yml`, job `godot`) runs the self-checks against a gateway serving this title on mock nodes,
 and exports the web build. The checks include a scripted playthrough (a fixed build order that talks to nobody wins on
-day 8 without going into debt) and a full 28x24 floor of moving belts (under 5 ms a tick on a laptop).
+day 7 without going into debt) and a full 28x24 floor of moving belts (under 5 ms a tick on a laptop).
 
 ## Not done yet
 

@@ -287,15 +287,18 @@ func _inbound(pos: Vector2i, c: Dictionary) -> void:
 
 func _machine(pos: Vector2i, c: Dictionary) -> void:
 	var b: Dictionary = Data.BUILD[c.kind]
-	if c.out != "":
-		if _push(pos, c.dir, c.out):
-			c.out = ""
-	elif c.jam > 0:
+	if c.out != "" and _push(pos, c.dir, c.out):
+		c.out = ""
+	if c.out != "":  # nowhere to put the finished unit: wait
+		return
+	if c.jam > 0:
 		c.jam -= 1
 	elif c.busy:
 		c.prog += mult(b.crew)
 		if c.prog >= b.time:
-			c.merge({"busy": false, "prog": 0.0, "out": b.out}, true)
+			c.merge({"busy": false, "prog": 0.0}, true)
+			if not _push(pos, c.dir, b.out):
+				c.out = b.out
 		elif morale.tech < 30.0 and not perks.has("tech") and rng.randf() < 0.01:
 			c.jam = 20  # an unhappy technician means machines jam now and then
 	else:
