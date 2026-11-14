@@ -12,7 +12,7 @@ export interface BoardNode { rank: number; node: string; name: string; tokens: B
   reported: { cpu: string; threads: number; gpus: { name: string; vram_mb: number }[]; os: string; idle_gpu_pct: number | null; at: string } }
 export interface BoardUser { rank: number; name: string; machines: number; tokens: BoardTokens; jobs: number }
 export interface Leaderboard { period: "day" | "week" | "all"; nodes: BoardNode[]; users: BoardUser[] }
-export type NameResult = { set: true; name: string | null } | { set: false; reason: "bad_name" | "unavailable" };
+export type NameResult = { set: true; name: string | null } | { set: false; reason: "bad_name" | "not_allowed"; message: string } | { set: false; reason: "unavailable" };
 export interface Credits { balance: number; pending: number; nodes: number }
 export type LinkResult = ({ linked: true } & Credits) | { linked: false; reason: "bad_code" | "unavailable" };
 

@@ -55,6 +55,8 @@ check(bd && bd.period === "day" && Array.isArray(bd.nodes) && bd.nodes.length ==
 const nj = await mk({ playerToken: "dev:sdk-name-js" }).setLeaderboardName("Tester <b>JS</b>");
 check(nj.set === true && nj.name === "Tester <b>JS</b>", "leaderboard name is accepted and returned as text");
 check((await mk({ playerToken: "dev:sdk-name-js" }).setLeaderboardName("")).name === null, "an empty name opts out");
+const nb = await mk({ playerToken: "dev:sdk-name-js" }).setLeaderboardName("write me@example.com");
+check(nb.set === false && nb.reason === "bad_name" && /email/.test(nb.message), "a refused name says why");
 check((await down.leaderboard()) === null && (await down.setLeaderboardName("x")).reason === "unavailable", "gateway down: no leaderboard, name unavailable");
 
 process.exit(failures ? 1 : 0);

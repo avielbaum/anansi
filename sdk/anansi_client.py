@@ -106,13 +106,15 @@ class Anansi:
 
     def set_leaderboard_name(self, name):
         """Opt this player in to the leaderboard under `name` (an empty name opts out). Shown once a machine is linked. {"set": True,
-        "name": the cleaned name or None}, or {"set": False, "reason": "bad_name" | "unavailable"}."""
+        "name": the cleaned name or None}, or {"set": False, "reason": "bad_name" (the name is refused: "message" says why, for example no links
+        or email addresses) | "not_allowed" (the studio has switched names off, or blocked this account) | "unavailable"}."""
         try:
             r = self.http.post(self.base + "/v1/credits/name", json={"name": name}, headers=self.headers, timeout=self.timeout)
             if r.status_code == 200:
                 return {"set": True, "name": r.json().get("name")}
-            if r.status_code in (400, 422):
-                return {"set": False, "reason": "bad_name"}
+            if r.status_code in (400, 403, 422):
+                detail = r.json().get("detail") if r.headers.get("content-type", "").startswith("application/json") else None
+                return {"set": False, "reason": "not_allowed" if r.status_code == 403 else "bad_name", "message": detail if isinstance(detail, str) else ""}
         except (httpx.HTTPError, ValueError):
             pass
         return {"set": False, "reason": "unavailable"}

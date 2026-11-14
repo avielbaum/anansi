@@ -68,6 +68,8 @@ static class Program
         var nm = new Client(url, "demo", "change-me", () => "dev:sdk-name-cs").SetLeaderboardNameAsync("Tester <b>CS</b>").GetAwaiter().GetResult();
         Check(nm.Set && nm.Name == "Tester <b>CS</b>", "leaderboard name is accepted and returned as text");
         Check(new Client(url, "demo", "change-me", () => "dev:sdk-name-cs").SetLeaderboardNameAsync("").GetAwaiter().GetResult().Name == null, "an empty name opts out");
+        var nb = new Client(url, "demo", "change-me", () => "dev:sdk-name-cs").SetLeaderboardNameAsync("write me@example.com").GetAwaiter().GetResult();
+        Check(!nb.Set && nb.Reason == "bad_name" && nb.Message.Contains("email"), "a refused name says why");
         var down = new Client("http://127.0.0.1:9", "demo", "change-me", ticket, null, 1);
         Check(down.LeaderboardAsync().GetAwaiter().GetResult() == null && down.SetLeaderboardNameAsync("x").GetAwaiter().GetResult().Reason == "unavailable", "gateway down: no leaderboard, name unavailable");
         ln = down.LinkNodeAsync("ABCD-EFGH").GetAwaiter().GetResult();

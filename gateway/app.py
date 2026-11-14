@@ -143,9 +143,17 @@ def make_app(config=None, transport=None):
             n.full()
             n.used = store.node_spend(n.url)
     purged = [datetime.date.today()]
+    lbc = cfg.get("leaderboard") or {}  # enabled, players, privacy_url, blocked_names: see docs/gateway.md
+    try:
+        for p in lbc.get("blocked_names", []):
+            re.compile(p)
+    except (re.error, TypeError) as e:
+        raise ValueError(f"leaderboard.blocked_names must be a list of regular expressions: {e}")
+    if lbc.get("privacy_url") and not str(lbc["privacy_url"]).startswith("https://"):
+        raise ValueError("leaderboard.privacy_url must be an https:// address")
     hub = PullHub(sched, cfg["pull_tokens"], transport or httpx.AsyncHTTPTransport(), cfg.get("pull_poll_s", 20),
                   cfg.get("pull_ttl_s"), cfg.get("upstream_timeout_s", 20), reply_text, cfg.get("canaries"),
-                  cfg.get("canary_rate", 0.05), store, credits.get("per_1k_tokens")) if cfg.get("pull_tokens") else None
+                  cfg.get("canary_rate", 0.05), store, credits.get("per_1k_tokens"), lbc) if cfg.get("pull_tokens") else None
     client = httpx.AsyncClient(transport=hub or transport, timeout=cfg.get("upstream_timeout_s", 20))
     ticket_cache = {}  # shortcut: per process, so each gateway checks a ticket with Steam once itself; share it (Redis) if Steam call volume matters
     stats = {"requests": 0, "retries": 0, "status": Counter(), "filtered": 0, "stream_errors": 0, "judged_out": 0, "judge_errors": 0, "action_checks_no": 0, "action_check_errors": 0, "escalations": 0, "lat_ms": deque(maxlen=1000)}
@@ -849,10 +857,37 @@ def make_app(config=None, transport=None):
             name = leaderboard.clean_text(name, 24)
         except (ValueError, KeyError, TypeError):
             raise HTTPException(400, 'body must be {"name": "Your name"}')
+        if name:  # an empty name opts out, and is always allowed
+            if not (lbc.get("enabled", True) and lbc.get("players", True)):
+                raise HTTPException(403, "player names are switched off on this gateway")
+            if store.blocked("user", wallet):
+                raise HTTPException(403, "this account cannot be listed on the leaderboard")
+            problem = leaderboard.name_problem(name, lbc.get("blocked_names", []))
+            if problem:
+                raise HTTPException(400, problem)
         store.set_wallet_name(wallet, name)
         return {"name": name or None}
 
-    leaderboard.add_routes(app, store)
+    leaderboard.add_routes(app, store, lbc)
+
+    @app.post("/admin/leaderboard/block")
+    async def leaderboard_block(req: Request, x_admin_token: str = Header(None)):
+        """Moderation. {"node": "<label shown on the board>"} or {"user": "<name shown>"}; add "unblock": true to lift it. A blocked machine
+        or player comes off the board at once and cannot be listed again (they still serve jobs and play)."""
+        admin(x_admin_token)
+        try:
+            d = json.loads(await req.body())
+            kind, label = ("node", str(d["node"])) if "node" in d else ("user", str(d["user"]))
+        except (ValueError, KeyError, TypeError):
+            raise HTTPException(400, 'body must be {"node": "<label>"} or {"user": "<name>"}, optionally with "unblock": true')
+        if d.get("unblock"):
+            return {"unblocked": store.unblock(kind, label)}
+        keys = store.agents_by_label(label) if kind == "node" else store.wallets_by_name(label)
+        for k in keys:
+            store.block(kind, k, label)
+            store.forget_telemetry(k) if kind == "node" else store.set_wallet_name(k, "")
+        getattr(app.state, "leaderboard_cache", {}).clear()  # the page must not keep showing it for another 30 seconds
+        return {"blocked": len(keys)}
 
     @app.get("/healthz")
     async def health():

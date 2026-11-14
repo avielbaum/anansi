@@ -19,7 +19,7 @@ import sys
 import httpx
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from node.agent import add_load_args, idle_limits, serve  # noqa: E402
+from node.agent import JOBS_NOTICE, add_load_args, idle_limits, insecure, serve, telemetry_notice  # noqa: E402
 
 OLLAMA = "http://127.0.0.1:11434"
 # (minimum total RAM in GB, model, approximate download in GB). Sizes follow DESIGN.md section 21: the 1 to 2 GB budget
@@ -90,8 +90,12 @@ def plan(a, ram, have):
     else:
         steps.append((True, f"Will download {model} with 'ollama pull'."))
     steps.append((True, f"Will connect out to {a.gateway} with {a.slots} worker(s). No port is opened on this machine."))
-    steps.append((True, "Will report your CPU and GPU model and idle GPU load to the public leaderboard (stop with agent.py --telemetry-off)."
-                  if getattr(a, "telemetry", False) else "Not on the leaderboard. To appear on it, add --telemetry (and --name YOURNAME)."))
+    if getattr(a, "telemetry", False):
+        urls = [u.strip() for u in a.gateway.split(",") if u.strip()]
+        steps.append((not any(insecure(u) for u in urls), "Will report your CPU and GPU model and idle GPU load to the public leaderboard "
+                      "(stop with agent.py --telemetry-off); this needs an https:// gateway address."))
+    else:
+        steps.append((True, "Not on the leaderboard. To appear on it, add --telemetry (and --name YOURNAME)."))
     return steps, model
 
 
@@ -128,6 +132,9 @@ def main():
             sys.exit(f"Not enough free disk: {free:.1f} GB free, about {size * 1.5:.1f} GB needed.")
         if subprocess.call(["ollama", "pull", model]) != 0:
             sys.exit("ollama pull failed. Check your connection and try again; it resumes where it stopped.")
+    print(JOBS_NOTICE)
+    if a.telemetry:
+        print(telemetry_notice([u.strip() for u in a.gateway.split(",") if u.strip()], a.name))
     print("Starting. Press Ctrl+C to stop.")
 
     async def run():

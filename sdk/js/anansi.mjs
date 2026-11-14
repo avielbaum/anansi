@@ -51,7 +51,7 @@ export class Anansi {
     const timer = setTimeout(() => ctl.abort(), this.timeoutMs);
     try {
       const r = await this.fetch(this.base + path, { method, headers: await this._headers(), body: body && JSON.stringify(body), signal: ctl.signal });
-      return [r.status, r.status === 200 ? await r.json() : null];
+      return [r.status, r.status === 200 ? await r.json() : await r.json().catch(() => null)];  // an error's body says why
     } catch (e) {
       return [0, null];
     } finally {
@@ -84,11 +84,13 @@ export class Anansi {
   }
 
   /** Opt this player in to the leaderboard under `name` (an empty name opts out). Shown once a machine is linked.
-   *  {set: true, name} (name is the cleaned text, or null), or {set: false, reason: "bad_name" | "unavailable"}. */
+   *  {set: true, name} (name is the cleaned text, or null), or {set: false, reason, message}: "bad_name" (refused: message says why, for
+   *  example no links or email addresses), "not_allowed" (the studio switched names off or blocked this account) or "unavailable". */
   async setLeaderboardName(name) {
     const [s, d] = await this._call("POST", "/v1/credits/name", { name: String(name) });
     if (s === 200) return { set: true, name: d.name };
-    return { set: false, reason: s === 400 || s === 422 ? "bad_name" : "unavailable" };
+    if (s === 400 || s === 403 || s === 422) return { set: false, reason: s === 403 ? "not_allowed" : "bad_name", message: typeof d?.detail === "string" ? d.detail : "" };
+    return { set: false, reason: "unavailable" };
   }
 
   async _fallbackReply(messages) {

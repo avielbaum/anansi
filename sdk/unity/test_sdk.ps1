@@ -71,6 +71,8 @@ try {
   Check ($lb -ne $null -and $lb.period -eq "day" -and $lb.nodes.Count -eq 0 -and $lb.users.Count -eq 0) "leaderboard of a gateway with no volunteers is empty"
   $nm = $c.SetLeaderboardNameAsync("Tester <b>PS</b>").GetAwaiter().GetResult()
   Check ($nm.Set -and $nm.Name -eq "Tester <b>PS</b>") "leaderboard name is accepted and returned as text"
+  $nb = $c.SetLeaderboardNameAsync("write me@example.com").GetAwaiter().GetResult()
+  Check ((-not $nb.Set) -and $nb.Reason -eq "bad_name" -and $nb.Message -like "*email*") "a refused name says why"
   $pb = [Anansi.TestHooks]::ParseBoard("null"); $pn = $pb.nodes[0]
   Check ($pn.name -eq "Dev laptop" -and $pn.tokens.all -eq 980 -and $pn.jobs -eq 6 -and $pn.reported.gpus.Count -eq 2 -and $pn.reported.gpus[1].vram_mb -eq 2048 -and $pn.reported.idle_gpu_pct -eq $null -and $pb.users[0].name -eq "Ada L." -and $pb.users[0].machines -eq 1) "a populated leaderboard parses, a null idle load stays empty"
   $iv = ([Anansi.TestHooks]::ParseBoard("12.5")).nodes[0].reported.idle_gpu_pct; Check ($iv -ne $null -and $iv -eq 12.5) "an idle load of 12.5 percent parses"

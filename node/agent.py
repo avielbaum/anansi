@@ -249,13 +249,38 @@ def idle_limits(a):
     return None if a.ignore_load else (a.cpu_limit, a.gpu_limit)
 
 
+JOBS_NOTICE = ("This machine will answer game dialogue written by players: their messages are sent to your local model. "
+               "Do not log, keep, read or share them (docs/volunteer-terms.md).")
+
+
+def insecure(url):
+    """True for a plain-http gateway address that is not this machine: whatever is sent there, a leaderboard report included, can be
+    read on the way."""
+    u = httpx.URL(url)
+    return u.scheme != "https" and u.host not in ("localhost", "127.0.0.1", "::1")
+
+
+def telemetry_notice(urls, name):
+    """Said at every start with --telemetry: exactly what is sent, to whom, and what happens to it."""
+    return (f"Leaderboard telemetry is ON for {', '.join(urls)}. About every 5 minutes this agent sends your CPU model, GPU models and "
+            "memory, an operating system name and a slow average of how busy your GPU is when this agent is not using it, under the name "
+            f"{name!r}" + (" (a short code is shown instead of a name)" if not name else "") + ". The gateway shows them publicly next to your token "
+            "totals. A name is public: do not use your real name. If you are also listed as a player, anyone can tell the two are yours "
+            "(the totals match). Anyone can keep a copy of a public page. See exactly what is sent: --telemetry-show. Leave any time: --telemetry-off.")
+
+
+def telemetry_preview(name):
+    """The report as it would be sent, with the GPU load read right now (the real one is a slow average)."""
+    return json.dumps({**hardware.describe(), "name": name, "idle_gpu": gpu_util()}, indent=2)
+
+
 async def telemetry(gw, token, agent, name, log=print):
     """Opt-in (--telemetry): tell the gateway what this machine is and how busy its GPU is when none of our jobs run, for the public
     leaderboard. The load is sampled only while idle, so it is the owner's own use, and smoothed so one spike does not stand for the
     machine. A report the gateway refuses (not registered yet) is retried at the next sample."""
     H = {"X-Node-Token": token, "X-Node-Agent": agent}
     info = await asyncio.to_thread(hardware.describe)
-    last, started = None, time.monotonic()
+    last, started, warned = None, time.monotonic(), False
     while True:
         if JOBS["active"] == 0 and time.monotonic() - JOBS["last"] > SETTLE_S:
             g = await asyncio.to_thread(gpu_util)
@@ -267,7 +292,15 @@ async def telemetry(gw, token, agent, name, log=print):
                 r = await gw.post("/node/telemetry", json={**info, "name": name, "idle_gpu": IDLE["gpu"]}, headers=H)
                 if r.status_code == 200:
                     last = time.monotonic()
-                elif r.status_code == 403 and "banned" in r.text:
+                    if r.json().get("name_rejected") and not warned:  # the rest of the report was kept
+                        warned = True
+                        log(f"the leaderboard will not show your name: {r.json()['name_rejected']}. Pick another with --name.")
+                elif r.status_code == 403 and any(w in r.text for w in ("banned", "switched off", "blocked")):
+                    try:
+                        why = r.json()["detail"]
+                    except (ValueError, KeyError):
+                        why = r.text
+                    log(f"the gateway will not list this machine on its leaderboard ({why})")
                     return
             except httpx.HTTPError:
                 pass  # unreachable: the next sample tries again
@@ -297,9 +330,16 @@ if __name__ == "__main__":
     ap.add_argument("--telemetry", action="store_true", help="opt in to the public leaderboard: report CPU and GPU model and idle GPU load")
     ap.add_argument("--name", default="", help="display name on the leaderboard (with --telemetry); default: a short code")
     ap.add_argument("--telemetry-off", action="store_true", help="remove this machine from the leaderboard and delete what it reported, then exit")
+    ap.add_argument("--telemetry-show", action="store_true", help="print exactly what --telemetry would send and exit; nothing is sent")
     add_load_args(ap)
     a = ap.parse_args()
     urls = [u.strip().rstrip("/") for u in a.gateway.split(",") if u.strip()]
+    if a.telemetry_show:
+        print(telemetry_notice(urls, a.name) + "\n\nA report looks like this (the real GPU load is a slow average, and the gateway averages again):")
+        print(telemetry_preview(a.name))
+        raise SystemExit
+    if a.telemetry and any(insecure(u) for u in urls):
+        raise SystemExit("--telemetry sends your hardware details, so the gateway address must start with https:// (or be this machine). Not started.")
     if a.telemetry_off:
         for u in urls:
             r = httpx.delete(u + "/node/telemetry", headers={"X-Node-Token": a.token, "X-Node-Agent": agent_id()}, timeout=20)
@@ -311,6 +351,10 @@ if __name__ == "__main__":
         d = r.json()
         print(f"Type this code into a game that uses Anansi within {d['expires_s'] // 60} minutes: {d['code']}")
         raise SystemExit
+
+    print(JOBS_NOTICE)
+    if a.telemetry:
+        print(telemetry_notice(urls, a.name))
 
     async def main():
         gws = [httpx.AsyncClient(base_url=u) for u in urls]

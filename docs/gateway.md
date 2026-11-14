@@ -39,6 +39,7 @@ JSON file named by `ANANSI_CONFIG`.
 | `pull_tokens` | Enables volunteer agents; see [nodes.md](nodes.md) |
 | `pull_poll_s`, `pull_ttl_s`, `canaries`, `canary_rate` | Pull-node tuning and verification; see [nodes.md](nodes.md) |
 | `credits` | `per_1k_tokens` (credits per 1,000 tokens by the model name sent to the node, plus `"default"`; default 1) `hold_days` (default 7) and `max_per_day` (credits one wallet may earn per UTC day across all its machines; unset means no cap); see [nodes.md](nodes.md#credits) |
+| `leaderboard` | Optional block for the public volunteer leaderboard: `enabled` (default true; false removes the page and the reports), `players` (default true; false leaves the player board empty and refuses player names), `privacy_url` (an `https://` address linked from the page), `blocked_names` (regular expressions a display name may not match; checked at startup). See [Leaderboard](#leaderboard) |
 | `auth_fail_limit` | Failed logins (bad title key or ticket) one client address may make per minute before it gets `429` for the rest of that minute; default 30. Behind a proxy, list it in `trusted_proxies`, or every player shares the proxy's address and one bot locks them all out |
 | `trusted_proxies` | Addresses of your own reverse proxies or load balancers. A request from one of them is counted under the right-most `X-Forwarded-For` entry that is not a listed proxy (entries further left are written by the client). Empty by default: the header is ignored |
 | `max_inflight` | Requests the gateway serves at once (default 256; a stream counts until it ends). Past it, new requests get `429` with `Retry-After: 1` instead of queueing without limit. It is per gateway process |
@@ -125,7 +126,12 @@ model gets wrong without being blocked (off-script input, low confidence); that 
 `GET /leaderboard` (HTML) and `GET /v1/leaderboard?period=day|week|all&limit=25` (JSON) are public and cached for 30 seconds. They list
 only machines whose agent runs with `--telemetry` and players who chose a display name (`POST /v1/credits/name`, same credentials as the
 other player routes); the agent's `POST` and `DELETE /node/telemetry` take its node token. Details, privacy and what is verified:
-[nodes.md](nodes.md#leaderboard-and-telemetry). Reports are limited to one per 20 seconds per machine and 16 KB each.
+[nodes.md](nodes.md#leaderboard-and-telemetry). Reports are limited to one per 20 seconds per machine and 16 KB each. The agent's `POST` and `DELETE /node/telemetry` and the
+player's `POST /v1/credits/name` obey the `leaderboard` block (`enabled`, `players`, `blocked_names`; the first refusal is `403`).
+Moderation: `POST /admin/leaderboard/block` (header `X-Admin-Token`, like the other admin routes) with `{"node": "<hash shown on the board>"}`
+or `{"user": "<name shown>"}` removes that machine or player at once (the cached page is cleared) and keeps them off; the machine
+still serves jobs and the player still plays. `{"node": ..., "unblock": true}` lifts it. Privacy, retention and what to tell players:
+[privacy.md](privacy.md).
 
 ## Quests and storylines
 

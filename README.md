@@ -86,16 +86,16 @@ Ollama Cloud and OpenRouter. See
 
 | | |
 |---|---|
-| Gateway: auth, budgets, constrained actions, filter, leak guard, failover, streaming | working, 71 self-checks |
+| Gateway: auth, budgets, constrained actions, filter, leak guard, failover, streaming | working, 77 self-checks |
 | Quest and storyline generation (`/v1/quest`, `/v1/storyline`) with Python and C# SDK methods | working: constrained to your game's own ids; 6 of 6 structurally valid with Qwen3-1.7B (33 s) and Qwen3-4B (65 s, more varied rewards and richer text) on CPU; writing quality unrated |
 | Real model end to end (Ollama on CPU; vLLM and llama-server on GPU) | working: replies in 0.07 to 0.2 s on the A10, 2 to 5 s on CPU; action accuracy 76% on 106 held-out self-written cases (G1 set; **G1 not passed**: needs blind rating against a large model) |
 | Safety judge (second model call) | working with Qwen3-4B: blocked 3 of 8 leak attacks, no false positives; doubles latency |
 | Volunteer node agent, entry probe, spot checks, bans; one-step `join` setup | working on Windows and on the Linux GPU VM (`join.sh` with Ollama); pauses while the owner is busy, even under steady traffic (CPU and GPU; Linux Intel GPUs not measured) |
 | Layered output safety: overlap guard, Llama Guard classifier, judge model | working; on 23 self-written pairs the combination caught all violations with no false positives, about 7.5 s extra on CPU |
 | Python and C# SDKs with sentence streaming and local fallback | working (C# as plain .NET; Unity untested) |
-| JavaScript / TypeScript SDK (browsers, Node, Electron, Deno, Bun) | working: 20 checks against a live gateway in CI; for browsers on another origin list them in `cors_origins` |
+| JavaScript / TypeScript SDK (browsers, Node, Electron, Deno, Bun) | working: 21 checks against a live gateway in CI; for browsers on another origin list them in `cors_origins` |
 | Red-team set for gate G5 (759 prompts, dev/test split, runner) | built; untuned holdout run (420 fresh cases): 32 automatic failures; a second untuned set: 6 (5 arguable); **G5 not passed** |
-| Godot 4 addon (GDScript) | working: 20 checks in the real Godot 4.3 engine against a live gateway in CI, in the editor and in an exported Linux release build (not tried on other export targets or consoles) |
+| Godot 4 addon (GDScript) | working: 21 checks in the real Godot 4.3 engine against a live gateway in CI, in the editor and in an exported Linux release build (not tried on other export targets or consoles) |
 | Unreal Engine 5 plugin (C++, Blueprint-callable) | **written, never compiled or run: no Unreal install was available** |
 | Linux | working: gateway and SDKs in CI on Ubuntu; Docker compose (vLLM + gateway), the systemd unit, llama-server and `join.sh` run on Ubuntu 22.04 with an NVIDIA A10 |
 | macOS Apple Silicon | untested: no Mac hardware |
@@ -114,7 +114,7 @@ Needs Python 3.10 or newer. For a real model, install [Ollama](https://ollama.co
 git clone https://github.com/avielbaum/anansi
 cd anansi
 pip install -r requirements.txt
-python tests/test_gateway.py          # 71 self-checks, no GPU or network needed
+python tests/test_gateway.py          # 77 self-checks, no GPU or network needed
 ```
 
 Run the gateway against a local model:
@@ -134,6 +134,8 @@ No model installed? Use the mock nodes: [docs/quickstart.md](docs/quickstart.md)
 | [Quick start](docs/quickstart.md) | Mock nodes, Ollama, Linux, macOS, running the tests |
 | [Gateway](docs/gateway.md) | Config reference, endpoints, streaming, filter, leak guard, safety judge, production switches |
 | [Nodes](docs/nodes.md) | Cloud nodes, volunteer agent, verification, Linux and macOS notes |
+| [Privacy](docs/privacy.md) | What is collected, shown and kept; volunteers see what players write; what to tell players (draft for counsel) |
+| [Volunteer terms](docs/volunteer-terms.md) | What a volunteer agrees to (draft for counsel) |
 | [SDKs](docs/sdk.md) | Python, C# (Unity), JavaScript/TypeScript, Unreal and Godot clients and their fallback behaviour, plus an MCP server for your AI assistant |
 | [Status](docs/status.md) | Measured results, known limits, what is untested |
 | [DESIGN.md](DESIGN.md) | Architecture, security model, roadmap and go/no-go gates |

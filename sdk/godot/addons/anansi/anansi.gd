@@ -127,12 +127,16 @@ func leaderboard(period := "week", limit := 25) -> Variant:
 
 
 ## Opt this player in to the leaderboard under `name` (an empty name opts out). Shown once a machine is linked.
-## {"set": true, "name": cleaned name or null}, or {"set": false, "reason": "bad_name" | "unavailable"}.
+## {"set": true, "name": cleaned name or null}, or {"set": false, "reason", "message"}: "bad_name" (refused: message says why, for example no
+## links or email addresses), "not_allowed" (the studio switched names off or blocked this account) or "unavailable".
 func set_leaderboard_name(name: String) -> Dictionary:
 	var r: Array = await _request(HTTPClient.METHOD_POST, "/v1/credits/name", {"name": name}, timeout_s)
 	if r[0] == 200:
 		return {"set": true, "name": r[1].get("name")}
-	return {"set": false, "reason": "bad_name" if r[0] == 400 or r[0] == 422 else "unavailable"}
+	if r[0] == 400 or r[0] == 403 or r[0] == 422:
+		var why = r[1].get("detail", "")
+		return {"set": false, "reason": "not_allowed" if r[0] == 403 else "bad_name", "message": why if why is String else ""}
+	return {"set": false, "reason": "unavailable"}
 
 
 ## This player's volunteer credits: {"balance", "pending", "nodes"}, or null when the gateway cannot be reached.

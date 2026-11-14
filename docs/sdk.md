@@ -71,7 +71,7 @@ Balance gives `balance` (spendable), `pending` (still in the hold) and `nodes` (
 gateway cannot be reached. Linking gives the same numbers on success, or `linked: false` with `reason` `"bad_code"` (unknown,
 used or expired code: ask the player to run `--link` again) or `"unavailable"` (try later). The leaderboard (see [nodes.md](nodes.md#leaderboard-and-telemetry)) returns `{period, nodes, users}`
 ranked by tokens in the period, or `None`/`null` when the gateway cannot be reached; setting a name returns `set: true` with the cleaned
-name (or `null` when opting out), or `set: false` with `reason` `bad_name` or `unavailable`. Names and hardware text come from outside:
+name (or `null` when opting out), or `set: false` with `reason`: `bad_name` (refused: `message` says why, for example no links or email addresses), `not_allowed` (the studio switched names off or blocked the account) or `unavailable`. Names and hardware text come from outside:
 escape them if you put them in markup. Spending is deliberately not in the
 SDKs: your game **server** calls `POST /v1/credits/spend` with the title's `server_key`, which must never ship in the client.
 
@@ -152,6 +152,6 @@ server process (the `ANANSI_TITLE` and `ANANSI_KEY` variables). The red-team too
 
 The C# SDK is tested as plain .NET against a live gateway (Windows PowerShell test and a `dotnet` test run in CI on
 Ubuntu). The Unity `JsonUtility` branch and a real Unity project have not been run. The Godot addon runs in CI in the
-real Godot 4.3 engine against a live gateway (`sdk/godot/test/checks.gd`, 20 checks: replies, streaming, quests, credits, leaderboard,
+real Godot 4.3 engine against a live gateway (`sdk/godot/test/checks.gd`, 21 checks: replies, streaming, quests, credits, leaderboard,
 every fallback path), both from the editor binary and in an exported Linux release build. The Unreal plugin is an **untested draft**: it follows the same contract and JSON shapes but has
 never been compiled or run, and CI does not build it. Other engines can call the HTTP API directly; it is plain JSON and SSE.

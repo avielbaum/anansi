@@ -69,8 +69,10 @@ namespace Anansi
     {
         public bool Set;
         public string Name;      // the cleaned name, or null when the player opted out
-        public string Reason;    // when not set: "bad_name" or "unavailable"
+        public string Reason;    // when not set: "bad_name" (refused: Message says why), "not_allowed" (names switched off or this account blocked) or "unavailable"
+        public string Message;   // why a name was refused, in words a player can act on
     }
+    [Serializable] public class ErrorReply { public string detail; }
 
     public class Reply
     {
@@ -231,7 +233,12 @@ namespace Anansi
                     if (resp.IsSuccessStatusCode)
                         return new NameResult { Set = true, Name = Json.From<NameReply>(await resp.Content.ReadAsStringAsync().ConfigureAwait(false)).name };
                     var s = (int)resp.StatusCode;
-                    if (s == 400 || s == 422) return new NameResult { Set = false, Reason = "bad_name" };
+                    if (s == 400 || s == 403 || s == 422)
+                    {
+                        string why = "";
+                        try { why = Json.From<ErrorReply>(await resp.Content.ReadAsStringAsync().ConfigureAwait(false)).detail ?? ""; } catch (Exception) { }  // a validation error has no text detail
+                        return new NameResult { Set = false, Reason = s == 403 ? "not_allowed" : "bad_name", Message = why };
+                    }
                 }
             }
             catch (Exception) { }

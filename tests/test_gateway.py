@@ -746,12 +746,14 @@ def t_replies_cannot_stall_the_gateway():
     linear: two sizes, so a cubic one fails fast at the first and a quadratic one at the second (found: quests.planted took 1.4 s at
     10,000 characters, and the 'Action: none' backstop 14 s at 1,600 spaces)."""
     import re
-    from gateway import app as ga, quests as qm
+    from gateway import app as ga, leaderboard as lbm, quests as qm
     guarded = {"_LABEL", "_BARE_NONE", "_ONLY_NONE"}  # only ever see the last 300 characters, through strip_chatter (swept below)
-    pats = [(f"{m.__name__.split('.')[-1]}.{k}", v) for m in (ga, qm) for k, v in vars(m).items() if isinstance(v, re.Pattern) and k not in guarded]
+    pats = [(f"{m.__name__.split('.')[-1]}.{k}", v) for m in (ga, qm, lbm) for k, v in vars(m).items() if isinstance(v, re.Pattern) and k not in guarded]
     assert len(pats) >= 6, [n for n, _ in pats]  # the sweep really found them (ALWAYS, PLANTED, ORDER, THINK, TAGS, quests' own)
     funcs = [("quests.planted", lambda t: qm.planted("kiwi-42 and more words", t)), ("quests.breaks_fiction", lambda t: qm.breaks_fiction("kiwi-42", t)),
-             ("quests.clean", lambda t: qm.clean(t, 500)), ("leaks", lambda t: ga.leaks("one two three four five six seven eight", t)),
+             ("quests.clean", lambda t: qm.clean(t, 500)), ("leaderboard.clean_text", lambda t: lbm.clean_text(t, 24)),
+             ("leaderboard.name_problem", lambda t: lbm.name_problem(t, ["bad"])),
+             ("leaderboard.clean_telemetry", lambda t: lbm.clean_telemetry({"name": t, "cpu": t, "os": t, "gpus": [{"name": t}] * 20})), ("leaks", lambda t: ga.leaks("one two three four five six seven eight", t)),
              ("visible", ga.visible), ("first_sentence", ga.first_sentence), ("strip_chatter", ga.strip_chatter), ("json_slice", ga.json_slice), ("schema_hint", lambda t: ga.schema_hint({"type": "object", "properties": {"a": {"type": "string"}}}))]
     runs = [(n, p.search) for n, p in pats] + [(n, p.match) for n, p in pats] + [(n, lambda t, p=p: p.sub("", t)) for n, p in pats] + funcs
     for size in (1500, 20_000):
@@ -875,7 +877,7 @@ async def t_leaderboard():
         n = board["nodes"][0]
         served = {r["agent"]: r for r in store.report()["agents"]}
         assert n["rank"] == 1 and n["name"] == "Rig <b>1</b>" and n["tokens"]["all"] == served["vol-a"]["tokens"] > 0 and n["jobs"] == served["vol-a"]["jobs"]
-        assert n["tokens"]["today"] == n["tokens"]["week"] == n["tokens"]["all"]
+        assert n["tokens"]["today"] == n["tokens"]["week"] == n["tokens"]["all"] and len(n["reported"]["at"]) == 10  # a date, not a time
         assert n["reported"]["cpu"] == "Test CPU @ 3.0GHz" and n["reported"]["threads"] == 16 and n["reported"]["idle_gpu_pct"] == 12.0  # override char removed
         assert n["reported"]["gpus"][0] == {"name": "NVIDIA <b>A10</b>", "vram_mb": 23028} and "vol-a" not in json.dumps(board)  # the agent id is not shown
         assert "vol-b" in served and lb.node_label("vol-b") not in json.dumps(board) and board["period"] == "week" and board["users"] == []
@@ -964,9 +966,9 @@ def t_leaderboard_ranking_and_store():
         assert first[0]["tokens"] == {"today": 0, "week": 100, "all": 9100} and first[0]["jobs"] == 2 and first[0]["rank"] == 1 and first[0]["name"] == "Veteran"
         assert first[2]["name"] == "node-" + first[2]["node"] and first[2]["tokens"] == {"today": 0, "week": 0, "all": 0}  # no work yet, no name: still listed
         assert first[0]["reported"] == {"cpu": "cpu big-old", "threads": 8, "gpus": [{"name": "GPU", "vram_mb": 2048}], "os": "Linux",
-                                        "idle_gpu_pct": 7.3, "at": first[0]["reported"]["at"]} and len(s.leaderboard("all", 2)["nodes"]) == 2
+                                        "idle_gpu_pct": 7, "at": today()} and len(s.leaderboard("all", 2)["nodes"]) == 2
         s.set_telemetry("quiet", {"name": "Q2", "cpu": "c", "threads": 1, "gpus": [], "os": "", "idle_gpu": None})  # a later report replaces the first
-        assert [x["name"] for x in s.leaderboard("all")["nodes"]][-1] == "Q2" and s.leaderboard("all")["nodes"][-1]["reported"]["idle_gpu_pct"] is None
+        assert [x["name"] for x in s.leaderboard("all")["nodes"]][-1] == "Q2" and s.leaderboard("all")["nodes"][-1]["reported"]["idle_gpu_pct"] == 7  # no value: unchanged
         # players: tokens from the day a machine was linked, over all their machines; only with a name
         for code, agent, wallet in (("C1", "big-old", "w:ada"), ("C2", "small-now", "w:ada"), ("C3", "quiet", "w:bob"), ("C4", "hidden", "w:cy")):
             s.add_link_code(code, agent, 600)
@@ -985,6 +987,14 @@ def t_leaderboard_ranking_and_store():
         assert [u["name"] for u in s.leaderboard("all")["users"]] == ["Bob"]
         s.forget_telemetry("big-old")
         assert all(x["name"] != "Veteran" for x in s.leaderboard("all")["nodes"]) and s.has_work("big-old") and not s.has_work("nobody")
+        # a machine that stopped reporting drops off by itself (retention_days), and so do old paid-node counters
+        s.set_telemetry("stale", {"name": "StaleRig", "cpu": "c", "threads": 1, "gpus": [], "os": "", "idle_gpu": None})
+        s._x("UPDATE node_telemetry SET updated = ? WHERE agent = 'stale'", ("2020-01-01T00:00:00+00:00",))
+        s.add_node_spend("https://old.example", 5, day="2020-01-01")
+        assert any(x["name"] == "StaleRig" for x in s.leaderboard("all")["nodes"])
+        s.purge(35)
+        assert all(x["name"] != "StaleRig" for x in s.leaderboard("all")["nodes"]) and s.node_spend("https://old.example", "2020-01-01") == 0
+        assert any(x["name"] == "Q2" for x in s.leaderboard("all")["nodes"])  # a recent report stays
 
 
 async def t_telemetry_first_report_waits_for_a_sample():
@@ -1029,6 +1039,205 @@ async def t_telemetry_first_report_waits_for_a_sample():
         ag.hardware.describe, ag.gpu_util, ag.SAMPLE_S, ag.REPORT_S, ag.GRACE_S = saved
         ag.IDLE["gpu"] = None
         ag.JOBS.update(active=0, last=0.0)
+
+
+def t_names_are_filtered():
+    from gateway.leaderboard import name_problem
+    for ok in ("Ada", "Rig 4090", "Dev laptop", "Zoë", "xX_Gamer_Xx", "Room 12", "Tester <b>"):
+        assert name_problem(ok) == "", ok
+    for bad in ("visit www.shop.example", "VISIT WWW.SHOP", "http://x.y", "me@x.io", "@ada", "call 555 123 4567", "5551234567"):
+        assert name_problem(bad), bad
+    assert name_problem("BadWord Rig", [r"bad\s?word"]) == "that name is not allowed" and name_problem("Good Rig", ["bad"]) == ""
+
+
+def t_leaderboard_config_is_checked():
+    for bad in ({"privacy_url": "http://x.example/privacy"}, {"blocked_names": ["("]}, {"blocked_names": [5]}):
+        cfg = copy.deepcopy(CFG)
+        cfg["leaderboard"] = bad
+        try:
+            make_app(cfg)
+            assert False, bad
+        except ValueError:
+            pass
+    cfg = copy.deepcopy(CFG)
+    cfg["leaderboard"] = {"privacy_url": "https://x.example/privacy", "blocked_names": ["bad"], "players": False}
+    make_app(cfg)  # a good block starts
+
+
+def t_agent_telemetry_consent():
+    import subprocess
+    from node import join
+    import node.agent as ag
+    n = ag.telemetry_notice(["https://gw.example"], "Rig")
+    for must in ("https://gw.example", "CPU model", "GPU models", "slow average", "'Rig'", "publicly", "real name", "totals match", "copy",
+                 "--telemetry-show", "--telemetry-off"):
+        assert must in n, must
+    assert "short code" in ag.telemetry_notice(["https://g"], "") and "player" in ag.JOBS_NOTICE and "Do not log" in ag.JOBS_NOTICE
+    assert ag.insecure("http://example.com") and ag.insecure("http://192.168.1.5:8080") and not ag.insecure("https://example.com")
+    assert not ag.insecure("http://127.0.0.1:8080") and not ag.insecure("http://localhost") and not ag.insecure("http://[::1]:8080")
+    root = os.path.join(os.path.dirname(__file__), "..")
+    run = lambda *args, timeout=60: subprocess.run([sys.executable, os.path.join(root, "node", "agent.py"), "--gateway", "http://nowhere.invalid", "--token", "t", *args],
+                                                   capture_output=True, text=True, timeout=timeout)
+    shown = run("--telemetry-show", "--name", "Rig")  # nowhere.invalid does not resolve: it only prints, so nothing is tried
+    assert shown.returncode == 0 and "Leaderboard telemetry is ON" in shown.stdout
+    report = json.loads(shown.stdout[shown.stdout.index("{"):])
+    assert report["name"] == "Rig" and report["cpu"] and isinstance(report["gpus"], list) and "idle_gpu" in report and "hostname" not in json.dumps(report).lower()
+    try:
+        refused = run("--telemetry", timeout=15)  # plain http to another machine: the report would cross the network unencrypted
+    except subprocess.TimeoutExpired:
+        assert False, "the agent started with --telemetry on a plain http gateway instead of refusing"
+    assert refused.returncode != 0 and "https://" in refused.stderr and "Starting" not in refused.stdout
+    for gateway, fine in (("http://example.com", False), ("https://example.com", True)):
+        a = join.parser().parse_args(["--gateway", gateway, "--token", "t", "--telemetry", "--dry-run"])
+        steps, _ = join.plan(a, 16, {"qwen3:4b-instruct"})
+        assert all(ok for ok, _ in steps) == fine, (gateway, steps)
+    assert all(ok for ok, _ in join.plan(join.parser().parse_args(["--gateway", "http://example.com", "--token", "t"]), 16, {"qwen3:4b-instruct"})[0])
+
+
+async def t_agent_telemetry_reacts_to_the_gateway():
+    import node.agent as ag
+    posts, logs, reply = [], [], {}
+
+    def gateway(req):
+        posts.append(json.loads(req.content))
+        return reply["r"]
+    gw = httpx.AsyncClient(transport=httpx.MockTransport(gateway), base_url="http://gw")
+    saved = ag.hardware.describe, ag.gpu_util, ag.SAMPLE_S, ag.REPORT_S, ag.GRACE_S
+    ag.hardware.describe, ag.gpu_util = (lambda: {"cpu": "c", "threads": 1, "gpus": [], "os": "Linux"}), (lambda: None)
+    ag.SAMPLE_S, ag.REPORT_S, ag.GRACE_S = 0.05, 0.1, 0
+    try:
+        reply["r"] = httpx.Response(200, json={"ok": True, "stored": True, "name_rejected": "a name may not contain a link, an email address or a handle"})
+        task = asyncio.create_task(ag.telemetry(gw, "tok", "a", "me@x.io", log=logs.append))
+        await asyncio.sleep(0.6)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        assert len(posts) >= 2 and len([m for m in logs if "will not show your name" in m]) == 1 and "email" in logs[0]  # said once, and why
+        for why in ("the leaderboard is switched off on this gateway", "the operator has blocked this machine from the leaderboard", "agent banned"):
+            posts.clear()
+            logs.clear()
+            reply["r"] = httpx.Response(403, json={"detail": why})
+            task = asyncio.create_task(ag.telemetry(gw, "tok", "a", "Rig", log=logs.append))
+            await asyncio.sleep(0.4)
+            assert task.done() and len(posts) == 1 and logs and "will not list this machine" in logs[0] and why in logs[0], (why, logs)  # it stops, and says why
+        posts.clear()
+        reply["r"] = httpx.Response(403, json={"detail": "register first: only machines that have registered or served jobs can report"})
+        task = asyncio.create_task(ag.telemetry(gw, "tok", "a", "Rig", log=logs.append))
+        await asyncio.sleep(0.5)
+        assert not task.done() and len(posts) >= 2  # not registered yet is temporary: it keeps trying
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    finally:
+        ag.hardware.describe, ag.gpu_util, ag.SAMPLE_S, ag.REPORT_S, ag.GRACE_S = saved
+
+
+async def t_leaderboard_privacy_controls():
+    from gateway import leaderboard as lb
+    import gateway.pull as gp
+    base = copy.deepcopy(CFG)
+    base.update(nodes=[], pull_tokens={"tok": {"models": ["npc-small"]}}, pull_poll_s=0.2, canary_rate=0)
+    os.environ["ANANSI_ADMIN_TOKEN"] = "t"
+    adm, nh = {"X-Admin-Token": "t"}, (lambda agent: {"X-Node-Token": "tok", "X-Node-Agent": agent})
+    saved = lb.CACHE_S, gp.TELEMETRY_MIN_S
+    lb.CACHE_S, gp.TELEMETRY_MIN_S = 0, 0
+    wallet = "dev:76561198000000001"  # the player token in H
+
+    def build(**lbcfg):
+        cfg = copy.deepcopy(base)
+        cfg["leaderboard"] = lbcfg
+        app = make_app(cfg)
+        for agent in ("rig-a", "rig-b"):
+            app.state.store.credit(agent, 500)  # served jobs, so they may report
+        return app, httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://gw")
+    rep = lambda c, agent, name: c.post("/node/telemetry", json={"name": name, "cpu": "c", "gpus": [], "os": "Linux", "idle_gpu": 10}, headers=nh(agent))
+    try:
+        app, c = build(privacy_url="https://example.com/privacy?a=1&b=2", blocked_names=[r"bad\s?word"])
+        store = app.state.store
+        # a name that may not be shown is left out, the rest of the report is kept, and the machine is told why
+        r = (await rep(c, "rig-a", "visit www.shop.example")).json()
+        assert r["stored"] and "link" in r["name_rejected"]
+        n = (await c.get("/v1/leaderboard")).json()["nodes"]
+        assert len(n) == 1 and n[0]["name"] == "node-" + n[0]["node"] and n[0]["reported"]["cpu"] == "c"
+        assert (await rep(c, "rig-a", "BadWord Rig")).json()["name_rejected"] == "that name is not allowed"
+        r = (await rep(c, "rig-a", "Dev laptop")).json()
+        assert r["name_rejected"] is None and (await c.get("/v1/leaderboard")).json()["nodes"][0]["name"] == "Dev laptop"
+        # what the page and the JSON tell browsers and crawlers
+        page, js = await c.get("/leaderboard"), await c.get("/v1/leaderboard")
+        assert page.headers["x-robots-tag"] == js.headers["x-robots-tag"] == "noindex, nofollow"
+        assert "frame-ancestors 'none'" in page.headers["content-security-policy"] and "default-src 'none'" in page.headers["content-security-policy"]
+        assert "<meta name=robots content='noindex,nofollow'>" in page.text and "name=color-scheme" in page.text
+        assert "<a href='https://example.com/privacy?a=1&amp;b=2'>Privacy notice</a>" in page.text and "slow average" in page.text and "archives" in page.text
+        assert "Typical idle GPU" in page.text and "10 %" in page.text and len(js.json()["nodes"][0]["reported"]["at"]) == 10  # a whole percent and a date
+        none = await build()[1].get("/leaderboard")
+        assert "Privacy notice" not in none.text
+        # player names
+        for bad, word in (("me@x.io", "email"), ("BadWord", "not allowed"), ("call 555 123 4567", "phone"), ("www.shop.example", "link")):
+            r = await c.post("/v1/credits/name", json={"name": bad}, headers=H)
+            assert r.status_code == 400 and word in r.json()["detail"], (bad, r.text)
+        assert (await c.post("/v1/credits/name", json={"name": "Ada"}, headers=H)).json() == {"name": "Ada"}
+        store.add_link_code("CODEAAAA", "rig-a", 600)
+        assert store.link("CODEAAAA", wallet) == "rig-a"
+        assert [u["name"] for u in (await c.get("/v1/leaderboard")).json()["users"]] == ["Ada"]
+        # moderation: who may, what it does, what it does not
+        label = lb.node_label("rig-a")
+        assert (await c.post("/admin/leaderboard/block", json={"node": label})).status_code == 404  # no token
+        assert (await c.post("/admin/leaderboard/block", json={"node": label}, headers={"X-Admin-Token": "wrong"})).status_code == 404
+        assert (await c.post("/admin/leaderboard/block", json=["x"], headers=adm)).status_code == 400
+        assert (await c.post("/admin/leaderboard/block", json={"node": "00000000"}, headers=adm)).json() == {"blocked": 0}  # no such machine
+        lb.CACHE_S = 1000  # the page is cached for 30 s in real use: taking something down must not wait for that
+        assert len((await c.get("/v1/leaderboard")).json()["nodes"]) == 1
+        assert (await c.post("/admin/leaderboard/block", json={"node": label}, headers=adm)).json() == {"blocked": 1}
+        assert (await c.get("/v1/leaderboard")).json()["nodes"] == []
+        lb.CACHE_S = 0
+        r = await rep(c, "rig-a", "Dev laptop")
+        assert r.status_code == 403 and "blocked" in r.json()["detail"] and (await c.get("/v1/leaderboard")).json()["nodes"] == []
+        assert store.has_work("rig-a") and "rig-a" not in store.bans()  # it still serves jobs: only the listing is refused
+        assert (await rep(c, "rig-b", "Other")).json()["stored"]  # others are unaffected
+        assert (await c.post("/admin/leaderboard/block", json={"node": label, "unblock": True}, headers=adm)).json() == {"unblocked": 1}
+        assert (await rep(c, "rig-a", "Dev laptop")).json()["stored"]
+        assert (await c.post("/admin/leaderboard/block", json={"user": "ADA"}, headers=adm)).json() == {"blocked": 1}  # by the name shown, any case
+        assert (await c.get("/v1/leaderboard")).json()["users"] == []
+        assert (await c.post("/v1/credits/name", json={"name": "Ada again"}, headers=H)).status_code == 403
+        assert (await c.post("/v1/credits/name", json={"name": ""}, headers=H)).json() == {"name": None}  # leaving is always allowed
+        assert (await c.post("/admin/leaderboard/block", json={"user": "Ada", "unblock": True}, headers=adm)).json() == {"unblocked": 1}
+        assert (await c.post("/v1/credits/name", json={"name": "Ada"}, headers=H)).status_code == 200
+        # the operator's switches: players only, and everything
+        app2, c2 = build(players=False)
+        await rep(c2, "rig-a", "Rig")
+        app2.state.store.add_link_code("CODEBBBB", "rig-a", 600)
+        app2.state.store.link("CODEBBBB", wallet)
+        app2.state.store.set_wallet_name(wallet, "Ada")  # even a name stored earlier is not shown
+        board = (await c2.get("/v1/leaderboard")).json()
+        assert len(board["nodes"]) == 1 and board["users"] == []
+        assert (await c2.post("/v1/credits/name", json={"name": "Ada"}, headers=H)).status_code == 403
+        assert (await c2.post("/v1/credits/name", json={"name": ""}, headers=H)).status_code == 200
+        app3, c3 = build(enabled=False)
+        assert (await c3.get("/leaderboard")).status_code == 404 and (await c3.get("/v1/leaderboard")).status_code == 404
+        r = await rep(c3, "rig-a", "Rig")
+        assert r.status_code == 403 and "switched off" in r.json()["detail"]
+        assert (await c3.post("/v1/credits/name", json={"name": "Ada"}, headers=H)).status_code == 403
+        assert (await c3.post("/v1/credits/name", json={"name": ""}, headers=H)).status_code == 200
+    finally:
+        lb.CACHE_S, gp.TELEMETRY_MIN_S = saved
+
+
+def t_idle_gpu_is_a_slow_average():
+    import tempfile
+    from gateway.store import Store
+    s = Store(os.path.join(tempfile.mkdtemp(), "idle.db"))
+    one = lambda idle: s.set_telemetry("rig", {"name": "R", "cpu": "c", "threads": 1, "gpus": [], "os": "", "idle_gpu": idle})
+    shown = lambda: s.leaderboard("all")["nodes"][0]["reported"]["idle_gpu_pct"]
+    one(None)
+    assert shown() is None  # nothing reported yet: nothing shown
+    one(100.0)
+    assert shown() == 100  # the first value is taken as it is
+    one(0.0)
+    assert shown() == 97  # one report of 0 % moves a 100 % average to 97: a gaming session does not show up as it happens
+    one(None)
+    assert shown() == 97  # a report without a value changes nothing
+    for _ in range(100):
+        one(0.0)
+    assert shown() < 6  # a sustained change does come through, over hours
+    assert isinstance(shown(), int) and len(s.leaderboard("all")["nodes"][0]["reported"]["at"]) == 10  # whole percent, date only
 
 
 async def t_one_agent_serves_several_gateways():
@@ -1361,7 +1570,12 @@ def t_sdk_quest():
     assert make(200, {"name": "Ada"}).set_leaderboard_name("Ada") == {"set": True, "name": "Ada"}
     assert seen[-1] == ("/v1/credits/name", {"name": "Ada"})
     assert make(200, {"name": None}).set_leaderboard_name("") == {"set": True, "name": None}
-    assert make(400, {}).set_leaderboard_name(5) == {"set": False, "reason": "bad_name"} and make(503, {}).set_leaderboard_name("x") == {"set": False, "reason": "unavailable"}
+    assert make(400, {"detail": "a name may not contain a phone number"}).set_leaderboard_name("5551234567") == {
+        "set": False, "reason": "bad_name", "message": "a name may not contain a phone number"}
+    assert make(403, {"detail": "player names are switched off on this gateway"}).set_leaderboard_name("x") == {
+        "set": False, "reason": "not_allowed", "message": "player names are switched off on this gateway"}
+    assert make(422, {"detail": [{"msg": "x"}]}).set_leaderboard_name(5) == {"set": False, "reason": "bad_name", "message": ""}  # not text: no message
+    assert make(503, {}).set_leaderboard_name("x") == {"set": False, "reason": "unavailable"}
 
 
 def t_store():

@@ -122,7 +122,8 @@ served to every player, which cuts interactive load. The interactive path is the
   player. Peers are untrusted and games ship to minors.
 - **Privacy**: hosts can read prompts. Send only game context, with no SteamID, no player
   chat and no PII. State this in the node's opt-in text. Use TLS to the gateway and rotate
-  per-job pseudonymous IDs.
+  per-job pseudonymous IDs. *As built:* a job is the player's message and the studio's NPC prompt, with no account id, name or address, and
+  volunteers serve a title only if it opts in; "no player chat" cannot hold for dialogue. See docs/privacy.md and docs/volunteer-terms.md.
 - **Abuse**: rate-limit per Steam account and per title. Reject jobs above a token cap.
 
 ## 5. Credit and incentives

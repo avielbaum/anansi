@@ -23,7 +23,7 @@ import httpx
 from fastapi import Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
-from .leaderboard import clean_telemetry
+from .leaderboard import clean_telemetry, name_problem
 from .scheduler import Node
 from .store import Store
 
@@ -39,7 +39,7 @@ TELEMETRY_MIN_S = 20  # a machine's reports are stored at most this often; the a
 
 class PullHub(httpx.AsyncBaseTransport):
     def __init__(self, sched, tokens, inner, poll_s=20, ttl_s=None, job_timeout_s=60, reply_text=None,
-                 canaries=None, canary_rate=0.05, store=None, rates=None):
+                 canaries=None, canary_rate=0.05, store=None, rates=None, leaderboard=None):
         self.sched, self.tokens, self.inner = sched, tokens, inner
         self.rates = rates or {}  # credits per 1,000 tokens by the model name sent to the node; "default" for the rest
         self.poll_s, self.job_timeout_s = poll_s, job_timeout_s
@@ -50,6 +50,7 @@ class PullHub(httpx.AsyncBaseTransport):
         self.nodes = {}  # id -> {"node", "token", "agent", "q", "seen", "live", "strikes"}
         self.jobs = {}   # job id -> (node id, Future)
         self.tele_seen = {}  # agent id -> when its last report was stored
+        self.lb = leaderboard or {}  # the gateway's `leaderboard` config block
 
     def check(self, token, agent):
         """(token config, token ban id) for a known token and an agent that is not banned; raises otherwise."""
@@ -75,18 +76,24 @@ class PullHub(httpx.AsyncBaseTransport):
 
     def report(self, token, agent, data):
         """Store what a machine reported about itself for the leaderboard (an opt-in, see gateway/leaderboard.py). Only a machine that has
-        registered or has served a job may: a made-up agent id cannot put a row on the board. False if it came too soon after the last."""
+        registered or has served a job may: a made-up agent id cannot put a row on the board. Returns (stored, why the display name was
+        refused or ""): stored is False if the report came too soon after the last; a refused name is left out and the rest is kept."""
         self.check(token, agent)
+        if not self.lb.get("enabled", True):
+            raise HTTPException(403, "the leaderboard is switched off on this gateway")
+        if self.store.blocked("node", agent):
+            raise HTTPException(403, "the operator has blocked this machine from the leaderboard")
         if not self.store.has_work(agent) and not any(e["agent"] == agent for e in self.nodes.values()):
             raise HTTPException(403, "register first: only machines that have registered or served jobs can report")
         now = time.monotonic()
         if now - self.tele_seen.get(agent, -1e9) < TELEMETRY_MIN_S:
-            return False
+            return False, ""
         if len(self.tele_seen) > 10_000:
             self.tele_seen.clear()
         self.tele_seen[agent] = now
-        self.store.set_telemetry(agent, data)
-        return True
+        problem = name_problem(data["name"], self.lb.get("blocked_names", []))
+        self.store.set_telemetry(agent, {**data, "name": "" if problem else data["name"]})
+        return True, problem
 
     def register(self, token, agent):
         cfg, tid = self.check(token, agent)
@@ -260,7 +267,8 @@ def add_routes(app, hub):
             data = clean_telemetry(json.loads(raw))
         except ValueError:
             raise HTTPException(400, "bad report")
-        return {"ok": True, "stored": hub.report(x_node_token, x_node_agent, data)}
+        stored, problem = hub.report(x_node_token, x_node_agent, data)
+        return {"ok": True, "stored": stored, "name_rejected": problem or None}
 
     @app.delete("/node/telemetry")
     async def telemetry_off(x_node_token: str = Header(None), x_node_agent: str = Header(None)):

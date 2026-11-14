@@ -18,6 +18,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS usage(title TEXT, player TEXT, day TEXT, tokens BIGINT, PRIMARY KEY(title, player, day));
 CREATE TABLE IF NOT EXISTS node_spend(node TEXT, day TEXT, tokens BIGINT, PRIMARY KEY(node, day));
 CREATE TABLE IF NOT EXISTS node_telemetry(agent TEXT PRIMARY KEY, name TEXT, cpu TEXT, threads BIGINT, gpus TEXT, os TEXT, idle_gpu REAL, updated TEXT);
+CREATE TABLE IF NOT EXISTS leaderboard_blocks(kind TEXT, key TEXT, label TEXT, at TEXT, PRIMARY KEY(kind, key));
 CREATE TABLE IF NOT EXISTS wallet_names(wallet TEXT PRIMARY KEY, name TEXT, at TEXT);
 CREATE TABLE IF NOT EXISTS bans(agent TEXT PRIMARY KEY, reason TEXT, at TEXT);
 CREATE TABLE IF NOT EXISTS ledger(agent TEXT, day TEXT, jobs BIGINT DEFAULT 0, tokens BIGINT DEFAULT 0,
@@ -135,12 +136,35 @@ class Store:
     def set_telemetry(self, agent, t):
         """Store what a machine reported (already cleaned by leaderboard.clean_telemetry)."""
         now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+        # idle_gpu is kept as a slow average (97 % old, 3 % new: a few hours at one report per 5 minutes), so the public value shows the
+        # machine's typical free GPU, not when its owner is playing; a report without a value leaves it as it was
         self._x("INSERT INTO node_telemetry VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(agent) DO UPDATE SET name=excluded.name, cpu=excluded.cpu, "
-                "threads=excluded.threads, gpus=excluded.gpus, os=excluded.os, idle_gpu=excluded.idle_gpu, updated=excluded.updated",
+                "threads=excluded.threads, gpus=excluded.gpus, os=excluded.os, updated=excluded.updated, idle_gpu = CASE "
+                "WHEN excluded.idle_gpu IS NULL THEN node_telemetry.idle_gpu WHEN node_telemetry.idle_gpu IS NULL THEN excluded.idle_gpu "
+                "ELSE 0.97 * node_telemetry.idle_gpu + 0.03 * excluded.idle_gpu END",
                 (agent, t["name"], t["cpu"], t["threads"], json.dumps(t["gpus"]), t["os"], t["idle_gpu"], now))
 
     def forget_telemetry(self, agent):
         self._x("DELETE FROM node_telemetry WHERE agent=?", (agent,))
+
+    def block(self, kind, key, label):
+        """Keep a machine (kind "node", key = agent id, label = the hash the board shows) or a player (kind "user", key = wallet, label = the
+        name they had) off the leaderboard. They still serve jobs and play; they just cannot be listed."""
+        self._x("INSERT INTO leaderboard_blocks VALUES(?,?,?,?) ON CONFLICT(kind, key) DO NOTHING", (kind, key, label, today()))
+
+    def unblock(self, kind, label):
+        """Lift blocks by label (case-insensitive); returns how many."""
+        return self._x("DELETE FROM leaderboard_blocks WHERE kind=? AND LOWER(label)=LOWER(?)", (kind, label)).rowcount
+
+    def blocked(self, kind, key):
+        return self._x("SELECT 1 FROM leaderboard_blocks WHERE kind=? AND key=?", (kind, key)).fetchone() is not None
+
+    def agents_by_label(self, label):
+        """Agent ids whose board label (a short hash) is `label`: the operator sees only the label, not the id."""
+        return [a for (a,) in self._x("SELECT agent FROM node_telemetry UNION SELECT agent FROM ledger") if hashlib.sha256(a.encode()).hexdigest()[:8] == label]
+
+    def wallets_by_name(self, name):
+        return [w for (w,) in self._x("SELECT wallet FROM wallet_names WHERE LOWER(name)=LOWER(?)", (name,))]
 
     def set_wallet_name(self, wallet, name):
         """A player's display name on the board. An empty name takes them off it."""
@@ -166,7 +190,7 @@ class Store:
             label = hashlib.sha256(agent.encode()).hexdigest()[:8]
             nodes.append({"rank": i, "node": label, "name": name or "node-" + label, "tokens": {"today": int(d), "week": int(w), "all": int(a)},
                           "jobs": int(jobs), "reported": {"cpu": cpu, "threads": int(threads), "gpus": json.loads(gpus), "os": os_,
-                                                          "idle_gpu_pct": None if idle is None else round(float(idle), 1), "at": updated}})
+                                                          "idle_gpu_pct": None if idle is None else int(round(float(idle))), "at": updated[:10]}})
         users = []
         for i, (name, machines, d, w, a, jobs) in enumerate(self._x(
                 "SELECT n.name, COUNT(DISTINCT k.agent), " + sums + " FROM wallet_names n JOIN links k ON k.wallet = n.wallet "

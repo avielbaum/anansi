@@ -86,6 +86,8 @@ func run() -> int:
 	check(nm.set and nm.name == "Tester <b>GD</b>", "leaderboard name is accepted and returned as text")
 	nm = await fresh.set_leaderboard_name("")
 	check(nm.set and nm.name == null, "an empty name opts out")
+	nm = await fresh.set_leaderboard_name("write me@example.com")
+	check(not nm.set and nm.reason == "bad_name" and "email" in nm.message, "a refused name says why")
 	check((await plain.leaderboard()) == null and (await plain.set_leaderboard_name("x")).reason == "unavailable", "gateway down: no leaderboard, name unavailable")
 	print("%d passed, %d failed" % [passes, failures])
 	return failures
