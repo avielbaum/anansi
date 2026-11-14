@@ -7,8 +7,7 @@ const SAVE := "user://hoppertunity.json"
 const TICK := 0.25
 const MODELS := "res://assets/models/"
 const PEOPLE := "res://assets/characters/"
-## model, scale, tint and arrow height of each building. The kit's pieces face +Z, so YAW0 turns them to face direction 0 (+X).
-const YAW0 := PI / 2
+## model, scale, tint and arrow height of each building. The kit's pieces run along +X, which is direction 0.
 const LOOK := {
 	"belt": ["conveyor-stripe", 1.0, Color.WHITE, 0.42], "splitter": ["conveyor-stripe", 1.0, Color(1.0, 0.75, 0.35), 0.42],
 	"hopper": ["hopper-square", 0.85, Color.WHITE, 0.9],
@@ -215,45 +214,76 @@ static func _center(pos: Vector2i) -> Vector3:
 	return Vector3(pos.x + 0.5, 0.0, pos.y + 0.5)
 
 
-func _model(kind: String, dir: int) -> Node3D:
+## A building: the kit's piece, an arrow lying flat on top that points the way it sends things, and for anything but
+## a belt a floating tag. turn >= 0 draws a conveyor as the corner piece, turned that many quarter turns.
+func _model(kind: String, dir: int, turn := -1) -> Node3D:
 	var look: Array = LOOK[kind]
-	var n: Node3D = load(MODELS + look[0] + ".glb").instantiate()
-	n.scale = Vector3.ONE * look[1]
-	n.rotation.y = YAW0 - dir * PI / 2
+	var n := Node3D.new()
+	var m: Node3D = load(MODELS + (look[0] if turn < 0 else "conveyor-stripe-corner") + ".glb").instantiate()
+	m.scale = Vector3.ONE * look[1]
+	m.rotation.y = -(dir if turn < 0 else turn) * PI / 2
 	if look[2] != Color.WHITE:
-		_tint(n, look[2])
-	var arrow := Label3D.new()  # lies flat on top and points the way it sends things
+		_tint(m, look[2])
+	n.add_child(m)
+	var arrow := Label3D.new()
 	arrow.text = ">"
 	arrow.font_size = 96
 	arrow.outline_size = 24
 	arrow.modulate = ORANGE
-	arrow.pixel_size = 0.005 / look[1]
-	arrow.rotation = Vector3(-PI / 2, -PI / 2, 0)
-	arrow.position = Vector3(0, look[3], 0.0 if kind in ["belt", "splitter"] else 0.3) / look[1]
+	arrow.rotation = Vector3(-PI / 2, -dir * PI / 2, 0)
+	var ahead := Vector3(Data.DIRS[dir].x, 0, Data.DIRS[dir].y)
+	arrow.position = Vector3(0, look[3], 0) + (Vector3.ZERO if kind in ["belt", "splitter"] else ahead * 0.3)
 	n.add_child(arrow)
-	return n
-
-
-## Redraw the building at pos after it was built, turned or removed.
-func _refresh(pos: Vector2i) -> void:
-	if views.has(pos):
-		views[pos].queue_free()
-		views.erase(pos)
-	if not sim.cells.has(pos):
-		return
-	var c: Dictionary = sim.cells[pos]
-	var n := _model(c.kind, c.dir)
-	n.position = _center(pos)
-	if c.kind not in ["belt", "splitter"]:
+	if kind not in ["belt", "splitter"]:
 		var tag := Label3D.new()
 		tag.name = "tag"
 		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		tag.no_depth_test = true
 		tag.font_size = 40
 		tag.outline_size = 10
-		tag.pixel_size = 0.006 / n.scale.x
-		tag.position = Vector3(0, (2.0 if c.kind in ["inbound", "outbound"] else 1.5) / n.scale.x, 0)
+		tag.pixel_size = 0.006
+		tag.position = Vector3(0, 2.0 if kind in ["inbound", "outbound"] else 1.5, 0)
 		n.add_child(tag)
+	return n
+
+
+## Would the building at `from` hand things to its neighbour `to`?
+func _feeds(from: Vector2i, to: Vector2i) -> bool:
+	var c = sim.cells.get(from)
+	if c == null or c.kind == "outbound":
+		return false
+	var ahead: bool = from + Data.DIRS[c.dir] == to
+	return ahead or (c.kind == "splitter" and from - Data.DIRS[c.dir] != to)
+
+
+## Which way the corner piece must be turned for the conveyor at pos, or -1 if it should be straight: a corner only when
+## nothing feeds it from behind and exactly one side does. At zero turns the piece joins the west and south edges.
+func _corner(pos: Vector2i) -> int:
+	var c: Dictionary = sim.cells[pos]
+	if c.kind != "belt" or _feeds(pos - Data.DIRS[c.dir], pos):
+		return -1
+	var right := _feeds(pos + Data.DIRS[(c.dir + 1) % 4], pos)
+	var left := _feeds(pos + Data.DIRS[(c.dir + 3) % 4], pos)
+	return -1 if right == left else (c.dir + (3 if right else 2)) % 4
+
+
+## Redraw the building at pos after it was built, turned or removed, and the conveyors beside it, whose shape depends on it.
+func _refresh(pos: Vector2i) -> void:
+	_redraw(pos)
+	for d in Data.DIRS:
+		if sim.cells.has(pos + d) and sim.cells[pos + d].kind == "belt":
+			_redraw(pos + d)
+
+
+func _redraw(pos: Vector2i) -> void:
+	if views.has(pos):
+		views[pos].queue_free()
+		views.erase(pos)
+	if not sim.cells.has(pos):
+		return
+	var c: Dictionary = sim.cells[pos]
+	var n := _model(c.kind, c.dir, _corner(pos))
+	n.position = _center(pos)
 	add_child(n)
 	views[pos] = n
 
@@ -686,7 +716,7 @@ func _on_day_end(s: Dictionary) -> void:
 	_save()
 	var lines := ["[b]End of day %d[/b]" % s.day, "",
 			"Shipped: %d units%s" % [s.shipped, ", %d returned as defective" % s.defects if s.defects > 0 else ""],
-			"Revenue: %d" % s.revenue, "Costs: %d (wages and rent %d)" % [s.costs, s.wages_rent],
+			"Revenue: %d" % s.revenue, "Costs: %d (wages, rent and upkeep %d)" % [s.costs, s.wages_rent],
 			"[b]Net: %+d[/b]   Cash: %d" % [s.revenue - s.costs, sim.money], ""]
 	if s.walkout:
 		lines.append("The crew stayed home today. A day off cleared the air a little.")

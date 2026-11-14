@@ -123,6 +123,10 @@ func run() -> int:
 	var m0 := s.money
 	run_ticks(s, Data.TICKS_PER_DAY * 2)
 	ok(s.money == m0 - 2 * (Data.RENT + 60) - 50 and s.contract.due == 4, "a missed contract costs a penalty and is offered again")
+	var walked := [false]
+	s.day_ended.connect(func(sum): walked[0] = walked[0] or sum.walkout_next)
+	run_ticks(s, Data.TICKS_PER_DAY * 10)
+	ok(walked[0], "leave the crew alone for two weeks and they walk out")
 	s.money = Data.BANKRUPT_AT - 1
 	ok(s.bankrupt(), "deep enough in debt is bankruptcy")
 
@@ -163,32 +167,13 @@ func run() -> int:
 	run_ticks(t, 400)
 	ok(t.money == s.money and t.day == s.day and JSON.stringify(t.save()) == JSON.stringify(s.save()), "a saved game continues exactly as the original")
 
-	# --- balance: a sensible build order, nobody talked to, must win without going broke ---
-	# each stage: contracts needed, cash needed, cells to clear, then [kind, x, y, dir, times to switch the dock's material]
-	var stages := [
-		[0, 0, [], [["inbound", 0, 2, 0, 0], ["press", 1, 2, 0, 0], ["belt", 2, 2, 0, 0], ["outbound", 3, 2, 0, 0]]],
-		[1, 400, [], [["inbound", 3, 5, 3, 1], ["molder", 3, 4, 3, 0], ["outbound", 3, 3, 0, 0]]],
-		[2, 420, [[3, 2], [3, 3]], [["assembler", 3, 2, 0, 0], ["belt", 3, 3, 3, 0], ["belt", 4, 2, 0, 0], ["outbound", 5, 2, 0, 0]]],
-		[3, 470, [[5, 2]], [["packer", 5, 2, 0, 0], ["belt", 6, 2, 0, 0], ["outbound", 7, 2, 0, 0], ["inbound", 5, 4, 3, 2], ["belt", 5, 3, 3, 0]]],
-	]
-	s = Sim.new(7)
-	var stage := 0
-	var low := s.money
-	var missed := [0]
-	s.day_ended.connect(func(sum): missed[0] += int(sum.missed))
-	while not s.won() and not s.bankrupt() and s.day <= 20:
-		if stage < stages.size() and s.contracts_done >= stages[stage][0] and s.money >= stages[stage][1]:
-			for c in stages[stage][2]:
-				s.demolish(Vector2i(c[0], c[1]))
-			for bld in stages[stage][3]:
-				ok(s.build(bld[0], Vector2i(bld[1], bld[2]), bld[3]), "the bot can afford and place its %s" % bld[0])
-				for i in bld[4]:
-					s.cycle_raw(Vector2i(bld[1], bld[2]))
-			stage += 1
-		s.step()
-		low = mini(low, s.money)
-	print("     bot: won=%s on day %d with %d coins, lowest %d, %d deadlines missed" % [s.won(), s.day, s.money, low, missed[0]])
-	ok(s.won() and s.day <= 12 and low >= 0 and missed[0] == 0, "a sensible build order saves the plant in under two weeks, never in debt")
+	# --- balance: one production line built in a sensible order (the bot in play() below) ---
+	var kind := play(true)
+	var cold := play(false)
+	print("     caring manager: %s" % kind)
+	print("     neglectful one: %s" % cold)
+	ok(kind.won and kind.day <= 12 and kind.low >= 0 and kind.missed == 0, "a manager who looks after the crew saves the plant in under two weeks, never in debt")
+	ok(cold.walkouts > 0 and (not cold.won or cold.day > kind.day or cold.missed > 0), "ignoring the crew ends in a walkout and costs time")
 
 	# --- size: the largest floor, every cell a moving belt (rows joined into one long snake that ends in a dock) ---
 	s = Sim.new()
@@ -261,6 +246,42 @@ func run() -> int:
 
 	print("%d failed" % failed)
 	return failed
+
+
+## A whole game played by a fixed build order. Each stage: contracts needed, cash needed, cells to clear, then
+## [kind, x, y, dir, times to switch the dock's material]. With care, the bot gives a raise to anyone whose morale sags.
+func play(care: bool) -> Dictionary:
+	var stages := [
+		[0, 0, [], [["inbound", 0, 2, 0, 0], ["press", 1, 2, 0, 0], ["belt", 2, 2, 0, 0], ["outbound", 3, 2, 0, 0]]],
+		[1, 400, [], [["inbound", 3, 5, 3, 1], ["molder", 3, 4, 3, 0], ["outbound", 3, 3, 0, 0]]],
+		[2, 420, [[3, 2], [3, 3]], [["assembler", 3, 2, 0, 0], ["belt", 3, 3, 3, 0], ["belt", 4, 2, 0, 0], ["outbound", 5, 2, 0, 0]]],
+		[3, 470, [[5, 2]], [["packer", 5, 2, 0, 0], ["belt", 6, 2, 0, 0], ["outbound", 7, 2, 0, 0], ["inbound", 5, 4, 3, 2], ["belt", 5, 3, 3, 0]]],
+	]
+	var s := Sim.new(7)
+	var stage := 0
+	var r := {"won": false, "day": 0, "money": 0, "low": s.money, "missed": 0, "raises": 0, "walkouts": 0}
+	s.day_ended.connect(func(sum):
+		r.missed += int(sum.missed)
+		r.walkouts += int(sum.walkout_next))
+	while not s.won() and not s.bankrupt() and s.day <= 20:
+		if stage < stages.size() and s.contracts_done >= stages[stage][0] and s.money >= stages[stage][1]:
+			for c in stages[stage][2]:
+				s.demolish(Vector2i(c[0], c[1]))
+			for bld in stages[stage][3]:
+				if not s.build(bld[0], Vector2i(bld[1], bld[2]), bld[3]):
+					ok(false, "the bot can afford and place its %s" % bld[0])
+				for i in bld[4]:
+					s.cycle_raw(Vector2i(bld[1], bld[2]))
+			stage += 1
+		if care and s.tick == 0:
+			for id in s.morale:
+				if s.morale[id] < 45.0 and s.money > 300:
+					s.answer_raise(id, true)
+					r.raises += 1
+		s.step()
+		r.low = mini(r.low, s.money)
+	r.merge({"won": s.won(), "day": s.day, "money": s.money}, true)
+	return r
 
 
 ## Stands in for the gateway: answers every chat with the action in `next`.

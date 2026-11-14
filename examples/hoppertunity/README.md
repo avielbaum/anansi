@@ -14,12 +14,12 @@ floor manager of the Hopper Works, a small gadget plant on its last chance.
 - **Contracts:** ship a set number of one product before the deadline for a bonus. Each finished contract unlocks the
   next machine and material; five finished contracts save the plant. A missed deadline costs a penalty.
 - **Days:** a day is one minute at normal speed. At the end you pay wages and rent and see the day's numbers. Fall 500
-  coins into debt and the Works closes.
+  coins into debt and the Works closes. Each machine also costs 5 coins a day to keep running.
 - **Trouble shows:** a machine that is jammed, blocked or short of an input says so above it.
 - **The crew:** Dot (docks), Sprocket (machines), Tilly (packing and quality) and Penny (sales) each have a morale from
   0 to 100. Morale scales their station from 0.8x to 1.2x: truck turnaround, machine speed and jams, defective units
-  that come back unpaid, and selling prices. Below 30 on average the crew walks out for a day; above 70 everything
-  sells for 10% more.
+  that come back unpaid, and selling prices. Everyone loses 3 morale on an ordinary day, so a crew left alone sours.
+  Below 30 on average the crew walks out for a day; above 70 everything sells for 10% more.
 
 ## What Anansi does
 
@@ -84,14 +84,14 @@ wheel zooms, **Space** pauses.
 | `test/checks.gd` | Self-checks: `godot --headless --path examples/hoppertunity --script res://test/run.gd` |
 
 CI (`.github/workflows/ci.yml`, job `godot`) runs the self-checks against a gateway serving this title on mock nodes,
-and exports the web build. The checks include a scripted playthrough (a fixed build order that talks to nobody wins on
-day 7 without going into debt) and a full 28x24 floor of moving belts (under 5 ms a tick on a laptop).
+and exports the web build. The checks include two scripted playthroughs of one production line: a manager who gives a
+raise whenever someone's morale sags wins on day 9 without going into debt; one who ignores the crew gets four walkouts,
+misses three deadlines and has not won by day 20. A full 28x24 floor of moving belts ticks in under 5 ms on a laptop.
 
 ## Not done yet
 
-- Corner pieces for conveyors (a turn is drawn as a straight piece with its arrow turned).
 - Coworkers that walk the floor (they stand along the back wall; Pip walks to whatever you click, in a straight
-  line), forklifts, sound, a tutorial, balance passes.
+  line), forklifts, sound, a tutorial.
 - The browser build was run by hand in Chromium, without a gateway and with one (Ollama, `qwen3:1.7b` on CPU: a first
   reply took 30 s, so the chat timeout is 45 s). CI checks that it exports, not that it runs.
 - Replies arrive whole (`chat`), not sentence by sentence: `chat_stream` is untested in a browser.

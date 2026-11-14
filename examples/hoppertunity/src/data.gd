@@ -5,6 +5,8 @@ class_name Data
 const TICKS_PER_DAY := 240  # at 4 ticks a second, one day is a minute at normal speed
 const START_MONEY := 600
 const RENT := 40
+const UPKEEP := 5  # power and parts per machine per day
+const MORALE_WEAR := 3.0  # morale every coworker loses on an ordinary day: leave the crew alone and they sour
 const BANKRUPT_AT := -500
 const WIN_CONTRACTS := 5
 const HOPPER_CAP := 20
@@ -19,8 +21,8 @@ const ITEMS := {
 	"cardboard": {"name": "cardboard", "buy": 1, "sell": 0},
 	"panel": {"name": "steel panels", "sell": 8},
 	"casing": {"name": "casings", "sell": 8},
-	"gadget": {"name": "gadgets", "sell": 26},
-	"boxed": {"name": "boxed gadgets", "sell": 40},
+	"gadget": {"name": "gadgets", "sell": 22},
+	"boxed": {"name": "boxed gadgets", "sell": 34},
 }
 
 ## in/out/time make a kind a machine. crew: whose morale scales it. place: how quests and coworkers call it.
@@ -44,9 +46,9 @@ const UNLOCKS := [["molder", "plastic", "casing"], ["assembler", "gadget"], ["pa
 const CONTRACTS := [
 	{"item": "panel", "qty": 20, "days": 2, "reward": 200},
 	{"item": "casing", "qty": 25, "days": 3, "reward": 350},
-	{"item": "gadget", "qty": 15, "days": 3, "reward": 600},
-	{"item": "boxed", "qty": 20, "days": 4, "reward": 900},
-	{"item": "boxed", "qty": 40, "days": 4, "reward": 1500},
+	{"item": "gadget", "qty": 20, "days": 3, "reward": 500},
+	{"item": "boxed", "qty": 30, "days": 3, "reward": 700},
+	{"item": "boxed", "qty": 50, "days": 4, "reward": 1000},
 ]
 
 ## The coworkers. perk: what finishing their storyline gives, applied in sim.gd.

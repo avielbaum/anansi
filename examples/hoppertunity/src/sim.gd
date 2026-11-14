@@ -389,12 +389,15 @@ func _end_day() -> void:
 	var pay := Data.RENT
 	for id in wages:
 		pay += wages[id]
+	for c in cells.values():
+		if Data.BUILD[c.kind].has("in"):
+			pay += Data.UPKEEP
 	money -= pay
 	today.costs += pay
 	var summary := today.duplicate()
 	summary.merge({"day": day, "wages_rent": pay, "walkout": walkout, "missed": false})
 	for id in morale:
-		add_morale(id, 8.0 if walkout else -1.0)  # a day off clears the air; a normal day wears a little
+		add_morale(id, 8.0 if walkout else -Data.MORALE_WEAR)  # a day off clears the air; a normal day wears a little
 		talk_moved[id] = 0.0
 	day += 1
 	tick = 0
