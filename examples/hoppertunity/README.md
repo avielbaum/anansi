@@ -82,10 +82,12 @@ wheel zooms, **Space** pauses.
 | `test/checks.gd` | Self-checks: `godot --headless --path examples/hoppertunity --script res://test/run.gd` |
 
 CI (`.github/workflows/ci.yml`, job `godot`) runs the self-checks against a gateway serving this title on mock nodes,
-and exports the web build.
+and exports the web build. The checks include a scripted playthrough (a fixed build order that talks to nobody wins on
+day 8 without going into debt) and a full 28x24 floor of moving belts (under 5 ms a tick on a laptop).
 
 ## Not done yet
 
+- Corner pieces for conveyors (a turn is drawn as a straight piece with its arrow turned).
 - Coworkers that walk the floor (they stand along the back wall; Pip walks to whatever you click, in a straight
   line), forklifts, sound, a tutorial, balance passes.
 - The browser build was run by hand in Chromium, without a gateway and with one (Ollama, `qwen3:1.7b` on CPU: a first

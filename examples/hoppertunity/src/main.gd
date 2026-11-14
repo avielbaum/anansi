@@ -38,7 +38,7 @@ var talking := ""  # the coworker in the talk panel
 var modal := false  # the day-end screen is up: time stands still
 
 var cam := Camera3D.new()
-var pivot := Vector3(8, 0, 6)
+var pivot := Vector3(6, 0, 4)
 var yaw := 0
 var zoom := 16.0
 var views := {}  # Vector2i -> the building's Node3D
@@ -507,6 +507,7 @@ func _button(text: String, parent: Node, act: Callable) -> Button:
 	b.add_theme_stylebox_override("normal", _box(Color("4a4870")))
 	b.add_theme_stylebox_override("hover", _box(Color("5d5a8c")))
 	b.add_theme_stylebox_override("pressed", _box(ORANGE))
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	b.pressed.connect(act)
 	parent.add_child(b)
 	return b
@@ -627,12 +628,33 @@ func _hud() -> void:
 		contract_label.text = "BANKRUPT. The Hopper Works closes its doors. Press New game."
 	elif sim.won():
 		contract_label.text = "Hoppertunity seized! The Works is saved.   " + contract_label.text
-	quest_label.visible = not sim.quest.is_empty()
+	quest_label.visible = true
+	quest_label.text = _next_step()
 	if not sim.quest.is_empty():
 		var s: Dictionary = sim.quest.steps[sim.quest.step]
 		quest_label.text = "Quest for %s: %s%s" % [Data.CREW[sim.quest.giver].name, s.get("description", ""),
 				" (%d/%d)" % [sim.quest.have, sim.quest.need] if sim.quest.need > 1 else ""]
 	net_label.text = "Anansi live" if crew.online else "Anansi offline"
+
+
+## With no quest running, the orange line under the contract says what a new manager should do next.
+func _next_step() -> String:
+	var have := {}
+	for c in sim.cells.values():
+		have[c.kind] = true
+	var maker := ""
+	for kind in Data.BUILD:
+		if Data.BUILD[kind].get("out") == sim.contract.item:
+			maker = kind
+	if not have.has("inbound"):
+		return "Next: place an Inbound dock (it orders raw materials)."
+	if not have.has(maker):
+		return "Next: place a %s (it makes %s)." % [Data.BUILD[maker].name, Data.ITEMS[sim.contract.item].name]
+	if not have.has("outbound"):
+		return "Next: place an Outbound dock, then join them with Conveyors."
+	if sim.day == 1 and sim.quests_done.values().max() == 0:
+		return "Tip: click a coworker to talk. A happy crew works faster."
+	return ""
 
 
 func _toast(text: String) -> void:

@@ -163,6 +163,33 @@ func run() -> int:
 	run_ticks(t, 400)
 	ok(t.money == s.money and t.day == s.day and JSON.stringify(t.save()) == JSON.stringify(s.save()), "a saved game continues exactly as the original")
 
+	# --- balance: a sensible build order, nobody talked to, must win without going broke ---
+	# each stage: contracts needed, cash needed, cells to clear, then [kind, x, y, dir, times to switch the dock's material]
+	var stages := [
+		[0, 0, [], [["inbound", 0, 2, 0, 0], ["press", 1, 2, 0, 0], ["belt", 2, 2, 0, 0], ["outbound", 3, 2, 0, 0]]],
+		[1, 400, [], [["inbound", 3, 5, 3, 1], ["molder", 3, 4, 3, 0], ["outbound", 3, 3, 0, 0]]],
+		[2, 420, [[3, 2], [3, 3]], [["assembler", 3, 2, 0, 0], ["belt", 3, 3, 3, 0], ["belt", 4, 2, 0, 0], ["outbound", 5, 2, 0, 0]]],
+		[3, 470, [[5, 2]], [["packer", 5, 2, 0, 0], ["belt", 6, 2, 0, 0], ["outbound", 7, 2, 0, 0], ["inbound", 5, 4, 3, 2], ["belt", 5, 3, 3, 0]]],
+	]
+	s = Sim.new(7)
+	var stage := 0
+	var low := s.money
+	var missed := [0]
+	s.day_ended.connect(func(sum): missed[0] += int(sum.missed))
+	while not s.won() and not s.bankrupt() and s.day <= 20:
+		if stage < stages.size() and s.contracts_done >= stages[stage][0] and s.money >= stages[stage][1]:
+			for c in stages[stage][2]:
+				s.demolish(Vector2i(c[0], c[1]))
+			for bld in stages[stage][3]:
+				ok(s.build(bld[0], Vector2i(bld[1], bld[2]), bld[3]), "the bot can afford and place its %s" % bld[0])
+				for i in bld[4]:
+					s.cycle_raw(Vector2i(bld[1], bld[2]))
+			stage += 1
+		s.step()
+		low = mini(low, s.money)
+	print("     bot: won=%s on day %d with %d coins, lowest %d, %d deadlines missed" % [s.won(), s.day, s.money, low, missed[0]])
+	ok(s.won() and s.day <= 12 and low >= 0 and missed[0] == 0, "a sensible build order saves the plant in under two weeks, never in debt")
+
 	# --- size: the largest floor, every cell a moving belt (rows joined into one long snake that ends in a dock) ---
 	s = Sim.new()
 	s.money = 1000000
