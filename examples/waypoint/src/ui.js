@@ -44,11 +44,17 @@ export function pages(s, max) {
   return out.length ? out : [""];
 }
 
+/** Speaker name -> portrait file in assets/portraits (loaded in main.js). */
+export const PORTRAITS = { Sora: "sora", Ilse: "ilse", Oluwa: "oluwa", Vesper: "vesper", "Agent Kessler": "kessler", "The Director": "director" };
+
 function sayPage(scene, name, line) {
   return new Promise(done => {
     const parts = [drawWindow(scene, 8, H - 96, W - 16, 88)];
-    if (name) parts.push(text(scene, 22, H - 88, name, { color: "#ffd76a" }));
-    const body = text(scene, 22, H - (name ? 68 : 82), "", { wordWrap: { width: W - 48 }, lineSpacing: 4 });
+    const face = PORTRAITS[name] && scene.textures.exists("face-" + PORTRAITS[name]) ? PORTRAITS[name] : null;
+    if (face) parts.push(scene.add.image(18, H - 88, "face-" + face).setOrigin(0).setScrollFactor(0).setDepth(UI_DEPTH + 1));
+    const x = face ? 92 : 22;
+    if (name) parts.push(text(scene, x, H - 88, name, { color: "#ffd76a" }));
+    const body = text(scene, x, H - (name ? 68 : 82), "", { wordWrap: { width: W - x - 26 }, lineSpacing: 4 });
     const more = text(scene, W - 34, H - 28, "▼", { color: "#ffd76a" }).setVisible(false);
     parts.push(body, more);
     let shown = 0;

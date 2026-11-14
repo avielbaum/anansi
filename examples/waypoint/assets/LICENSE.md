@@ -6,6 +6,7 @@ change it, also commercially, as long as you follow the terms below.
 
 | Files | Licence | Source and authors |
 |---|---|---|
+| `portraits/*` (speaker faces) | [CC-BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) | Head crops of the same LPC layers, made by `tools/build_portraits.py`. Authors are listed in [`CREDITS_PORTRAITS.csv`](CREDITS_PORTRAITS.csv). |
 | `sprites/*` (characters) | [CC-BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) | Liberated Pixel Cup (LPC) layers, recoloured and combined by `tools/build_sprites.py`. Every author is listed in [`CREDITS.csv`](CREDITS.csv). |
 | `enemies/*` | CC-BY-SA 3.0 | "LPC in battle RPG sprites" by Stephen Challener (Redshrike), cut out by `tools/build_tiles.py` |
 | `tiles/grass, flagstone, paving, cobble, brick, house, tree, pine, chest, gate, dungeon_wall` | CC-BY-SA 3.0 | LPC Base Assets (Lanea Zimmerman, Stephen Challener, Charles Sanchez, Manuel Riecke, Daniel Armstrong), combined by `tools/build_tiles.py` |

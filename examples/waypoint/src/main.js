@@ -25,6 +25,7 @@ class Boot extends Phaser.Scene {
         for (const anim of Object.keys(c.anims)) this.load.spritesheet(`${id}-${anim}`, `assets/sprites/${id}/${anim}.png`, { frameWidth: 64, frameHeight: 64 });
     });
     for (const id of [...Object.keys(EQUIP), ...Object.keys(SKILLS).map(k => "skill_" + k)]) this.load.image("icon-" + id, `assets/icons/${id}.png`); // equipment icons, 24x24
+    for (const id of ["sora", "ilse", "oluwa", "vesper", "kessler", "director"]) this.load.image("face-" + id, `assets/portraits/${id}.png`); // speaker portraits, 64x64
     for (const t of TILES) this.load.image(`tile-${t}`, `assets/tiles/${t}.png`);
     for (const e of ENEMY_IMGS) this.load.image(`enemy-${e}`, `assets/enemies/${e}.png`);
   }

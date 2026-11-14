@@ -109,7 +109,7 @@ def main():
     ap.add_argument("--cache", default=os.path.join(HERE, "..", "..", "..", "..", "_assets_dl", "lpc-cache"))
     ap.add_argument("ids", nargs="*")
     a = ap.parse_args()
-    cast = {k: v for k, v in json.load(open(os.path.join(HERE, "cast.json"), encoding="utf8")).items() if not k.startswith("_")}
+    cast = {k: v for k, v in json.load(open(os.path.join(HERE, "cast.json"), encoding="utf8")).items() if not k.startswith("_") and not v.get("portrait")}
     manifest, credits = {}, {}
     for cid in a.ids or cast:
         print("building", cid)
