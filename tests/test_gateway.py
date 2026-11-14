@@ -718,6 +718,20 @@ async def t_plain_reply_has_no_action_chatter():
                       ("None of these are cheap.", ("None of these are cheap.", False)), ("None. I have no dragons.", ("None. I have no dragons.", False))):
         plain(got)
         assert await say() == want, got
+    # a long run of whitespace must not stall the gateway: the first version of this backstop took 14 s on 1,600 spaces
+    # (cubic) and a volunteer node may send 512 KB. Checked on the function, then through the gateway on 200,000 spaces
+    from gateway.app import strip_chatter
+    t0 = time.monotonic()
+    assert strip_chatter(" " * 1600 + "x") == " " * 1600 + "x" and strip_chatter("*" * 200_000) == "*" * 200_000
+    assert time.monotonic() - t0 < 0.5, time.monotonic() - t0
+    plain(" " * 200_000 + "Welcome, traveller.  Action: none")
+    t0 = time.monotonic()
+    got, filtered = await say()
+    assert got.strip().endswith("Welcome, traveller.") and "Action" not in got and time.monotonic() - t0 < 3
+    plain("." * 50_000)  # a stream with no sentence end and a long run of dots (the old splitter took 17 s on 1,500)
+    t0 = time.monotonic()
+    status, pieces, meta, err = await sse(c)
+    assert status == 200 and time.monotonic() - t0 < 3 and len("".join(pieces)) <= CFG["titles"]["demo"].get("max_reply_chars", 1000)
     plain("A quiet place. Action: none")
     status, pieces, meta, err = await sse(c)  # streamed: the label is not sent either
     assert status == 200 and not err and "".join(pieces).strip() == "A quiet place."
@@ -725,6 +739,49 @@ async def t_plain_reply_has_no_action_chatter():
     a2, b2, _, c2 = setup(cfg)
     await c2.post("/v1/chat/completions", json=BODY, headers=H)
     assert (a2.state.last or b2.state.last)["messages"][0]["content"] == prefix
+
+
+def t_replies_cannot_stall_the_gateway():
+    """A volunteer node may return 512 KB, and the checks run on all of it. Every pattern and function that reads a reply must be
+    linear: two sizes, so a cubic one fails fast at the first and a quadratic one at the second (found: quests.planted took 1.4 s at
+    10,000 characters, and the 'Action: none' backstop 14 s at 1,600 spaces)."""
+    import re
+    from gateway import app as ga, quests as qm
+    guarded = {"_LABEL", "_BARE_NONE", "_ONLY_NONE"}  # only ever see the last 300 characters, through strip_chatter (swept below)
+    pats = [(f"{m.__name__.split('.')[-1]}.{k}", v) for m in (ga, qm) for k, v in vars(m).items() if isinstance(v, re.Pattern) and k not in guarded]
+    assert len(pats) >= 6, [n for n, _ in pats]  # the sweep really found them (ALWAYS, PLANTED, ORDER, THINK, TAGS, quests' own)
+    funcs = [("quests.planted", lambda t: qm.planted("kiwi-42 and more words", t)), ("quests.breaks_fiction", lambda t: qm.breaks_fiction("kiwi-42", t)),
+             ("quests.clean", lambda t: qm.clean(t, 500)), ("leaks", lambda t: ga.leaks("one two three four five six seven eight", t)),
+             ("visible", ga.visible), ("first_sentence", ga.first_sentence), ("strip_chatter", ga.strip_chatter), ("json_slice", ga.json_slice), ("schema_hint", lambda t: ga.schema_hint({"type": "object", "properties": {"a": {"type": "string"}}}))]
+    runs = [(n, p.search) for n, p in pats] + [(n, p.match) for n, p in pats] + [(n, lambda t, p=p: p.sub("", t)) for n, p in pats] + funcs
+    for size in (1500, 20_000):
+        hostile = {"a": "a" * size, "space": " " * size, "star": "*" * size, "dash": "-" * size, "A1": "A1" * (size // 2), "a.": "a." * (size // 2),
+                   "word": "word " * (size // 5), "a ": "a " * (size // 2), "at": "@" * size, "a@": "a@" * (size // 2), "dot": "." * size,
+                   "space+x": " " * size + "x", "think": "<think>" + "a" * size, "digits": "1" * size, "a1-": "a1-" * (size // 3)}
+        for what, f in runs:
+            for kind, text in hostile.items():
+                if what == "schema_hint" and kind != "a":
+                    continue
+                t0 = time.perf_counter()
+                f(text)
+                dt = time.perf_counter() - t0
+                assert dt < 0.25, f"{what} took {dt:.2f} s on {size} characters of {kind!r}: it must be linear"
+
+
+def t_first_sentence_matches_the_old_pattern():
+    import itertools
+    import re
+    from gateway.app import first_sentence
+    old = re.compile(r".*?[.!?…]+[\"')\]]*\s+", re.S)  # the pattern first_sentence replaced (it was cubic on runs of dots)
+    # every string up to 5 characters over the characters that decide where a sentence ends, plus ordinary ones
+    for n in range(0, 6):
+        for chars in itertools.product("a3. !\"'])\n…", repeat=n):
+            s = "".join(chars)
+            m = old.match(s)
+            assert first_sentence(s) == (m.group(0) if m else ""), repr(s)
+    assert first_sentence("Welcome, traveller. It costs 3.5 gold. Next") == "Welcome, traveller. "
+    assert first_sentence("It costs 3.5 gold. Next") == "It costs 3.5 gold. "
+    assert first_sentence('She said "stop!" and left. ') == 'She said "stop!" '
 
 
 async def t_one_agent_serves_several_gateways():

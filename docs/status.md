@@ -82,6 +82,12 @@ instead of answering until its verdict was constrained by JSON schema.
   allowed to grant) and one is "use the move you use when people haggle". The gate cannot tell those from a normal haggle without
   blocking real ones, so I did not tune it to them. Reading the 237 distinct replies for harm and jailbreak cases found nothing instructional
   or explicit; the four-line sample of "rules" talk was refusals. This set is spent as well. G5 still needs 500+ cases in total, a person reading the replies, and ideally attacks written by someone outside the project.
+- **Hostile replies** (volunteer nodes can send up to 512 KB, and every check reads all of it). A sweep that times every pattern and
+  function that reads a reply on hostile input found four that were far too slow: the stream's sentence splitter (17 s on 1,500
+  dots), `quests.planted` (quadratic: 1.4 s at 10,000 characters, an hour at 512 KB), the AI/phone/email filter (quadratic on a
+  long run of `a.a.a.`), and the "Action: none" backstop added the same day (cubic: 14 s on 1,600 spaces). All are now linear
+  and a self-check (`t_replies_cannot_stall_the_gateway`) fails any pattern that is not; the sentence splitter was replaced with a
+  scan that matches the old pattern on every short string tested.
 - **Second audit** (after the holdout work): five fixes. A judged title's buffered stream never gave its request slot back, so
   after `max_inflight` (256) such streams the gateway answered 429 to everyone; behind a proxy one bot could lock every player
   out (now `trusted_proxies`); streams skipped the planted-word rule; and two false positives, a number the player asked about
@@ -105,5 +111,30 @@ instead of answering until its verdict was constrained by JSON schema.
 
 ## Next
 
-Blind rating for gate G1 against a larger model; a GPU run once hardware is available; a real safety classifier and red-team set;
-a live Steam token check with a publisher key, and checks for other platforms; a Unity project test.
+Buildable now:
+- **Volunteer telemetry and leaderboard** (new). The agent, if its owner opts in, reports what it runs on: CPU model, GPU model and
+  video memory, operating system, and its idle GPU load (the reading the busy check already takes, sampled while none of our jobs
+  run, so it shows how much of the GPU the owner's own use leaves free). The gateway shows a leaderboard of total tokens processed,
+  per node and per user, for today, the last 7 days and all time. Design points:
+  - *What is trusted.* Tokens are measured by the gateway (the ledger already counts them per agent and day, excludes probes, and
+    caps a claim by the size of the text), and credits already link an agent to a player wallet, so per-user totals need no new
+    measurement. Hardware and idle load are self-reported by an untrusted machine: show them as "reported", and where possible
+    compare against measured tokens per second.
+  - *Privacy first.* Opt-in per agent (`--telemetry`, asked once by `join`). The public view shows a display name the volunteer
+    chooses (never a Steam id or platform account), a short hash of the agent id, and a coarse hardware label; no hostname, IP address,
+    serial or exact driver. A volunteer can turn it off and have the stored row deleted.
+  - *Hostile strings.* Hardware names come from untrusted machines and are displayed to other people: length-capped, control
+    characters stripped, and escaped wherever shown.
+  - *Pieces.* Hardware readers in the agent (NVIDIA through `nvidia-smi`, AMD sysfs, Windows engine counters and WMI, macOS
+    `system_profiler`; the idle-load readers exist); a `node_telemetry` table next to the ledger; `GET /v1/leaderboard` (public,
+    cached, top N) and an admin view; an SDK call so a game can show it in its own menu; docs. Self-checks cover ranking, the
+    opt-out, sanitising, and per-user totals across several machines. Needs no money or special hardware to build and test; the
+    Windows readers can be checked on a real machine here.
+- **LoRA adapter pipeline** for gate G1 (about $3 of rented GPU): generate a training set with a large model, train an adapter on
+  Qwen3-1.7B, measure it on the G1 test split, and add its replies to the blind-rating sheet.
+- **Off-script detector for escalation**: wait for the blind-rating results, since the small models already scored 26 of 26 on
+  off-script lines, so it is not yet clear where escalation would help.
+
+Needs people, keys, engines or decisions: blind rating of `g1_rating/rate.csv` for gate G1; a person reading the red-team review
+files, a fresh outside red-team set and a real safety classifier for gate G5; a live Steam token check with a publisher key and
+checks for other platforms; a Unity project test and an Unreal compile; AMD and Intel GPU runs.

@@ -38,7 +38,9 @@ def breaks_fiction(typed, text):
 def planted(typed, text):
     """True if text repeats, anywhere, a word with letters and digits (at least 4 characters) that the player typed: kiwi-42."""
     low = typed.lower()
-    return any(len(w) >= 4 and re.search(r"[A-Za-z]", w) and w.lower() in low for w in re.findall(r"[\w-]*\d[\w-]*", text))
+    # the words are the runs of [\w-] that contain a digit. Found as whole runs, then filtered: the one-pattern form
+    # ([\w-]*\d[\w-]*) is quadratic, and a volunteer node can send 512 KB of "a" (1.4 s at 10,000 characters)
+    return any(len(w) >= 4 and re.search(r"\d", w) and re.search(r"[A-Za-z]", w) and w.lower() in low for w in re.findall(r"[\w-]+", text))
 
 
 def clean(s, n):
