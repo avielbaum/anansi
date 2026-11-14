@@ -11,6 +11,20 @@ export const RELAYS_NEEDED = 3;
 export const ACTS = ["", "Act I: Cold Trail", "Act II: The Relays", "Act III: The Spire"];
 export const ENDINGS = { burn: "Burn the archive", keep: "Keep the keys" };
 
+/** What the companion says on first arriving somewhere new: one line for the climate or, for a harbour or river town, the water. */
+const BANTER = {
+  desert: ["Whose idea was it to wear a coat? The sand is in my boots already.", "Stay in the shade when you can. The Directorate can't track what it can't see through the glare.", "Funny. Everything out here is the same colour as our luck."],
+  snow: ["Cold enough that my teeth are teleporting. Keep moving.", "Footprints. In snow. We might as well leave a map for them.", "Try not to blink-strike anything breakable. It's all ice."],
+  tropical: ["I can't tell if that's rain or just the air. Either way, my coat is ruined.", "At least it's hard to be grim somewhere with this many flowers.", "Stick together. I don't trust anything that grows this fast."],
+  temperate: ["Quiet streets. I don't trust quiet streets.", "Let's find someone who knows the place before we do anything clever.", "A normal town. For about ten minutes I'd like to pretend we live in one."],
+  harbor: ["Smell the salt? Ships mean a way out, if it comes to that.", "Piers are bad places to be cornered. Stay near the street.", "Look at all those barrels. Somebody's smuggling something. Not our problem."],
+  river: ["Only one bridge. I'd rather we weren't on it when the Directorate shows up.", "A river splits a town in two. People here must gossip across it.", "Hear the water? Good cover for talking."],
+};
+export function banter(climate, style, seed) {
+  const pool = style === "harbor" || style === "river" ? [...BANTER[style], ...BANTER[climate]] : BANTER[climate] || BANTER.temperate;
+  return pool[seed % pool.length];
+}
+
 export const newPlot = () => ({ act: 1, relays: [], spire: false, ending: null });
 
 /** Notes a destroyed relay (one per city). Returns {count, last}: how many are down, and whether that was the one that ends Act II. */

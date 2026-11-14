@@ -4,7 +4,8 @@ import { STAMPS, TALK } from "./data.js";
 import { mapFor, areaOf, areaLabel } from "./world.js";
 import { G } from "./state.js";
 import { ITEMS, ENEMIES, EQUIP, SHOP_GEAR, SHOP_GEAR2, WARDEN_GEAR, RELAY_GEAR, addGear, bonusText, questStep, payQuest, canGift, markGift, resetGifts } from "./rules.js";
-import { BEATS, ENDINGS, destroyRelay } from "./story.js";
+import { BEATS, ENDINGS, destroyRelay, banter } from "./story.js";
+import { hash } from "./atlas.js";
 import { sfx, music, musicPush, musicPop } from "./audio.js";
 import { W, H, drawWindow, text, talk, choose, say, prompt, waitFor } from "./ui.js";
 import { ask, prefetchQuest, takeQuest, warmAtlases, suggestions } from "./anansi.js";
@@ -62,7 +63,7 @@ export class Field extends Phaser.Scene {
     this.tweens.add({ targets: banner, alpha: 0, delay: 1500, duration: 600, onComplete: () => banner.destroy() });
     if (M.intro && !G.s.flags[M.intro]) { G.s.flags[M.intro] = true; this.run(() => this.lines(TALK[M.intro])); }
     else if (M.arrival && !G.s.flags[`seen:${this.mapId}`]) { G.s.flags[`seen:${this.mapId}`] = true; this.run(() => this.lines(BEATS[M.arrival])); }
-    else if (M.vibe && !G.s.flags[`seen:${this.mapId}`]) { G.s.flags[`seen:${this.mapId}`] = true; this.run(() => say(this, "", M.vibe)); } // a new city: what it feels like
+    else if (M.vibe && !G.s.flags[`seen:${this.mapId}`]) { G.s.flags[`seen:${this.mapId}`] = true; this.run(async () => { await say(this, "", M.vibe); if (M.climate) await say(this, G.s.party[1].name, banter(M.climate, M.style, hash(M.name))); }); } // a new city: what it feels like
     this.refreshMarker();
     // quests take a while on CPU: start before anyone asks, but not the instant you land in a new city (you may only be passing through)
     if (!G.s.quest && G.s.offer?.area !== this.area.key) this.time.delayedCall(this.area.key === "home" ? 0 : 15000, () => prefetchQuest(this.area));

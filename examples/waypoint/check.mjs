@@ -6,9 +6,9 @@ import { EQUIP, START_GEAR, SHOP_GEAR, SHOP_GEAR2, WARDEN_GEAR, RELAY_GEAR, SLOT
 import { upgrade } from "./src/state.js";
 import { MAPS, STAMPS, TALK, QUEST_WORLD, REGIONS, ITEM_SPOTS, PERSONAS, FALLBACK_QUESTS, SHORT_NAMES } from "./src/data.js";
 import { pages } from "./src/ui.js";
-import { newPlot, destroyRelay, objective, situation, BEATS, ENDINGS, ACTS, RELAYS_NEEDED, epilogueFallback } from "./src/story.js";
+import { banter, newPlot, destroyRelay, objective, situation, BEATS, ENDINGS, ACTS, RELAYS_NEEDED, epilogueFallback } from "./src/story.js";
 import { genCity, walkable, LOCALS } from "./src/city.js";
-import { parseAtlas, parseClimate, cityPrompt, CLIMATES, suggest, DESTINATIONS } from "./src/atlas.js";
+import { hash, parseAtlas, parseClimate, cityPrompt, CLIMATES, suggest, DESTINATIONS } from "./src/atlas.js";
 
 // long dialogue splits into pages that fit the box, losing no words
 const long = "The Whispering Tram. Kai stumbles into a quiet town where the Directorate watches from afar. Tobias, the shopkeeper, offers a job to help retrieve a lost letter. Ines reveals a secret about the tram token. Agent Kessler watches from the shadows, waiting for the right moment.";
@@ -214,6 +214,8 @@ for (const s of Object.values(SKILLS)) assert(s.sound && audio.sfx[s.sound], "ev
   for (let i = 0; i < 60; i++) { const c = genCity("Town" + i, parseAtlas(atlasText), CLIMATES[i % 4]).map; styles.add(c.style); for (const o of c.objects) assert(existsSync(here(`assets/tiles/${o[0]}.png`)) && STAMPS[o[0]], `${c.name}: no picture or stamp for ${o[0]}`); for (const [t] of c.paint) assert(existsSync(here(`assets/tiles/${t}.png`)), t); }
   assert(styles.has("harbor") && styles.has("river") && styles.has("street"), `layout styles seen: ${[...styles]}`);
 }
+// companion banter
+for (const c of CLIMATES) for (const st of ["street", "harbor", "river"]) for (let i = 0; i < 6; i++) assert(banter(c, st, hash("x" + i)).length > 10, `${c}/${st}: no banter`);
 // wildlife
 for (const c of CLIMATES) {
   const enc = genCity("Wildville", parseAtlas(atlasText), c).map.encounters;
