@@ -49,6 +49,7 @@ var tool_dir := 0
 var talking := ""  # the coworker in the talk panel
 var modal := false  # a question or report is up (see _ask): time stands still
 var modal_queue := []  # the ones waiting their turn
+var modal_now := {}  # the one on screen
 var asked_offers := false
 var told_bankrupt := false
 var show_fps := false
@@ -227,6 +228,7 @@ func _next_modal() -> void:
 	if not modal:
 		return
 	var m: Dictionary = modal_queue.pop_front()
+	modal_now = m
 	modal_text.text = m.text
 	chart.visible = m.extra == "chart"
 	sound_box.visible = m.extra == "sound"
@@ -1166,6 +1168,25 @@ func _on_day_end(s: Dictionary) -> void:
 	for id in Data.CREW:
 		lines.append("%s (%s): morale %d, wage %d" % [Data.CREW[id].name, Data.CREW[id].role, int(sim.morale[id]), sim.wages[id]])
 	_ask("\n".join(lines), [["Start the next day", Callable()]], "chart")
+	_day_remark(modal_queue[-1] if not modal_queue.is_empty() else modal_now, s)
+
+
+## Whoever is feeling the day most (the lowest morale) says a word about it under the day's report, sentence by
+## sentence as the gateway streams it. It is added to the report wherever that is: on screen or still waiting its turn.
+func _day_remark(report: Dictionary, s: Dictionary) -> void:
+	var who: String = Data.CREW.keys()[0]
+	for id in Data.CREW:
+		if sim.morale[id] < sim.morale[who]:
+			who = id
+	report.text += "\n\n[i]%s:[/i] " % Data.CREW[who].name
+	if is_same(modal_now, report):
+		modal_text.text = report.text
+	var facts := "We shipped %d units, %d came back defective, and the plant made %d coins of profit.%s" % [s.shipped, s.defects,
+			s.revenue - s.costs, " We missed the contract deadline." if s.missed else ""]
+	await crew.remark(who, facts, func(sentence: String):
+		report.text += sentence.replace("[", "(").replace("]", ")")  # a coworker's words are text, never markup
+		if is_same(modal_now, report):
+			modal_text.text = report.text)
 	crew.refill()
 
 

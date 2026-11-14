@@ -268,6 +268,15 @@ func run() -> int:
 	ok(crew.history.tech.size() == 6 and fake.seen[0].role == "system" and "Sprocket" in fake.seen[0].content,
 			"the coworker gets a brief of who they are, and the last three exchanges")
 
+	var heard := []
+	crew.online = false
+	r = await crew.remark("tech", "We shipped 30 units.", func(part): heard.append(part))
+	ok(heard.size() == 1 and r.source == "fallback", "with the gateway down a day-end remark is a written line, at once")
+	heard.clear()
+	crew.online = true
+	r = await crew.remark("tech", "We shipped 30 units.", func(part): heard.append(part))
+	ok(heard == ["Busy day. ", "Bertha held up."] and r.say == "".join(heard), "with it up, the remark arrives sentence by sentence")
+
 	# --- crew over HTTP: with a gateway on 127.0.0.1:8080 the live path, without one the fallback ---
 	s = Sim.new()
 	crew = Crew.new()
@@ -312,6 +321,12 @@ func run() -> int:
 	run_ticks(g.sim, Data.TICKS_PER_DAY * 2)
 	for i in 3:
 		await get_tree().process_frame
+	for i in 60:  # the remark is asked for over HTTP: give the refusal up to 15 s to come back
+		if not g.modal_now.text.ends_with("[/i] "):
+			break
+		await get_tree().create_timer(0.25).timeout
+	ok(g.modal_now.text.contains("End of day 1") and g.modal_now.text.contains("[i]") and not g.modal_now.text.ends_with("[/i] "),
+			"the day's report carries a coworker's remark (a written one, with no gateway)")
 	ok(g.sim.day == 3 and g.sim.contracts_done == 1 and g.modal and g.modal_queue.size() >= 1 and FileAccess.file_exists("user://hoppertunity_check.json"),
 			"two days pass: day-end reports queue up, the first contract ships, the game is saved")
 	while g.modal:
@@ -406,6 +421,11 @@ class Scripted:
 	func chat(messages: Array, _npc_id := "", _structured := false) -> Dictionary:
 		seen = messages
 		return {"source": "gateway", "say": "Right you are, boss.", "action": next, "filtered": false}
+
+	func chat_stream(_messages: Array, on_sentence: Callable, _npc_id := "") -> Dictionary:
+		for part in ["Busy day. ", "Bertha held up."]:
+			on_sentence.call(part)
+		return {"source": "gateway", "say": "Busy day. Bertha held up.", "action": "none", "filtered": false}
 
 	func quest(_w: Dictionary, _s := 3, _t := "", _d := "normal", _so := "", _p := "") -> Dictionary:
 		return {"source": "fallback", "quest": null}

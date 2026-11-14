@@ -6,7 +6,7 @@ extends Node
 
 var sim: Sim
 var api := Anansi.new()
-var online := false  # did the last chat come from the gateway?
+var online := false  # did the gateway answer the last time it was asked (a chat, a remark or a quest)?
 var history := {}  # crew id -> the last few messages, so a coworker remembers the conversation
 var queued := {}  # crew id -> a quest generated ahead of time
 var stories := {}  # crew id -> four beats (generated at the start of a game, else Data.STORIES)
@@ -57,6 +57,25 @@ func talk(id: String, text: String) -> Dictionary:
 	return out
 
 
+## A coworker's word on the day that just ended, streamed: on_sentence.call(text) runs for each sentence as it arrives
+## (with no gateway, once, with a written line). A streamed reply carries no action, so this only ever adds colour.
+## It is only streamed when the gateway answered last time: opening a stream to one that is not there can take the
+## whole timeout to give up, and a remark is not worth that wait.
+func remark(id: String, day_facts: String, on_sentence: Callable) -> Dictionary:
+	if not online:
+		var text := line(id)
+		on_sentence.call(text)
+		return {"source": "fallback", "say": text, "action": "none", "filtered": false}
+	var msgs: Array = [{"role": "system", "content": _brief(id)}, {"role": "user", "content":
+			"The working day is over. " + day_facts + " In one or two short sentences, tell me how the day went from where you stand."}]
+	api.fallback = func(_m): return line(id)
+	_talking += 1
+	var r: Dictionary = await api.chat_stream(msgs, on_sentence, id)
+	_talking -= 1
+	online = r.source == "gateway"
+	return r
+
+
 ## An authored line for this coworker's current mood.
 func line(id: String) -> String:
 	var pool: Array = Data.LINES[id][sim.mood(id)]
@@ -102,7 +121,8 @@ func refill() -> void:
 			await _quiet()
 			var r: Dictionary = await api.quest(_world(), 3, QUEST_THEME % [Data.CREW[id].name, Data.CREW[id].role], "normal",
 					(_story_so_far(id) + " " + str(told.get(id, ""))).strip_edges(), Data.PLAYER)
-			if r.quest == null:
+			online = r.quest != null
+			if not online:
 				break  # the gateway is not answering: stop asking until the next refill
 			queued[id] = r.quest
 		if sim.beats_told[id] == 0 and stories[id] == Data.STORIES[id]:

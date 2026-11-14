@@ -42,6 +42,7 @@ can do more than the table below.
 |---|---|---|
 | `chat` (structured) | You type to a coworker | `morale_up` / `morale_down`: 5 morale, at most 10 a day per coworker. `offer_quest`: starts their quest. `share_tip`: reveals the next contract. `ask_raise`: asks you for a raise (you decide: +5 wage a day and +15 morale, or -10 morale). |
 | `quest` | Generated ahead of time, one per coworker | Steps are `talk_to` a coworker, `inspect` a station or `deliver` goods, built only from what your plant has unlocked. The reward tier pays 60, 140 or 280 coins and lifts the giver's morale. |
+| `chat_stream` | At the end of each day | The coworker with the lowest morale says a word about the day under the day's report, sentence by sentence. A streamed reply carries no action, so it changes nothing in the game. Only tried when the gateway answered last time; otherwise a written line appears at once. |
 | `storyline` | Once per coworker at the start of a game | Four beats, told one at a time as you finish that coworker's quests. The last beat gives a permanent perk (no more jams, no more defects, faster docks, better prices). |
 
 Each coworker is sent who they are, their morale, the day, the cash and the contract, so what they say fits the plant.
@@ -62,6 +63,8 @@ check, not an evaluation):
   nobody in particular; asked for "a favour that Sprocket, the machine technician, asks of the new manager" it wrote
   "A Favor for Sprocket". Quests may only name buildings standing on the floor and goods the plant makes, and every
   generated quest passed the game's own check.
+- **Day-end remark (streamed):** "The day went smoothly, but we had a few issues with defects. We'll need to focus on
+  improving quality and efficiency to meet our goals." First sentence after 8 s, second 1.2 s later.
 - **Storylines:** about 38 s. A plain theme gave a tour of the plant; asking for "a worry they carry from their past,
   something that stirs it up, a turning point, and how it is put to rest" gave four beats about an old mistake and a
   father. The written stories in `src/data.gd` are still tighter.
@@ -135,7 +138,8 @@ fails CI too; headless nothing is drawn, so it does not check what any of it loo
   672 without labels: fine; the desktop build never minded). So building tags are painted on one 2D overlay, and
   conveyors and arrows are drawn in four batches. With that, 672 hoppers (`?stress&fill=hopper`) also hold 55 frames a
   second. The crew's name tags and the "+8" sale pop-ups are still `Label3D`, a handful at a time.
-- Replies arrive whole (`chat`), not sentence by sentence: a streamed reply carries no action, and the game needs
-  the action. The SDK itself does stream in a browser: `sdk/godot`'s 18 checks, exported for the web from a scratch
-  copy, all passed in Chrome against a gateway on mock nodes (run by hand, not in CI; whether sentences arrive one at a
-  time or all together was not measured).
+- Conversations arrive whole (`chat`), because the game needs the action and a streamed reply carries none; the
+  day-end remark is the streamed one. In the desktop build against the real model its two sentences arrived 1.2 s
+  apart (8.0 s and 9.2 s). In a browser, `sdk/godot`'s 18 checks (streaming among them), exported for the web from a
+  scratch copy, all passed in Chrome against a gateway on mock nodes, but whether sentences arrive one at a time there
+  was not measured.
