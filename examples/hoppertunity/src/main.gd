@@ -79,6 +79,8 @@ var day_panel: PanelContainer
 var day_text: RichTextLabel
 var net_label: Label
 var tut_panel: PanelContainer
+var tag_canvas := Control.new()  # building tags are painted here, under the panels
+var tags_seen := []
 var tut_text: RichTextLabel
 var build_buttons := {}  # kind -> its button in the build bar
 var sounds := {}  # sound name -> its AudioStreamPlayer
@@ -107,12 +109,15 @@ func _stress() -> void:
 	tutorial = TUTORIAL.size()
 	show_fps = true
 	var rows := 24
-	if OS.has_feature("web"):  # ?stress=6 fills only six rows
+	var fill := "belt"
+	if OS.has_feature("web"):  # ?stress=6 fills only six rows; &fill=hopper fills them with hoppers
 		rows = clampi(int(str(JavaScriptBridge.eval("new URLSearchParams(location.search).get('stress') || 24"))), 1, 24)
+		fill = str(JavaScriptBridge.eval("new URLSearchParams(location.search).get('fill') || 'belt'"))
+	sim.unlocked = Data.BUILD.keys() + Data.ITEMS.keys()
 	for y in rows:
 		for x in 28:
 			var east := y % 2 == 0
-			var kind := "inbound" if x + y == 0 else ("outbound" if Vector2i(x, y) == Vector2i(0, 23) else "belt")
+			var kind := "inbound" if x + y == 0 else ("outbound" if Vector2i(x, y) == Vector2i(0, 23) else fill)
 			sim.build(kind, Vector2i(x, y), 1 if x == (27 if east else 0) else (0 if east else 2))
 	_floor()
 	for pos in sim.cells:
@@ -302,7 +307,7 @@ static func _center(pos: Vector2i) -> Vector3:
 	return Vector3(pos.x + 0.5, 0.0, pos.y + 0.5)
 
 
-## A building's model, with a floating tag for anything but a conveyor. turn >= 0 gives the conveyor corner piece,
+## A building's model. turn >= 0 gives the conveyor corner piece,
 ## turned that many quarter turns (only the build preview needs that: placed conveyors are drawn in batches).
 func _model(kind: String, dir: int, turn := -1) -> Node3D:
 	var look: Array = LOOK[kind]
@@ -313,16 +318,6 @@ func _model(kind: String, dir: int, turn := -1) -> Node3D:
 	if look[2] != Color.WHITE:
 		_tint(m, look[2])
 	n.add_child(m)
-	if kind not in ["belt", "splitter"]:
-		var tag := Label3D.new()
-		tag.name = "tag"
-		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		tag.no_depth_test = true
-		tag.font_size = 40
-		tag.outline_size = 10
-		tag.pixel_size = 0.006
-		tag.position = Vector3(0, 2.0 if kind in ["inbound", "outbound"] else 1.5, 0)
-		n.add_child(tag)
 	return n
 
 
@@ -499,12 +494,33 @@ func _draw_items(frac: float) -> void:
 
 
 func _draw_tags() -> void:
-	for pos in views:
-		var tag = views[pos].get_node_or_null("tag")
-		if tag != null:
-			tag.text = _tag_text(sim.cells[pos])
+	var now := [cam.transform, zoom, sim.ticks, sim.cells.size()]
+	if now != tags_seen:  # repaint only when the view or the factory changed
+		tags_seen = now
+		tag_canvas.queue_redraw()
 	for id in Data.CREW:
 		crew_nodes[id].get_node("tag").text = "%s %s %d" % [Data.CREW[id].name, {"low": ":(", "mid": ":|", "high": ":)"}[sim.mood(id)], int(sim.morale[id])]
+
+
+## Paint every building's tag on one 2D overlay. They used to be a Label3D each, and a few hundred of those made the
+## browser build draw no 3D at all (672 hoppers with labels: blank; without: fine).
+func _paint_tags() -> void:
+	if zoom > 26.0:  # too far out to read: skip them, which also keeps a huge floor fast
+		return
+	var font := ThemeDB.fallback_font
+	var size := clampi(int(260.0 / zoom), 10, 20)
+	var screen := tag_canvas.get_rect().grow(60)
+	for pos in views:
+		var c: Dictionary = sim.cells[pos]
+		var at := cam.unproject_position(_center(pos) + Vector3(0, 2.0 if c.kind in ["inbound", "outbound"] else 1.4, 0))
+		if not screen.has_point(at):
+			continue
+		var text := _tag_text(c)
+		if text == "":
+			continue
+		at.x -= font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x / 2
+		tag_canvas.draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 5, Color.BLACK)
+		tag_canvas.draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color.WHITE)
 
 
 ## What floats over a building: what a dock handles, how full a hopper is, and for a machine only what is wrong.
@@ -672,6 +688,10 @@ func _ui() -> void:
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(root)
+	tag_canvas.set_anchors_preset(Control.PRESET_FULL_RECT)
+	tag_canvas.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tag_canvas.draw.connect(_paint_tags)
+	root.add_child(tag_canvas)
 
 	var bar := _panel(Control.PRESET_TOP_WIDE, root)
 	var row := HBoxContainer.new()

@@ -99,8 +99,10 @@ misses three deadlines and has not won by day 20. A full 28x24 floor of moving b
   (Ollama, `qwen3:1.7b` on CPU: a first reply took 30 s, so the chat timeout is 45 s). It held 55 frames a second for
   a new game and for the largest floor with every tile a moving conveyor (`?stress` in the address, or `-- stress` on
   the desktop; **F3** shows the frame rate). CI checks that the web build exports, not that it runs.
-- Conveyors and arrows are drawn in four batches. Machines, docks and hoppers are still one node each: 672 separate
-  nodes drew nothing at all in the browser, 336 were fine, so a floor of several hundred machines may hit that limit.
+- A few hundred `Label3D` nodes make the browser build draw no 3D at all (672 labelled buildings: blank; the same
+  672 without labels: fine; the desktop build never minded). So building tags are painted on one 2D overlay, and
+  conveyors and arrows are drawn in four batches. With that, 672 hoppers (`?stress&fill=hopper`) also hold 55 frames a
+  second. The crew's name tags and the "+8" sale pop-ups are still `Label3D`, a handful at a time.
 - Replies arrive whole (`chat`), not sentence by sentence: a streamed reply carries no action, and the game needs
   the action. The SDK itself does stream in a browser: `sdk/godot`'s 18 checks, exported for the web from a scratch
   copy, all passed in Chrome against a gateway on mock nodes (run by hand, not in CI; whether sentences arrive one at a
