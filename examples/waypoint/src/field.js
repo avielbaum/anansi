@@ -3,7 +3,7 @@
 import { STAMPS, TALK } from "./data.js";
 import { mapFor, areaOf, areaLabel } from "./world.js";
 import { G } from "./state.js";
-import { ITEMS, ENEMIES, EQUIP, SHOP_GEAR, WARDEN_GEAR, RELAY_GEAR, addGear, bonusText, questStep, payQuest, canGift, markGift, resetGifts } from "./rules.js";
+import { ITEMS, ENEMIES, EQUIP, SHOP_GEAR, SHOP_GEAR2, WARDEN_GEAR, RELAY_GEAR, addGear, bonusText, questStep, payQuest, canGift, markGift, resetGifts } from "./rules.js";
 import { BEATS, ENDINGS, destroyRelay } from "./story.js";
 import { sfx, music, musicPush, musicPop } from "./audio.js";
 import { W, H, drawWindow, text, talk, choose, say, prompt, waitFor } from "./ui.js";
@@ -236,13 +236,14 @@ export class Field extends Phaser.Scene {
 
   /** Tobias' gear: Iron Sword and Oak Wand are for Kai and Mira; the vest and charm fit anyone. */
   async buyGear(who) {
+    const stock = G.s.plot.act >= 2 ? [...SHOP_GEAR, ...SHOP_GEAR2] : SHOP_GEAR;
     const desc = text(this, 20, H - 40, "");
     const wearer = id => (EQUIP[id].for ? G.s.party.find(h => h.id === EQUIP[id].for)?.name || "-" : "all").padEnd(4);
-    const k = await choose(this, W - 330, 56, 320, SHOP_GEAR.map(id => ({ label: `${EQUIP[id].name.padEnd(14)} ${String(EQUIP[id].price).padStart(3)} G ${wearer(id)} x${G.s.gear[id] || 0}`, disabled: G.s.gold < EQUIP[id].price })),
-      { onMove: i => desc.setText(`${bonusText(SHOP_GEAR[i])}. ${EQUIP[SHOP_GEAR[i]].desc}`) });
+    const k = await choose(this, W - 330, 56, 320, stock.map(id => ({ label: `${EQUIP[id].name.padEnd(14)} ${String(EQUIP[id].price).padStart(3)} G ${wearer(id)} x${G.s.gear[id] || 0}`, disabled: G.s.gold < EQUIP[id].price })),
+      { onMove: i => desc.setText(`${bonusText(stock[i])}. ${EQUIP[stock[i]].desc}`) });
     desc.destroy();
     if (k < 0) return;
-    const id = SHOP_GEAR[k];
+    const id = stock[k];
     sfx("coin"); G.s.gold -= EQUIP[id].price; addGear(G.s, id);
     await say(this, who, `The ${EQUIP[id].name}. Put it on from the menu, and good luck!`);
   }

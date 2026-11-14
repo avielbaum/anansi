@@ -2,7 +2,7 @@
 import assert from "node:assert";
 import { readFileSync, existsSync } from "node:fs";
 import { damage, gainXp, newHero, newGame, atbFill, useItem, xpToNext, ENEMIES, HEROES, SKILLS, questStep, payQuest, questFits, tidyQuest, canGift, markGift, resetGifts } from "./src/rules.js";
-import { EQUIP, START_GEAR, SHOP_GEAR, WARDEN_GEAR, RELAY_GEAR, SLOTS, kit, addGear, equip, unequip, preview, canEquip } from "./src/rules.js";
+import { EQUIP, START_GEAR, SHOP_GEAR, SHOP_GEAR2, WARDEN_GEAR, RELAY_GEAR, SLOTS, kit, addGear, equip, unequip, preview, canEquip } from "./src/rules.js";
 import { upgrade } from "./src/state.js";
 import { MAPS, STAMPS, TALK, QUEST_WORLD, REGIONS, ITEM_SPOTS, PERSONAS, FALLBACK_QUESTS, SHORT_NAMES } from "./src/data.js";
 import { pages } from "./src/ui.js";
@@ -235,7 +235,7 @@ for (const [id, e] of Object.entries(ENEMIES)) assert(existsSync(here(`assets/en
   assert(kai.hp <= kai.maxhp, "hp is clamped when the maximum drops");
   addGear(g, "vital_pendant");
   assert.equal(preview(kai, "accessory", "vital_pendant").maxhp, kai.maxhp + EQUIP.vital_pendant.hp, "the preview shows the real result");
-  const ids = new Set([...Object.values(START_GEAR).flat(), ...SHOP_GEAR, ...WARDEN_GEAR, ...RELAY_GEAR]);
+  const ids = new Set([...Object.values(START_GEAR).flat(), ...SHOP_GEAR, ...SHOP_GEAR2, ...WARDEN_GEAR, ...RELAY_GEAR]);
   for (const M of Object.values(MAPS)) for (const e of M.things || M.objects || []) if (e[3]?.equip) ids.add(e[3].equip);
   for (const id of Object.keys(EQUIP)) { assert(ids.has(id), `${id} cannot be obtained`); assert(existsSync(here(`assets/icons/${id}.png`)), `${id}: no icon`); assert(SLOTS.includes(EQUIP[id].slot)); }
   for (const id of ids) assert(EQUIP[id], `unknown gear ${id}`);

@@ -23,16 +23,20 @@ const STATS = ["atk", "mag", "def", "spd", "hp", "mp"];
 export const EQUIP = {
   training_blade: { name: "Training Blade", slot: "weapon", for: "lead_m", atk: 2, desc: "A blunt blade for practice." },
   iron_sword: { name: "Iron Sword", slot: "weapon", for: "lead_m", atk: 5, price: 70, desc: "Plain, sharp and reliable." },
+  tempered_blade: { name: "Tempered Blade", slot: "weapon", for: "lead_m", atk: 7, price: 150, desc: "Tobias keeps these for survivors." },
   steel_blade: { name: "Steel Blade", slot: "weapon", for: "lead_m", atk: 9, desc: "The Warden's own blade." },
   rift_edge: { name: "Rift Edge", slot: "weapon", for: "lead_m", atk: 14, spd: 2, desc: "It cuts space as well as flesh." },
   training_rod: { name: "Training Rod", slot: "weapon", for: "lead_f", mag: 2, desc: "A willow rod for practice." },
   oak_wand: { name: "Oak Wand", slot: "weapon", for: "lead_f", mag: 5, price: 70, desc: "It hums faintly when you cast." },
+  ash_staff: { name: "Ash Staff", slot: "weapon", for: "lead_f", mag: 7, price: 150, desc: "Burnt black, and sharper for it." },
   crystal_tome: { name: "Crystal Tome", slot: "weapon", for: "lead_f", mag: 9, desc: "Taken from the Warden's belt." },
   moon_scepter: { name: "Moon Scepter", slot: "weapon", for: "lead_f", mag: 14, spd: 2, desc: "It spirals light into the air." },
   travel_coat: { name: "Travel Coat", slot: "armor", def: 1, desc: "Warm, and hard to spot in a crowd." },
   leather_vest: { name: "Leather Vest", slot: "armor", def: 3, price: 60, desc: "Stiff leather over the ribs." },
+  chain_vest: { name: "Chain Vest", slot: "armor", def: 5, hp: 8, price: 140, desc: "Links of Directorate wire." },
   plated_jacket: { name: "Plated Jacket", slot: "armor", def: 6, hp: 10, desc: "A coat with Directorate plating sewn in." },
   brass_charm: { name: "Brass Charm", slot: "accessory", hp: 12, price: 80, desc: "A lucky trinket from Tobias' shelf." },
+  silver_charm: { name: "Silver Charm", slot: "accessory", hp: 20, spd: 1, price: 170, desc: "Tobias polished it himself." },
   quick_boots: { name: "Quick Boots", slot: "accessory", spd: 3, desc: "Salvaged from the first relay." },
   mana_ring: { name: "Mana Ring", slot: "accessory", mp: 10, desc: "Salvaged from the second relay." },
   vital_pendant: { name: "Vital Pendant", slot: "accessory", hp: 30, def: 2, desc: "Salvaged from the third relay." },
@@ -40,6 +44,7 @@ export const EQUIP = {
 };
 export const START_GEAR = { lead_m: ["training_blade", "travel_coat"], lead_f: ["training_rod", "travel_coat"] };
 export const SHOP_GEAR = ["iron_sword", "oak_wand", "leather_vest", "brass_charm"];
+export const SHOP_GEAR2 = ["tempered_blade", "ash_staff", "chain_vest", "silver_charm"]; // Tobias stocks these once the Warden has fallen
 export const WARDEN_GEAR = ["steel_blade", "crystal_tome"]; // dropped when the Warden falls
 export const RELAY_GEAR = ["quick_boots", "mana_ring", "vital_pendant"]; // one from each of the first three relays
 

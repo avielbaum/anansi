@@ -21,7 +21,7 @@ prototype, with real-world destinations, is in `prototype/`.
   in the desert; frost bats, ice slimes and wisps in snow; vines, spore sprouts and pollen puffs in the tropics; the usual bats and
   slimes elsewhere. A Directorate drone still turns up now and then. Some are the same picture in another colour.
 - **Equipment:** Menu → Equip. Each hero has a weapon, armor and accessory slot; the stats show what a piece would change before you
-  choose it. Weapons are for one lead (Kai: blades, Mira: rods and tomes). Gear comes from Tobias' shop (Buy → Gear), chests in the
+  choose it. Weapons are for one lead (Kai: blades, Mira: rods and tomes). Gear comes from Tobias' shop (Buy → Gear; he stocks four better pieces once the Warden has fallen), chests in the
   Undercroft and the Spire, the Warden, and the first three relays. Icons: Ninja Adventure pack (CC0), `tools/build_icons.py`.
 - **Menu** (Esc or X): Items, Equip, Status, Story, Quests, Teleport, Sound, Save.
 
