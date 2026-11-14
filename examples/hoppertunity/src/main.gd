@@ -185,6 +185,7 @@ func _start(saved: Dictionary) -> void:
 	for v in views.values():
 		v.queue_free()
 	views = {}
+	belts_dirty = true  # or the last game's conveyors stay on screen
 	for pos in sim.cells:
 		_refresh(pos)
 	_floor()

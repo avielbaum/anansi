@@ -480,7 +480,8 @@ const _SAVED := ["money", "day", "tick", "ticks", "morale", "wages", "talk_moved
 func save() -> Dictionary:
 	var d := {"floor": [floor_size.x, floor_size.y], "cells": []}
 	for k in _SAVED:
-		d[k] = get(k)
+		var v = get(k)
+		d[k] = v.duplicate(true) if v is Dictionary or v is Array else v  # a copy: the caller may keep or change it
 	for pos in cells:
 		var c: Dictionary = cells[pos].duplicate(true)
 		c.merge({"x": pos.x, "y": pos.y}, true)

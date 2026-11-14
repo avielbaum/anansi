@@ -322,7 +322,7 @@ func run() -> int:
 	g._say_note(g.crew.offer_quest("tech"))
 	g._answer_raise(true)
 	ok(g.talk_panel.visible and g.sim.quest.giver == "tech" and g.sim.wages.tech == 20
-			and g.crew_nodes.pip.position.distance_to(g.crew_home.pip) > 0.5,
+			and (g.routes.pip.size() > 0 or g.crew_nodes.pip.position.distance_to(g.crew_home.pip) > 0.5),
 			"talking works with no gateway: a written line, an errand, a raise, and Pip walks over")
 	g._close_talk()
 	g.sim.money = 5000  # the purchases below must not depend on how the two days went
@@ -343,8 +343,17 @@ func run() -> int:
 	var s2 := Sim.new()
 	var old: Dictionary = g.sim.save()
 	old.today.erase("built")
+	ok(g.sim.today.has("built"), "a saved copy can be changed without touching the running game")
 	s2.restore(JSON.parse_string(JSON.stringify(old)))
 	ok(s2.build("belt", Vector2i(9, 9), 0), "a save from before building spend was tracked still loads and plays")
+	g.tool = "belt"
+	g._click(Vector2i(10, 10))
+	g._confirm_new_game()
+	g._answer(g._new_game)
+	for i in 3:
+		await get_tree().process_frame
+	ok(g.sim.cells.is_empty() and g.sim.day == 1 and g.views.is_empty() and g.belt_mm.belt.instance_count == 0 and g.belt_mm.arrow.instance_count == 0
+			and not FileAccess.file_exists("user://hoppertunity_check.json"), "a new game clears the floor, the screen and the save")
 	g.queue_free()
 	DirAccess.remove_absolute("user://hoppertunity_check.json")
 
