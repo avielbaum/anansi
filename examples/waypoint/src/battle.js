@@ -6,7 +6,7 @@ import { ENEMIES, HEROES, SKILLS, ITEMS, damage, atbFill, gainXp, useItem } from
 import { W, H, drawWindow, text, choose, pickTarget, say, tween, wait } from "./ui.js";
 
 const FOE_SPOTS = { 1: [[170, 200]], 2: [[130, 165], [225, 225]], 3: [[115, 140], [220, 190], [120, 245]] };
-const HERO_SPOTS = [[500, 150], [545, 215]];
+const HERO_SPOTS = n => (n > 2 ? [[505, 105], [550, 165], [505, 225]] : [[500, 150], [545, 215]]);
 
 export class Battle extends Phaser.Scene {
   constructor() { super("battle"); }
@@ -27,8 +27,9 @@ export class Battle extends Phaser.Scene {
     const n = {};
     this.foes.forEach(f => { if (seen[f.name] > 1) f.name += " " + "ABC"[(n[f.name] = (n[f.name] || 0) + 1) - 1]; });
 
+    this.spots = HERO_SPOTS(G.s.party.length);
     this.heroes = G.s.party.map((h, i) => {
-      const [x, y] = HERO_SPOTS[i];
+      const [x, y] = this.spots[i];
       this.add.ellipse(x, y + 2, 40, 10, 0x000000, 0.3);
       const s = this.add.sprite(x, y, `${h.id}-walk`).setOrigin(0.5, 58 / 64).setScale(1.6);
       const b = { h, s, home: x, atb: Math.random() * 60, defending: false };
@@ -39,7 +40,7 @@ export class Battle extends Phaser.Scene {
     drawWindow(this, 8, H - 98, 220, 90);
     this.foeList = text(this, 22, H - 86, "", { lineSpacing: 6 });
     drawWindow(this, 232, H - 98, W - 240, 90);
-    this.rows = this.heroes.map((b, i) => text(this, 246, H - 84 + i * 30, ""));
+    this.rows = this.heroes.map((b, i) => text(this, 246, H - 88 + i * 25, ""));
     this.bars = this.add.graphics().setDepth(10001);
     this.refresh();
     this.time.delayedCall(10, () => this.note(d.boss ? "The Warden attacks!" : "Enemies appear!"));
@@ -53,7 +54,7 @@ export class Battle extends Phaser.Scene {
     this.heroes.forEach((b, i) => {
       const h = b.h;
       this.rows[i].setText(`${h.name.padEnd(6)} HP ${String(h.hp).padStart(3)}/${String(h.maxhp).padEnd(3)} MP ${String(h.mp).padStart(2)}`).setColor(h.hp <= 0 ? "#ff7a7a" : h.hp < h.maxhp / 4 ? "#ffd76a" : "#ffffff");
-      const y = H - 66 + i * 30;
+      const y = H - 70 + i * 25;
       g.fillStyle(0x10163a, 1).fillRect(246, y + 4, 200, 5);
       g.fillStyle(b.atb >= 100 ? 0xfff4b0 : 0x6fb8ff, 1).fillRect(246, y + 4, 2 * Math.min(100, b.atb), 5);
     });
@@ -169,7 +170,7 @@ export class Battle extends Phaser.Scene {
     sfx(HEROES[b.h.id].attack === "slash" ? "slash" : "thrust");
     await this.playOnce(b, HEROES[b.h.id].attack);
     this.hurtFoe(f, damage(b.h.atk, f.def));
-    await tween(this, { targets: b.s, x: b.home - 14, y: HERO_SPOTS[this.heroes.indexOf(b)][1], duration: 220 });
+    await tween(this, { targets: b.s, x: b.home - 14, y: this.spots[this.heroes.indexOf(b)][1], duration: 220 });
   }
 
   async skill(b, sk, targets) {

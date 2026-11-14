@@ -3,7 +3,7 @@
 import { STAMPS, TALK } from "./data.js";
 import { mapFor, areaOf, areaLabel } from "./world.js";
 import { G } from "./state.js";
-import { ITEMS, ENEMIES, EQUIP, SHOP_GEAR, SHOP_GEAR2, WARDEN_GEAR, RELAY_GEAR, SITE_GEAR, addGear, unequip, bonusText, questStep, payQuest, canGift, markGift, resetGifts } from "./rules.js";
+import { ITEMS, ENEMIES, HEROES, EQUIP, SHOP_GEAR, SHOP_GEAR2, WARDEN_GEAR, RELAY_GEAR, SITE_GEAR, addGear, joinParty, leaveParty, unequip, bonusText, questStep, payQuest, canGift, markGift, resetGifts } from "./rules.js";
 import { BEATS, SITE_BEATS, ENDINGS, destroyRelay, completeSite, banter } from "./story.js";
 import { REGIONS, REGION_IDS } from "./regions.js";
 import { hash } from "./atlas.js";
@@ -52,6 +52,8 @@ export class Field extends Phaser.Scene {
     this.hero = this.addActor(lead, this.at.x, this.at.y, "down");
     this.mate = this.addActor(mate, this.at.x, this.at.y - 24, "down"); // a step behind (north of) the lead
     this.hero.s.setDepth(this.at.y + 0.5); this.mate.s.setDepth(this.at.y - 24);
+    const g = G.s.party[2]; // a freed jumper travelling with the party, a step behind the companion
+    this.guest = g ? this.addActor(g.id, this.at.x, this.at.y - 48, "down") : null;
     this.trail = [];
     this.cameras.main.setBounds(0, 0, M.w * T, M.h * T).startFollow(this.hero.s, true).setRoundPixels(true);
     this.keys = this.input.keyboard.addKeys("UP,DOWN,LEFT,RIGHT,W,A,S,D", false); // no key capture: the NPC text box needs W/A/S/D
@@ -309,6 +311,8 @@ export class Field extends Phaser.Scene {
     } else this.face(h, h.dir, false);
     let p = null; // the companion walks the lead's path ~30px behind
     while (this.trail.length && Phaser.Math.Distance.Between(this.trail[0].x, this.trail[0].y, s.x, s.y) > 30) p = this.trail.shift();
+    if (p && this.guest) { this.guest.s.setPosition(this.mate.s.x, this.mate.s.y); this.face(this.guest, this.mate.dir, true); } else if (this.guest) this.face(this.guest, this.guest.dir, false);
+    if (this.guest) this.guest.s.setDepth(this.guest.s.y - 1);
     if (p) { this.mate.s.setPosition(p.x, p.y); this.face(this.mate, p.dir, true); } else this.face(this.mate, this.mate.dir, false);
     s.setDepth(s.y + 0.5); this.mate.s.setDepth(this.mate.s.y);
   }
@@ -454,6 +458,8 @@ export class Field extends Phaser.Scene {
     gone();
     const { fresh, rivalNow, last } = completeSite(plot, region);
     if (fresh) { addGear(G.s, SITE_GEAR[region]); sfx("chest"); await say(this, "", `${REGIONS[region].ally}'s sigil: ${EQUIP[SITE_GEAR[region]].name}. Put it on from the menu.`); }
+    const ally = REGIONS[region].ally.toLowerCase();
+    if (fresh && HEROES[ally]) { joinParty(G.s, ally); sfx("levelup"); await say(this, "", `${REGIONS[region].ally} joins the party for now.`); }
     if (rivalNow) { plot.rival = true; G.s.pending = "kessler"; }
     if (last) G.s.pending = "allFree";
     this.teleportTo(G.s.siteFrom && G.s.siteFrom !== this.mapId ? G.s.siteFrom : "town");
@@ -473,6 +479,7 @@ export class Field extends Phaser.Scene {
       back();
     } else if (which === "allFree") {
       await this.lines(BEATS.allFree);
+      leaveParty(G.s);
       for (const r of REGION_IDS) { // Vesper takes the sigils, even off the party's backs
         for (const h of G.s.party) if (h.eq?.accessory === SITE_GEAR[r]) unequip(G.s, h, "accessory");
         delete G.s.gear[SITE_GEAR[r]];

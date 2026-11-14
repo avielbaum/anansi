@@ -22,7 +22,7 @@ export function upgrade(s) {
   if (s.plot.act === 3 && s.plot.spire && s.plot.ending === null && !Object.keys(s.plot.sites).length && s.flags?.director !== undefined) s.plot.act = 5; // a save from before the Rift Sites: its Act III was the Spire
   else if (s.plot.act === 3 && s.plot.spire && !Object.keys(s.plot.sites).length) s.plot.act = 5;
   s.gear ||= {};
-  for (const h of s.party || []) if (!h.eq) kit(h, START_GEAR[h.id]); // a save from before equipment: the starting gear, with its small bonus
+  for (const h of s.party || []) if (!h.eq) kit(h, START_GEAR[h.id] || []); // a save from before equipment: the starting gear, with its small bonus
   if (s.flags?.warden && s.plot.act < 2) s.plot.act = 2; // a save from before the story existed, after the Warden
   if (s.quest && !s.quest.area) s.quest.area = "home";
   if (s.offer && !s.offer.q) s.offer = { q: s.offer, area: "home" };

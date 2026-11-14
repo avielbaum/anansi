@@ -2,6 +2,7 @@
 import assert from "node:assert";
 import { readFileSync, existsSync } from "node:fs";
 import { damage, gainXp, newHero, newGame, atbFill, useItem, xpToNext, ENEMIES, HEROES, SKILLS, questStep, payQuest, questFits, tidyQuest, canGift, markGift, resetGifts } from "./src/rules.js";
+import { joinParty, leaveParty } from "./src/rules.js";
 import { SITE_GEAR, EQUIP, START_GEAR, SHOP_GEAR, SHOP_GEAR2, WARDEN_GEAR, RELAY_GEAR, SLOTS, kit, addGear, equip, unequip, preview, canEquip } from "./src/rules.js";
 import { upgrade } from "./src/state.js";
 import { MAPS, STAMPS, TALK, QUEST_WORLD, REGIONS, ITEM_SPOTS, PERSONAS, FALLBACK_QUESTS, SHORT_NAMES } from "./src/data.js";
@@ -264,6 +265,18 @@ for (const [id, e] of Object.entries(ENEMIES)) assert(existsSync(here(`assets/en
   for (const id of ids) assert(EQUIP[id], `unknown gear ${id}`);
   const old = newGame("lead_f"); delete old.gear; old.party.forEach(h => delete h.eq);
   upgrade(old); assert(old.gear && old.party.every(h => h.eq), "old saves get gear");
+}
+
+// a freed jumper travels with the party, then leaves with their gear returned
+{
+  const g = newGame("lead_m"); g.party[0].lvl = 6;
+  const sora = joinParty(g, "sora");
+  assert(g.party.length === 3 && sora.lvl === 6 && sora.hp === sora.maxhp);
+  addGear(g, "brass_charm"); equip(g, sora, "brass_charm");
+  joinParty(g, "ilse");
+  assert(g.party.length === 3 && g.party[2].id === "ilse" && g.gear.brass_charm === 1, "a new guest replaces the old and the gear comes back");
+  leaveParty(g); assert(g.party.length === 2); leaveParty(g); assert(g.party.length === 2);
+  const old = newGame("lead_f"); old.party.push({ ...newHero("oluwa") }); upgrade(old); assert(old.party[2].eq, "a saved guest gets an equipment slot set");
 }
 
 const save = newGame("lead_m"); const pay = payQuest(save, FALLBACK_QUESTS[1]);
