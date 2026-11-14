@@ -290,6 +290,64 @@ func run() -> int:
 	ok(crew.offer_quest("tech").begins_with("Finish"), "one quest at a time")
 	ok(crew.story_beat("dock") != "" and crew.story_beat("dock") == "", "a coworker tells one story beat, then waits")
 
+	# --- the game itself: main.tscn driven through its screens. Headless nothing is drawn, but every handler runs, and
+	# a script error anywhere in it fails CI (which greps the log for "SCRIPT ERROR") ---
+	DirAccess.remove_absolute("user://hoppertunity_check.json")
+	var g: Node = load("res://main.tscn").instantiate()
+	g.save_path = "user://hoppertunity_check.json"  # never the player's own save
+	add_child(g)
+	ok(g.modal and g.sim.day == 1, "the game opens on its title screen")
+	g._next_modal()
+	var col := 2
+	for piece in ["inbound", "press", "belt", "outbound"]:
+		g.tool = piece
+		g._click(Vector2i(col, 3))
+		col += 1
+	g.tool = ""
+	g.sim.morale.qa = 100.0
+	for i in 5:
+		await get_tree().process_frame
+	ok(g.sim.cells.size() == 4 and g.views.size() == 3 and g.belt_mm.belt.instance_count == 1 and g.tutorial >= 3,
+			"clicking builds a line: three building nodes, one batched conveyor, and the tutorial follows along")
+	run_ticks(g.sim, Data.TICKS_PER_DAY * 2)
+	for i in 3:
+		await get_tree().process_frame
+	ok(g.sim.day == 3 and g.sim.contracts_done == 1 and g.modal and g.modal_queue.size() >= 1 and FileAccess.file_exists("user://hoppertunity_check.json"),
+			"two days pass: day-end reports queue up, the first contract ships, the game is saved")
+	while g.modal:
+		g._next_modal()
+	g._click(Vector2i(3, 3))
+	g._open_talk("tech")
+	await g._say("Good work today.")
+	g._say_note(g.crew.offer_quest("tech"))
+	g._answer_raise(true)
+	ok(g.talk_panel.visible and g.sim.quest.giver == "tech" and g.sim.wages.tech == 20
+			and g.crew_nodes.pip.position.distance_to(g.crew_home.pip) > 0.5,
+			"talking works with no gateway: a written line, an errand, a raise, and Pip walks over")
+	g._close_talk()
+	g.sim.money = 5000  # the purchases below must not depend on how the two days went
+	g._upgrades()
+	g._next_modal()
+	g._buy("breakroom")
+	g._crew_sheet()
+	g._next_modal()
+	g._expand()
+	g.sim.rotate(Vector2i(4, 3))
+	g._refresh(Vector2i(4, 3))
+	g.sim.demolish(Vector2i(4, 3))
+	g._refresh(Vector2i(4, 3))
+	for i in 3:
+		await get_tree().process_frame
+	ok("breakroom" in g.sim.upgrades and g.sim.floor_size == Vector2i(18, 14) and g.belt_mm.belt.instance_count == 0 and not g.modal,
+			"upgrades, the crew sheet, a bigger floor and removing a conveyor all go through")
+	var s2 := Sim.new()
+	var old: Dictionary = g.sim.save()
+	old.today.erase("built")
+	s2.restore(JSON.parse_string(JSON.stringify(old)))
+	ok(s2.build("belt", Vector2i(9, 9), 0), "a save from before building spend was tracked still loads and plays")
+	g.queue_free()
+	DirAccess.remove_absolute("user://hoppertunity_check.json")
+
 	print("%d failed" % failed)
 	return failed
 

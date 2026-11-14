@@ -23,6 +23,8 @@ floor manager of the Hopper Works, a small gadget plant on its last chance.
   of trouble. Coworkers are told the day's news, so you can talk to them about it.
 - **Upgrades:** five one-off improvements (break room, dock crane, better tooling, quality scanner, showroom) give
   spare cash somewhere to go.
+- **Crew sheet:** the Crew button lists everyone's morale, what that does to their work, pay, errands done and how far
+  their story has got.
 - **Tutorial:** eight steps walk a new manager from the first dock to the first errand, pulsing the button to press.
   It can be skipped, and a saved game remembers where you were.
 - **Trouble shows:** a machine that is jammed, blocked or short of an input says so above it.
@@ -115,6 +117,9 @@ CI (`.github/workflows/ci.yml`, job `godot`) runs the self-checks against a gate
 and exports the web build. The checks include two scripted playthroughs of one production line: a manager who gives a
 raise whenever someone's morale sags wins on day 9 without going into debt; one who ignores the crew gets four walkouts,
 misses three deadlines and has not won by day 20. A full 28x24 floor of moving belts ticks in under 5 ms on a laptop.
+The last check starts the real game scene and drives it through its screens (title, building, two days, day-end reports,
+talking with no gateway, an errand, a raise, upgrades, the crew sheet, a bigger floor), so a script error in the interface
+fails CI too; headless nothing is drawn, so it does not check what any of it looks like.
 
 ## Not done yet
 

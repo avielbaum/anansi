@@ -52,6 +52,7 @@ var modal_queue := []  # the ones waiting their turn
 var asked_offers := false
 var told_bankrupt := false
 var show_fps := false
+var save_path := SAVE  # the checks point this at a file of their own before the game starts
 var stress := false  # the developer's full-floor test (see _stress)
 var music_vol := 0.5  # 0 to 1, set in the ? screen and kept in SETTINGS
 var sfx_vol := 0.8
@@ -276,7 +277,7 @@ func _on_quest(done: bool) -> void:
 
 
 func _new_game() -> void:
-	DirAccess.remove_absolute(SAVE)
+	DirAccess.remove_absolute(save_path)
 	_start({})
 
 
@@ -293,8 +294,8 @@ func _expand() -> void:
 
 
 func _load() -> Dictionary:
-	if FileAccess.file_exists(SAVE):
-		var d = JSON.parse_string(FileAccess.get_file_as_string(SAVE))
+	if FileAccess.file_exists(save_path):
+		var d = JSON.parse_string(FileAccess.get_file_as_string(save_path))
 		if d is Dictionary and d.has("sim") and d.has("stories") and d.has("player"):
 			return d
 	return {}
@@ -303,7 +304,7 @@ func _load() -> Dictionary:
 func _save() -> void:
 	if stress:  # a floor full of test conveyors must not replace a real game
 		return
-	var f := FileAccess.open(SAVE, FileAccess.WRITE)
+	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f != null:
 		f.store_string(JSON.stringify({"sim": sim.save(), "stories": crew.stories, "told": crew.told, "player": player_id, "tutorial": tutorial}))
 
@@ -998,6 +999,21 @@ func _build_buttons() -> void:
 			build_buttons[kind] = b
 	_button("Bigger floor %d" % sim.expand_cost(), build_bar, _expand).tooltip_text = "Two more rows and columns of floor."
 	_button("Upgrades", build_bar, _upgrades).tooltip_text = "One-off improvements to the whole plant."
+	_button("Crew", build_bar, _crew_sheet).tooltip_text = "Everyone's morale, pay, errands and story at a glance."
+
+
+## The four coworkers on one screen: what each is worth to the plant right now and how far their story has got.
+func _crew_sheet() -> void:
+	var lines := ["[b]The crew[/b]   team morale %d" % int(sim.team_morale()), ""]
+	for id in Data.CREW:
+		var c: Dictionary = Data.CREW[id]
+		lines.append("[b]%s[/b], %s" % [c.name, c.role])
+		lines.append("   morale %d (%s): their work runs at %d%%" % [int(sim.morale[id]), sim.mood(id), int(round(sim.mult(id) * 100.0))])
+		lines.append("   wage %d a day, %d errand(s) done, story %d of 4%s" % [sim.wages[id], sim.quests_done[id], sim.beats_told[id],
+				"  [color=#f2a13c]%s[/color]" % c.perk if sim.perks.has(id) else ""])
+	lines.append("")
+	lines.append("Under 30 on average they walk out for a day; over 70 everything sells for a tenth more. Talk, help with errands, pay fairly.")
+	_ask("\n".join(lines), [["Close", Callable()]])
 
 
 func _upgrades() -> void:

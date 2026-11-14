@@ -495,6 +495,7 @@ func restore(d: Dictionary) -> void:
 	for k in _SAVED:
 		if d.has(k):
 			set(k, _ints(d[k]) if k not in ["morale", "talk_moved"] else d[k])
+	today.merge({"revenue": 0, "costs": 0, "built": 0, "shipped": 0, "defects": 0})  # a save from before a field existed
 	floor_size = Vector2i(int(d.floor[0]), int(d.floor[1]))
 	cells = {}
 	for saved in d.cells:

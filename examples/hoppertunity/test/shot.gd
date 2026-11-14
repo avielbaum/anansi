@@ -55,6 +55,9 @@ func go() -> void:
 		s.event = s.settle_event(Data.EVENTS[4])
 		g._upgrades()
 		await create_timer(0.5).timeout
+	if args.size() > 2 and args[2] == "crew":
+		g._crew_sheet()
+		await create_timer(0.5).timeout
 	if args.size() > 2 and args[2] == "talk":
 		g.tool = ""
 		g._open_talk("tech")
