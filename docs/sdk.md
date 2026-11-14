@@ -154,5 +154,6 @@ Ubuntu). The Unity `JsonUtility` branch and a real Unity project have not been r
 real Godot 4.3 engine against a live gateway (`sdk/godot/test/checks.gd`, 18 checks: replies, streaming, quests, credits, statistics,
 every fallback path), both from the editor binary and in an exported Linux release build. A web export (WebGL 2, no threads) of the
 same test project passed all 18 checks in Chrome once, run by hand, streaming included (the page's origin must be in the gateway's
-`cors_origins`); CI does not run it, and whether streamed sentences arrive one at a time in a browser was not measured. The Unreal plugin is an **untested draft**: it follows the same contract and JSON shapes but has
+`cors_origins`); CI does not run it. In `examples/hoppertunity`'s browser build, a streamed reply from a real model (Ollama, `qwen3:1.7b`)
+arrived one sentence at a time in Chrome: the first after 4.2 s, the second 1.2 s later (one run). The Unreal plugin is an **untested draft**: it follows the same contract and JSON shapes but has
 never been compiled or run, and CI does not build it. Other engines can call the HTTP API directly; it is plain JSON and SSE.

@@ -125,6 +125,8 @@ func _ready() -> void:
 	stress = "stress" in OS.get_cmdline_user_args() or (OS.has_feature("web") and "stress" in str(JavaScriptBridge.eval("location.search")))
 	var saved := {} if stress else _load()
 	_start(saved)
+	if OS.has_feature("web") and "remark" in str(JavaScriptBridge.eval("location.search")):
+		_time_remark()
 	if stress:
 		_stress()
 	else:
@@ -133,6 +135,16 @@ func _ready() -> void:
 				+ "You are Pip Hopper, the new floor manager. Ship five contracts and the plant is saved. "
 				+ "Look after the four people who run it, or it will not be.",
 				[["Open the gates", Callable()]] if saved.is_empty() else [["Back to work (day %d)" % sim.day, Callable()], ["New game", _new_game]])
+
+
+## Developer aid (`?remark` in the browser): ask the gateway for a streamed day-end remark straight away and print to
+## the browser console when each sentence arrives, to see whether a browser really gets them one at a time.
+func _time_remark() -> void:
+	crew.online = true
+	var t0 := Time.get_ticks_msec()
+	var r: Dictionary = await crew.remark("tech", "We shipped 31 units, 4 came back defective, and the plant made 120 coins of profit.",
+			func(part): print("REMARK +%.1f s: %s" % [(Time.get_ticks_msec() - t0) / 1000.0, part]))
+	print("REMARK done, %s, %.1f s" % [r.source, (Time.get_ticks_msec() - t0) / 1000.0])
 
 
 ## Developer aid (`?stress` in the browser, `-- stress` on the desktop): the largest floor, every tile a moving conveyor,

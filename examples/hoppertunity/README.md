@@ -140,6 +140,6 @@ fails CI too; headless nothing is drawn, so it does not check what any of it loo
   second. The crew's name tags and the "+8" sale pop-ups are still `Label3D`, a handful at a time.
 - Conversations arrive whole (`chat`), because the game needs the action and a streamed reply carries none; the
   day-end remark is the streamed one. In the desktop build against the real model its two sentences arrived 1.2 s
-  apart (8.0 s and 9.2 s). In a browser, `sdk/godot`'s 18 checks (streaming among them), exported for the web from a
-  scratch copy, all passed in Chrome against a gateway on mock nodes, but whether sentences arrive one at a time there
-  was not measured.
+  apart (8.0 s and 9.2 s), and in the browser build in Chrome also 1.2 s apart (4.2 s and 5.4 s; `?remark` in the
+  address prints the timings to the console). So the Godot SDK streams sentence by sentence in a browser too. Its own
+  18 checks, exported for the web from a scratch copy, also all passed in Chrome against a gateway on mock nodes.
