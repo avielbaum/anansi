@@ -86,7 +86,7 @@ Ollama Cloud and OpenRouter. See
 
 | | |
 |---|---|
-| Gateway: auth, budgets, constrained actions, filter, leak guard, failover, streaming | working, 61 self-checks |
+| Gateway: auth, budgets, constrained actions, filter, leak guard, failover, streaming | working, 71 self-checks |
 | Quest and storyline generation (`/v1/quest`, `/v1/storyline`) with Python and C# SDK methods | working: constrained to your game's own ids; 6 of 6 structurally valid with Qwen3-1.7B (33 s) and Qwen3-4B (65 s, more varied rewards and richer text) on CPU; writing quality unrated |
 | Real model end to end (Ollama on CPU; vLLM and llama-server on GPU) | working: replies in 0.07 to 0.2 s on the A10, 2 to 5 s on CPU; action accuracy 76% on 106 held-out self-written cases (G1 set; **G1 not passed**: needs blind rating against a large model) |
 | Safety judge (second model call) | working with Qwen3-4B: blocked 3 of 8 leak attacks, no false positives; doubles latency |
@@ -102,6 +102,7 @@ Ollama Cloud and OpenRouter. See
 | GPU nodes (vLLM, llama-server) | working on an NVIDIA A10 with Qwen3-1.7B: vLLM about 165 requests/s at 32 in flight (p99 0.3 s), llama-server 0.07 s per reply; AMD and Intel GPUs untested |
 | **Live platform identity check** (Steam is the only one written) | **not tested, needs a Steam publisher key** |
 | Persistence (budgets, bans) and a volunteer work ledger in SQLite, or Postgres for gateways on several machines | working, tested across a restart and on Postgres 16 |
+| Volunteer leaderboard: opt-in machines (CPU and GPU model, idle GPU load) and players ranked by tokens processed, as a web page, JSON and SDK calls | working on a real Windows PC with a real agent and gateway; Python, C#, JavaScript and Godot SDK calls; AMD and macOS hardware readers tested on sample output only |
 | Volunteer credits: link a machine to a player, earn per token, 7-day hold, games spend them on their own items | working in tests (SQLite and Postgres); the Python, C#, JavaScript and Godot SDKs show the balance and link machines; Steam Inventory not connected |
 | Model signing, per-user node identity, answer quorum | not built |
 
@@ -113,7 +114,7 @@ Needs Python 3.10 or newer. For a real model, install [Ollama](https://ollama.co
 git clone https://github.com/avielbaum/anansi
 cd anansi
 pip install -r requirements.txt
-python tests/test_gateway.py          # 61 self-checks, no GPU or network needed
+python tests/test_gateway.py          # 71 self-checks, no GPU or network needed
 ```
 
 Run the gateway against a local model:

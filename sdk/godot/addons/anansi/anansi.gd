@@ -119,6 +119,22 @@ func storyline(world: Dictionary, beats := 4, theme := "") -> Dictionary:
 	return {"source": "fallback", "storyline": storyline_fallback.call(world) if storyline_fallback.is_valid() else null}
 
 
+## The public volunteer leaderboard: {"period", "nodes": [...], "users": [...]} ranked by tokens in `period` ("day", "week" or "all"), or
+## null when the gateway cannot be reached. Names and hardware text come from outside: escape them if you show them in markup.
+func leaderboard(period := "week", limit := 25) -> Variant:
+	var r: Array = await _request(HTTPClient.METHOD_GET, "/v1/leaderboard?period=" + period.uri_encode() + "&limit=" + str(limit), null, timeout_s)
+	return r[1] if r[0] == 200 else null
+
+
+## Opt this player in to the leaderboard under `name` (an empty name opts out). Shown once a machine is linked.
+## {"set": true, "name": cleaned name or null}, or {"set": false, "reason": "bad_name" | "unavailable"}.
+func set_leaderboard_name(name: String) -> Dictionary:
+	var r: Array = await _request(HTTPClient.METHOD_POST, "/v1/credits/name", {"name": name}, timeout_s)
+	if r[0] == 200:
+		return {"set": true, "name": r[1].get("name")}
+	return {"set": false, "reason": "bad_name" if r[0] == 400 or r[0] == 422 else "unavailable"}
+
+
 ## This player's volunteer credits: {"balance", "pending", "nodes"}, or null when the gateway cannot be reached.
 func credits() -> Variant:
 	var r: Array = await _request(HTTPClient.METHOD_GET, "/v1/credits", null, timeout_s)

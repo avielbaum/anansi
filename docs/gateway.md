@@ -120,6 +120,13 @@ replies: 1 of 211 G1 turns with Qwen3-1.7B as the NPC (0.5%), 5 of 211 with 4B (
 turns, which therefore cost two calls each (both charged to the attacker's budget). Not built: escalating turns the small
 model gets wrong without being blocked (off-script input, low confidence); that needs a detector on every turn.
 
+## Leaderboard
+
+`GET /leaderboard` (HTML) and `GET /v1/leaderboard?period=day|week|all&limit=25` (JSON) are public and cached for 30 seconds. They list
+only machines whose agent runs with `--telemetry` and players who chose a display name (`POST /v1/credits/name`, same credentials as the
+other player routes); the agent's `POST` and `DELETE /node/telemetry` take its node token. Details, privacy and what is verified:
+[nodes.md](nodes.md#leaderboard-and-telemetry). Reports are limited to one per 20 seconds per machine and 16 KB each.
+
 ## Quests and storylines
 
 Enable per title with a `quest` block: `{"lore": "...", "max_steps": 4, "max_tokens": 500, "objectives": {"talk_to": "npcs", "explore": "locations", "fetch": "items"}}`

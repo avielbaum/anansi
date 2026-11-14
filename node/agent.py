@@ -3,6 +3,7 @@ OpenAI-compatible server (Ollama, llama-server, vLLM). No inbound port, so it wo
 Run: python node/agent.py --gateway https://gw.example --token TOKEN --local http://127.0.0.1:11434 [--slots 2]
 It pauses while the owner is busy (CPU or GPU above 60 percent; --cpu-limit, --gpu-limit, --ignore-load).
 To earn credits: run once with --link and type the printed code into a game that uses Anansi.
+To appear on the public leaderboard: add --telemetry [--name NAME] (CPU and GPU model, idle GPU load); --telemetry-off removes you.
 Each slot registers as its own worker. It only ever forwards /v1/chat/completions to the local server.
 Works the same on Windows, Linux and macOS (Apple Silicon: Ollama and llama.cpp use Metal).
 shortcut: the token is a shared secret per pool, not a per-user, platform-bound certificate (DESIGN.md section 9)."""
@@ -21,8 +22,17 @@ import time
 
 import httpx
 
+try:
+    from node import hardware
+except ImportError:  # run as a script (python node/agent.py): its folder is on the path, not the repo
+    import hardware
+
 ALLOWED = "/v1/chat/completions"
 JOBS = {"active": 0, "last": 0.0}  # jobs this process is running, and when the last one ended (their load is ours, not the owner's)
+REPORT_S = 300  # how often --telemetry sends its report
+SAMPLE_S = 30  # how often it samples the GPU while none of our jobs run
+GRACE_S = 180  # the first report waits this long for a first sample, then goes without one (a GPU that cannot be read)
+IDLE = {"gpu": None}  # the owner's GPU load, smoothed, measured only while none of our jobs run
 SETTLE_S = 5  # our own load must fade before a reading means the owner's (GPU samples ~1 s; Linux CPU is a 1-min average)
 FORCE_S = 60  # with jobs arriving nonstop the machine is never idle long enough to check, so force a check this often
 CHECK = {"due": 0.0, "drain": False, "paused": False}  # shared by all workers: the machine pauses as one
@@ -239,14 +249,41 @@ def idle_limits(a):
     return None if a.ignore_load else (a.cpu_limit, a.gpu_limit)
 
 
-async def serve(gw, local, token, slots=1, log=print, agent=None, model=None, idle=None):
+async def telemetry(gw, token, agent, name, log=print):
+    """Opt-in (--telemetry): tell the gateway what this machine is and how busy its GPU is when none of our jobs run, for the public
+    leaderboard. The load is sampled only while idle, so it is the owner's own use, and smoothed so one spike does not stand for the
+    machine. A report the gateway refuses (not registered yet) is retried at the next sample."""
+    H = {"X-Node-Token": token, "X-Node-Agent": agent}
+    info = await asyncio.to_thread(hardware.describe)
+    last, started = None, time.monotonic()
+    while True:
+        if JOBS["active"] == 0 and time.monotonic() - JOBS["last"] > SETTLE_S:
+            g = await asyncio.to_thread(gpu_util)
+            if g is not None:
+                IDLE["gpu"] = g if IDLE["gpu"] is None else 0.7 * IDLE["gpu"] + 0.3 * g
+        # the probe the gateway sends on registration keeps our model busy for the first seconds: the first report waits for a sample
+        if (IDLE["gpu"] is not None or time.monotonic() - started > GRACE_S) if last is None else time.monotonic() - last >= REPORT_S:
+            try:
+                r = await gw.post("/node/telemetry", json={**info, "name": name, "idle_gpu": IDLE["gpu"]}, headers=H)
+                if r.status_code == 200:
+                    last = time.monotonic()
+                elif r.status_code == 403 and "banned" in r.text:
+                    return
+            except httpx.HTTPError:
+                pass  # unreachable: the next sample tries again
+        await asyncio.sleep(SAMPLE_S)
+
+
+async def serve(gw, local, token, slots=1, log=print, agent=None, model=None, idle=None, telemetry_name=None):
     """gw: one gateway client, or a list of them (one per gateway machine sharing a database). Every gateway gets `slots`
-    workers so none waits for another's long poll; at most `slots` jobs run on the local model at once across all of them."""
+    workers so none waits for another's long poll; at most `slots` jobs run on the local model at once across all of them.
+    telemetry_name: None = no leaderboard report; a string (may be empty) = report to every gateway under that display name."""
     agent = agent or agent_id()
     gws = gw if isinstance(gw, (list, tuple)) else [gw]
     slot = asyncio.Semaphore(slots)
     await asyncio.gather(*[worker(g, local, token, agent, log if len(gws) == 1 else (lambda m, u=str(g.base_url): log(f"[{u}] {m}")),
-                                  model, idle, slot=slot) for g in gws for _ in range(slots)])
+                                  model, idle, slot=slot) for g in gws for _ in range(slots)],
+                         *([telemetry(g, token, agent, telemetry_name, log) for g in gws] if telemetry_name is not None else []))
 
 
 if __name__ == "__main__":
@@ -257,9 +294,17 @@ if __name__ == "__main__":
     ap.add_argument("--slots", type=int, default=1)
     ap.add_argument("--model", help="local model name to run every job on (default: the name the gateway sends)")
     ap.add_argument("--link", action="store_true", help="print a code to type into a game, so this machine earns credits for you")
+    ap.add_argument("--telemetry", action="store_true", help="opt in to the public leaderboard: report CPU and GPU model and idle GPU load")
+    ap.add_argument("--name", default="", help="display name on the leaderboard (with --telemetry); default: a short code")
+    ap.add_argument("--telemetry-off", action="store_true", help="remove this machine from the leaderboard and delete what it reported, then exit")
     add_load_args(ap)
     a = ap.parse_args()
     urls = [u.strip().rstrip("/") for u in a.gateway.split(",") if u.strip()]
+    if a.telemetry_off:
+        for u in urls:
+            r = httpx.delete(u + "/node/telemetry", headers={"X-Node-Token": a.token, "X-Node-Agent": agent_id()}, timeout=20)
+            print(f"{u}: {'removed from the leaderboard' if r.status_code == 200 else 'HTTP ' + str(r.status_code)}")
+        raise SystemExit
     if a.link:  # codes live in the shared database, so any one gateway can issue them
         r = httpx.post(urls[0] + "/node/link-code", headers={"X-Node-Token": a.token, "X-Node-Agent": agent_id()}, timeout=20)
         r.raise_for_status()
@@ -271,7 +316,7 @@ if __name__ == "__main__":
         gws = [httpx.AsyncClient(base_url=u) for u in urls]
         async with httpx.AsyncClient(base_url=a.local) as local:
             try:
-                await serve(gws, local, a.token, a.slots, model=a.model, idle=idle_limits(a))
+                await serve(gws, local, a.token, a.slots, model=a.model, idle=idle_limits(a), telemetry_name=a.name if a.telemetry else None)
             finally:
                 for g in gws:
                     await g.aclose()

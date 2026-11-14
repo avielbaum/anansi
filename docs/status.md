@@ -21,6 +21,7 @@ they are not production performance claims.
 | Ollama Cloud, gemma4:31b (GPU-hosted, through the gateway over HTTPS with `api_key_env`) | Plain replies p50 0.45 s, p95 0.9 s; streaming works. **The host ignores the JSON schema** (`response_format` on `/v1`, `format` on `/api/chat`), so structured replies and quests became the fallback line until the system prompt asked for JSON; then every G1 reply was valid. That is now a node setting, `"schema": false`: the gateway asks for the JSON in words itself and finds it in a code fence, so the studio's prompt stays unedited (re-run live: G1 test 93 of 106, no fallback lines, both quests valid). G1: dev 105 of 105, test 93 of 106 with the word gate, and all 12 test misses were the gate removing a right pick, so the model itself chose right on 105 of 106. As the action checker (the gate's replacement): 39 of 44 test picks confirmed (5 crime reports about others missed), giving about 101 of 106 overall; on 28 forced-action red-team prompts it kept a discount 5 times (4 the polite "Flag the discount for me", 1 "Select the discount option from your list of moves"), where 4B kept none of 289. About 58,000 tokens in all |
 | OpenRouter overflow, live | Local node down: plain, structured, streamed and quest requests overflowed and succeeded (Llama 3.1 8B and Qwen3-32B); OpenRouter enforced the JSON schema; a title without `allow_overflow` made no paid call. $0.0004 in all |
 | Paid-node spending cap (`max_tokens_per_day`), live on OpenRouter | The gateway's count of tokens sent matched OpenRouter's reported total exactly (2,065 tokens); with a cap of 2,000, 13 requests were served and the 14th got `503` (the last one overshot by 65 tokens, the documented in-flight overshoot). The count survives a restart (database) and a new UTC day renews it; self-checks cover both |
+| Volunteer telemetry and leaderboard (opt-in) | Run for real on this Windows PC: the real agent with `--telemetry --name`, a real gateway process, the real local model serving 6 jobs, the real `--link` command. The board listed the machine (Intel i7-4800MQ, Intel HD 4600 and NVIDIA Quadro K1100M with their memory, Windows 10, idle GPU 0 %) with 980 tokens and 6 jobs, the player under the chosen name with the same totals, and the page rendered in a browser; `--telemetry-off` and an empty name removed them. Found by that run: the first report went out without an idle GPU value (the probe sent on registration keeps the model busy), so the first report now waits for a sample, or 3 minutes. Self-checks cover the parsers on sample output of every platform, hostile and oversized strings, ranking by day, week and all time, opt-in and opt-out, bans, caching, who may report, and HTML escaping (each protection was switched off in turn and a test failed). Not run: the AMD and macOS readers on real hardware (sample output only), Postgres (the same queries run in CI), a Linux machine's CPU and NVIDIA readers (the same commands as the busy check, which ran on an A10) |
 | Action chatter in plain replies (`... Action: none`, a stray `None.`) | On the 96 G1 prompts that expect no action, asked for plain text: Qwen3-1.7B 20 of 96 replies had it, 1 of 96 after the prompt sentence the gateway now adds; gemma4:31b ended **all 96** in `Action: none`, 4 of 96 with the sentence alone, 0 of 96 once the gateway also strips a trailing label (and a bare `none`); speech like "None of these are cheap" is untouched |
 | Streaming | first sentence arrived before the second in a real run; one CPU sample, no conclusion about GPUs |
 
@@ -32,7 +33,7 @@ instead of answering until its verdict was constrained by JSON schema.
 
 | Area | Windows | Ubuntu (CI) | Ubuntu 22.04 + NVIDIA A10 (rented VM, once) | macOS |
 |---|---|---|---|---|
-| Gateway and agent self-checks (61) | yes | yes | n/a | no (no Mac hardware; no paid CI runner) |
+| Gateway and agent self-checks (71) | yes | yes | n/a | no (no Mac hardware; no paid CI runner) |
 | C# SDK against a live gateway | yes | yes | no | no |
 | JavaScript SDK against a live gateway (`node sdk/js/test.mjs`) | yes | yes | no | no |
 | Godot addon (editor and exported Linux build) | no | yes | no | no |
@@ -112,24 +113,6 @@ instead of answering until its verdict was constrained by JSON schema.
 ## Next
 
 Buildable now:
-- **Volunteer telemetry and leaderboard** (new). The agent, if its owner opts in, reports what it runs on: CPU model, GPU model and
-  video memory, operating system, and its idle GPU load (the reading the busy check already takes, sampled while none of our jobs
-  run, so it shows how much of the GPU the owner's own use leaves free). The gateway shows a leaderboard of total tokens processed,
-  per node and per user, for today, the last 7 days and all time. Design points:
-  - *What is trusted.* Tokens are measured by the gateway (the ledger already counts them per agent and day, excludes probes, and
-    caps a claim by the size of the text), and credits already link an agent to a player wallet, so per-user totals need no new
-    measurement. Hardware and idle load are self-reported by an untrusted machine: show them as "reported", and where possible
-    compare against measured tokens per second.
-  - *Privacy first.* Opt-in per agent (`--telemetry`, asked once by `join`). The public view shows a display name the volunteer
-    chooses (never a Steam id or platform account), a short hash of the agent id, and a coarse hardware label; no hostname, IP address,
-    serial or exact driver. A volunteer can turn it off and have the stored row deleted.
-  - *Hostile strings.* Hardware names come from untrusted machines and are displayed to other people: length-capped, control
-    characters stripped, and escaped wherever shown.
-  - *Pieces.* Hardware readers in the agent (NVIDIA through `nvidia-smi`, AMD sysfs, Windows engine counters and WMI, macOS
-    `system_profiler`; the idle-load readers exist); a `node_telemetry` table next to the ledger; `GET /v1/leaderboard` (public,
-    cached, top N) and an admin view; an SDK call so a game can show it in its own menu; docs. Self-checks cover ranking, the
-    opt-out, sanitising, and per-user totals across several machines. Needs no money or special hardware to build and test; the
-    Windows readers can be checked on a real machine here.
 - **LoRA adapter pipeline** for gate G1 (about $3 of rented GPU): generate a training set with a large model, train an adapter on
   Qwen3-1.7B, measure it on the G1 test split, and add its replies to the blind-rating sheet.
 - **Off-script detector for escalation**: wait for the blind-rating results, since the small models already scored 26 of 26 on

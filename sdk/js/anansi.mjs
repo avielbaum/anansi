@@ -76,6 +76,21 @@ export class Anansi {
     return { linked: false, reason: s === 404 || s === 400 ? "bad_code" : "unavailable" };
   }
 
+  /** The public volunteer leaderboard: {period, nodes, users} ranked by tokens in `period` ("day", "week", "all"), or null when the gateway
+   *  cannot be reached. Names and hardware text come from outside machines and players: escape them if you put them in markup. */
+  async leaderboard({ period = "week", limit = 25 } = {}) {
+    const [s, d] = await this._call("GET", `/v1/leaderboard?period=${encodeURIComponent(period)}&limit=${Number(limit) | 0}`);
+    return s === 200 ? d : null;
+  }
+
+  /** Opt this player in to the leaderboard under `name` (an empty name opts out). Shown once a machine is linked.
+   *  {set: true, name} (name is the cleaned text, or null), or {set: false, reason: "bad_name" | "unavailable"}. */
+  async setLeaderboardName(name) {
+    const [s, d] = await this._call("POST", "/v1/credits/name", { name: String(name) });
+    if (s === 200) return { set: true, name: d.name };
+    return { set: false, reason: s === 400 || s === 422 ? "bad_name" : "unavailable" };
+  }
+
   async _fallbackReply(messages) {
     return { source: "fallback", say: String(await this.fallback(messages)), action: "none", filtered: false };
   }

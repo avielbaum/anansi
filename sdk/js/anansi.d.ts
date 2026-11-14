@@ -7,6 +7,12 @@ export interface Quest { title: string; summary: string; steps: QuestStep[]; rew
 export interface Beat { title: string; summary: string; npc_id?: string; location_id?: string }
 export interface Storyline { logline: string; beats: Beat[] }
 
+export interface BoardTokens { today: number; week: number; all: number }
+export interface BoardNode { rank: number; node: string; name: string; tokens: BoardTokens; jobs: number;
+  reported: { cpu: string; threads: number; gpus: { name: string; vram_mb: number }[]; os: string; idle_gpu_pct: number | null; at: string } }
+export interface BoardUser { rank: number; name: string; machines: number; tokens: BoardTokens; jobs: number }
+export interface Leaderboard { period: "day" | "week" | "all"; nodes: BoardNode[]; users: BoardUser[] }
+export type NameResult = { set: true; name: string | null } | { set: false; reason: "bad_name" | "unavailable" };
 export interface Credits { balance: number; pending: number; nodes: number }
 export type LinkResult = ({ linked: true } & Credits) | { linked: false; reason: "bad_code" | "unavailable" };
 
@@ -32,6 +38,8 @@ export class Anansi {
     Promise<{ source: "gateway" | "fallback"; quest: Quest | null }>;
   storyline(world: World, opts?: { beats?: number; theme?: string }):
     Promise<{ source: "gateway" | "fallback"; storyline: Storyline | null }>;
+  leaderboard(opts?: { period?: "day" | "week" | "all"; limit?: number }): Promise<Leaderboard | null>;
+  setLeaderboardName(name: string): Promise<NameResult>;
   credits(): Promise<Credits | null>;
   linkNode(code: string): Promise<LinkResult>;
   questFallback?: (world: World) => Quest | null | Promise<Quest | null>;

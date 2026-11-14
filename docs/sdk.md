@@ -64,10 +64,15 @@ A player who runs the node agent links that machine to their account by typing t
 |---|---|---|---|---|
 | Balance | `credits()` | `CreditsAsync()` | `credits()` | `credits()` |
 | Link a machine | `link_node(code)` | `LinkNodeAsync(code)` | `linkNode(code)` | `link_node(code)` |
+| Volunteer leaderboard | `leaderboard(period, limit)` | `LeaderboardAsync(period, limit)` | `leaderboard({period, limit})` | `leaderboard(period, limit)` |
+| Opt in with a name (empty = out) | `set_leaderboard_name(name)` | `SetLeaderboardNameAsync(name)` | `setLeaderboardName(name)` | `set_leaderboard_name(name)` |
 
 Balance gives `balance` (spendable), `pending` (still in the hold) and `nodes` (linked machines), or `None`/`null` when the
 gateway cannot be reached. Linking gives the same numbers on success, or `linked: false` with `reason` `"bad_code"` (unknown,
-used or expired code: ask the player to run `--link` again) or `"unavailable"` (try later). Spending is deliberately not in the
+used or expired code: ask the player to run `--link` again) or `"unavailable"` (try later). The leaderboard (see [nodes.md](nodes.md#leaderboard-and-telemetry)) returns `{period, nodes, users}`
+ranked by tokens in the period, or `None`/`null` when the gateway cannot be reached; setting a name returns `set: true` with the cleaned
+name (or `null` when opting out), or `set: false` with `reason` `bad_name` or `unavailable`. Names and hardware text come from outside:
+escape them if you put them in markup. Spending is deliberately not in the
 SDKs: your game **server** calls `POST /v1/credits/spend` with the title's `server_key`, which must never ship in the client.
 
 ## JavaScript and TypeScript (`sdk/js`)

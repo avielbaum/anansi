@@ -92,6 +92,31 @@ class Anansi:
             pass
         return {"linked": False, "reason": "unavailable"}
 
+    def leaderboard(self, period="week", limit=25):
+        """The public volunteer leaderboard: {"period", "nodes": [...], "users": [...]}, ranked by tokens processed in `period` ("day", "week"
+        or "all"), or None when the gateway cannot be reached. Names and hardware text come from outside machines and players: escape them
+        if you show them in markup."""
+        try:
+            r = self.http.get(self.base + "/v1/leaderboard", params={"period": period, "limit": limit}, timeout=self.timeout)
+            if r.status_code == 200:
+                return r.json()
+        except (httpx.HTTPError, ValueError):
+            pass
+        return None
+
+    def set_leaderboard_name(self, name):
+        """Opt this player in to the leaderboard under `name` (an empty name opts out). Shown once a machine is linked. {"set": True,
+        "name": the cleaned name or None}, or {"set": False, "reason": "bad_name" | "unavailable"}."""
+        try:
+            r = self.http.post(self.base + "/v1/credits/name", json={"name": name}, headers=self.headers, timeout=self.timeout)
+            if r.status_code == 200:
+                return {"set": True, "name": r.json().get("name")}
+            if r.status_code in (400, 422):
+                return {"set": False, "reason": "bad_name"}
+        except (httpx.HTTPError, ValueError):
+            pass
+        return {"set": False, "reason": "unavailable"}
+
     def _generate(self, kind, fallback, **body):
         try:  # generation is slow (tens of seconds on a small GPU), so it has its own, longer timeout
             r = self.http.post(self.base + "/v1/" + kind, json=body, headers=self.headers, timeout=self.gen_timeout)

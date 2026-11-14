@@ -80,5 +80,12 @@ func run() -> int:
 	check(not ln.linked and ln.reason == "bad_code", "unknown link code is reported as bad_code")
 	ln = await plain.link_node("ABCD-EFGH")
 	check(not ln.linked and ln.reason == "unavailable" and (await plain.credits()) == null, "gateway down: unavailable, no credits")
+	var board = await c.leaderboard("day", 5)
+	check(board != null and board.period == "day" and board.nodes.size() == 0 and board.users.size() == 0, "leaderboard of a gateway with no volunteers is empty")
+	var nm: Dictionary = await fresh.set_leaderboard_name("Tester <b>GD</b>")
+	check(nm.set and nm.name == "Tester <b>GD</b>", "leaderboard name is accepted and returned as text")
+	nm = await fresh.set_leaderboard_name("")
+	check(nm.set and nm.name == null, "an empty name opts out")
+	check((await plain.leaderboard()) == null and (await plain.set_leaderboard_name("x")).reason == "unavailable", "gateway down: no leaderboard, name unavailable")
 	print("%d passed, %d failed" % [passes, failures])
 	return failures

@@ -90,6 +90,8 @@ def plan(a, ram, have):
     else:
         steps.append((True, f"Will download {model} with 'ollama pull'."))
     steps.append((True, f"Will connect out to {a.gateway} with {a.slots} worker(s). No port is opened on this machine."))
+    steps.append((True, "Will report your CPU and GPU model and idle GPU load to the public leaderboard (stop with agent.py --telemetry-off)."
+                  if getattr(a, "telemetry", False) else "Not on the leaderboard. To appear on it, add --telemetry (and --name YOURNAME)."))
     return steps, model
 
 
@@ -101,6 +103,8 @@ def parser():
     ap.add_argument("--slots", type=int, default=1)
     ap.add_argument("--local", default=OLLAMA)
     ap.add_argument("--dry-run", action="store_true", help="show the plan and stop")
+    ap.add_argument("--telemetry", action="store_true", help="opt in to the public leaderboard: report CPU and GPU model and idle GPU load")
+    ap.add_argument("--name", default="", help="display name on the leaderboard (with --telemetry)")
     add_load_args(ap)
     return ap
 
@@ -130,7 +134,7 @@ def main():
         gws = [httpx.AsyncClient(base_url=u.strip().rstrip("/")) for u in a.gateway.split(",") if u.strip()]
         async with httpx.AsyncClient(base_url=a.local) as local:
             try:
-                await serve(gws, local, a.token, a.slots, model=model, idle=idle_limits(a))
+                await serve(gws, local, a.token, a.slots, model=model, idle=idle_limits(a), telemetry_name=a.name if a.telemetry else None)
             finally:
                 for g in gws:
                     await g.aclose()

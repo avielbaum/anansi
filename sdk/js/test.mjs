@@ -50,4 +50,11 @@ check(!ln.linked && ln.reason === "bad_code", "unknown link code is reported as 
 ln = await down.linkNode("ABCD-EFGH");
 check(!ln.linked && ln.reason === "unavailable" && (await down.credits()) === null, "gateway down: unavailable, no credits");
 
+const bd = await c.leaderboard({ period: "day", limit: 5 });
+check(bd && bd.period === "day" && Array.isArray(bd.nodes) && bd.nodes.length === 0 && Array.isArray(bd.users) && bd.users.length === 0, "leaderboard of a gateway with no volunteers is empty");
+const nj = await mk({ playerToken: "dev:sdk-name-js" }).setLeaderboardName("Tester <b>JS</b>");
+check(nj.set === true && nj.name === "Tester <b>JS</b>", "leaderboard name is accepted and returned as text");
+check((await mk({ playerToken: "dev:sdk-name-js" }).setLeaderboardName("")).name === null, "an empty name opts out");
+check((await down.leaderboard()) === null && (await down.setLeaderboardName("x")).reason === "unavailable", "gateway down: no leaderboard, name unavailable");
+
 process.exit(failures ? 1 : 0);

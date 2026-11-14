@@ -13,6 +13,7 @@ namespace Anansi { public static class TestHooks {
   static World MakeWorld() { var w = new World(); w.npcs.Add(new Entity { id = "brom", name = "Brom", role = "blacksmith" }); w.locations.Add(new Entity { id = "mill", name = "Old Mill" }); w.items.Add(new Entity { id = "ore", name = "Iron ore" }); return w; }
   public static System.Func<World, System.Threading.Tasks.Task<Quest>> QuestFallback =
     w => System.Threading.Tasks.Task.FromResult(new Quest { title = "Authored", steps = new System.Collections.Generic.List<QuestStep>() });
+  public static Leaderboard ParseBoard(string idle) { return Json.From<Leaderboard>(@"{""period"":""week"",""nodes"":[{""rank"":1,""node"":""b4e23150"",""name"":""Dev laptop"",""tokens"":{""today"":980,""week"":980,""all"":980},""jobs"":6,""reported"":{""cpu"":""Intel(R) Core(TM) i7-4800MQ CPU @ 2.70GHz"",""threads"":8,""gpus"":[{""name"":""Intel(R) HD Graphics 4600"",""vram_mb"":1024},{""name"":""NVIDIA Quadro K1100M"",""vram_mb"":2048}],""os"":""Windows 10"",""idle_gpu_pct"":IDLE,""at"":""2026-11-14T03:50:00+00:00""}}],""users"":[{""rank"":1,""name"":""Ada L."",""machines"":1,""tokens"":{""today"":980,""week"":980,""all"":980},""jobs"":6}]}".Replace("IDLE", idle)); }
   public static System.Collections.Generic.List<string> Got = new System.Collections.Generic.List<string>();
   public static System.Action<string> OnSentence = s => { lock (Got) Got.Add(s); };
 } }
@@ -66,6 +67,13 @@ try {
 
   $cr = $c.CreditsAsync().GetAwaiter().GetResult()
   Check ($cr -ne $null -and $cr.nodes -eq 0) "credits answer"
+  $lb = $c.LeaderboardAsync("day", 5).GetAwaiter().GetResult()
+  Check ($lb -ne $null -and $lb.period -eq "day" -and $lb.nodes.Count -eq 0 -and $lb.users.Count -eq 0) "leaderboard of a gateway with no volunteers is empty"
+  $nm = $c.SetLeaderboardNameAsync("Tester <b>PS</b>").GetAwaiter().GetResult()
+  Check ($nm.Set -and $nm.Name -eq "Tester <b>PS</b>") "leaderboard name is accepted and returned as text"
+  $pb = [Anansi.TestHooks]::ParseBoard("null"); $pn = $pb.nodes[0]
+  Check ($pn.name -eq "Dev laptop" -and $pn.tokens.all -eq 980 -and $pn.jobs -eq 6 -and $pn.reported.gpus.Count -eq 2 -and $pn.reported.gpus[1].vram_mb -eq 2048 -and $pn.reported.idle_gpu_pct -eq $null -and $pb.users[0].name -eq "Ada L." -and $pb.users[0].machines -eq 1) "a populated leaderboard parses, a null idle load stays empty"
+  $iv = ([Anansi.TestHooks]::ParseBoard("12.5")).nodes[0].reported.idle_gpu_pct; Check ($iv -ne $null -and $iv -eq 12.5) "an idle load of 12.5 percent parses"
   $ln = $c.LinkNodeAsync("ABCD-EFGH").GetAwaiter().GetResult()
   Check ((-not $ln.Linked) -and $ln.Reason -eq "bad_code") "unknown link code is reported as bad_code"
 

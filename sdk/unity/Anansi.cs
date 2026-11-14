@@ -56,6 +56,22 @@ namespace Anansi
         public Credits Credits;  // the player's credits after linking
     }
 
+    // The public volunteer leaderboard (GET /v1/leaderboard) and a player's opt-in name (POST /v1/credits/name).
+    [Serializable] public class BoardTokens { public long today; public long week; public long all; }
+    [Serializable] public class BoardGpu { public string name; public int vram_mb; }
+    [Serializable] public class BoardReported { public string cpu; public int threads; public List<BoardGpu> gpus; public string os; public double? idle_gpu_pct; public string at; }
+    [Serializable] public class BoardNode { public int rank; public string node; public string name; public BoardTokens tokens; public int jobs; public BoardReported reported; }
+    [Serializable] public class BoardUser { public int rank; public string name; public int machines; public BoardTokens tokens; public int jobs; }
+    [Serializable] public class Leaderboard { public string period; public List<BoardNode> nodes; public List<BoardUser> users; }  // names and hardware text come from outside: escape them in markup
+    [Serializable] public class NameRequest { public string name; }
+    [Serializable] public class NameReply { public string name; }
+    public class NameResult
+    {
+        public bool Set;
+        public string Name;      // the cleaned name, or null when the player opted out
+        public string Reason;    // when not set: "bad_name" or "unavailable"
+    }
+
     public class Reply
     {
         public string Say;
@@ -189,6 +205,37 @@ namespace Anansi
             req.Headers.Add("X-Anansi-Key", key);
             req.Headers.Add("X-Player-Token", playerToken());
             return req;
+        }
+
+        // The public volunteer leaderboard ("day", "week" or "all"), or null when the gateway cannot be reached.
+        public async Task<Leaderboard> LeaderboardAsync(string period = "week", int limit = 25)
+        {
+            try
+            {
+                using (var resp = await http.SendAsync(Req(HttpMethod.Get, "/v1/leaderboard?period=" + Uri.EscapeDataString(period) + "&limit=" + limit, null)).ConfigureAwait(false))
+                    if (resp.IsSuccessStatusCode)
+                        return Json.From<Leaderboard>(await resp.Content.ReadAsStringAsync().ConfigureAwait(false));
+            }
+            catch (Exception) { }
+            return null;
+        }
+
+        // Opt this player in to the leaderboard under `name` (empty = opt out). Shown once a machine is linked.
+        public async Task<NameResult> SetLeaderboardNameAsync(string name)
+        {
+            try
+            {
+                var body = Json.To(new NameRequest { name = name ?? "" });
+                using (var resp = await http.SendAsync(Req(HttpMethod.Post, "/v1/credits/name", body)).ConfigureAwait(false))
+                {
+                    if (resp.IsSuccessStatusCode)
+                        return new NameResult { Set = true, Name = Json.From<NameReply>(await resp.Content.ReadAsStringAsync().ConfigureAwait(false)).name };
+                    var s = (int)resp.StatusCode;
+                    if (s == 400 || s == 422) return new NameResult { Set = false, Reason = "bad_name" };
+                }
+            }
+            catch (Exception) { }
+            return new NameResult { Set = false, Reason = "unavailable" };
         }
 
         // This player's volunteer credits, or null when the gateway cannot be reached.

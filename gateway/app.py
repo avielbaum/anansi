@@ -16,7 +16,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from . import quests
+from . import leaderboard, quests
 from .pull import PullHub, add_routes
 from .scheduler import Scheduler
 from .store import Store
@@ -833,6 +833,26 @@ def make_app(config=None, transport=None):
         result = store.spend(wallet, milli, x_anansi_title, ref)
         body = {"result": result, **in_credits(store.balance(wallet))}
         return JSONResponse(body, 402 if result == "short" else 200)
+
+    @app.post("/v1/credits/name")
+    async def credit_name(req: Request, c=Depends(creds)):
+        """Opt in to the public leaderboard under a display name (never the platform account); an empty name opts out. Shown once at
+        least one machine is linked."""
+        wallet = await wallet_of(c)
+        raw = await req.body()
+        try:
+            if len(raw) > 2000:
+                raise ValueError
+            name = json.loads(raw)["name"]
+            if not isinstance(name, str):
+                raise ValueError
+            name = leaderboard.clean_text(name, 24)
+        except (ValueError, KeyError, TypeError):
+            raise HTTPException(400, 'body must be {"name": "Your name"}')
+        store.set_wallet_name(wallet, name)
+        return {"name": name or None}
+
+    leaderboard.add_routes(app, store)
 
     @app.get("/healthz")
     async def health():

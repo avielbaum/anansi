@@ -123,6 +123,33 @@ Volunteers earn credits that games can turn into in-game items. No cash and no c
 Not built: what an item costs (each studio decides), Steam Inventory grants, an Unreal SDK method for credits (the other SDKs have
 `credits` and `link_node`, see [sdk.md](sdk.md#volunteer-credits)) and the DESIGN.md rule that a brand-new node earns nothing for 24 hours (the 7-day hold covers the audit window).
 
+### Leaderboard and telemetry
+
+A public board of total tokens processed, per machine and per player, for today, the last 7 days and all time: `GET /leaderboard`
+(a small web page; `?period=day|week|all`) and `GET /v1/leaderboard` (JSON, `period`, `limit` up to 100), cached for 30 seconds.
+**Nothing is listed unless its owner chooses it, separately for the machine and for the player.**
+
+- **A machine** opts in with `python node/agent.py ... --telemetry [--name "My rig"]` (or the same flags on `join`). The agent then
+  reports its CPU model, GPU models with video memory, a coarse operating system name ("Windows 10", "Linux", "macOS") and its
+  **idle GPU load**: the GPU's load sampled every 30 seconds while none of this agent's own jobs run (so it is the owner's own use),
+  smoothed, and sent every 5 minutes. Nothing else is read: no hostname, user name, address, serial number or driver version.
+  `agent.py --telemetry-off` removes the machine and deletes what it reported. A machine silent for the retention period
+  (`retention_days`, 35) drops off by itself. The page shows a short hash of the agent id, never the id.
+- **A player** opts in with `POST /v1/credits/name` `{"name": "Ada"}` (SDK: `set_leaderboard_name`), an empty name opts out. They
+  are listed once they have a name and at least one linked machine; the board shows the name and the totals of their linked machines
+  from the day each was linked, never a Steam id or platform account.
+- **What is trusted.** Tokens are measured by the gateway (real jobs only, probes excluded, a claim is capped by the size of the
+  text), so they cannot be inflated. Hardware and idle load are **reported by the machine and not verified**; the page says so. A
+  machine can only report if it has registered or served a job, at most once per 20 seconds, and a banned machine is not ranked.
+- **Hostile text.** Names and hardware strings come from outside and are shown to other people: control, zero-width and
+  right-to-left override characters are removed, lengths are capped (name 24, CPU and GPU 80, at most 8 GPUs), the web page escapes
+  everything and sends a restrictive `Content-Security-Policy`. If you show the JSON in your own UI, escape it too.
+- **Tested.** The hardware readers have run on a real Windows PC (CPU, an Intel and an NVIDIA GPU, idle GPU load) and the whole flow
+  (real agent, real gateway, real local model, the page in a browser, both opt-outs) on that PC. The Linux NVIDIA reader uses
+  `nvidia-smi`, the same command the busy check has run on a real A10; the AMD (sysfs) and macOS (`system_profiler`) readers follow
+  the documented formats and are tested on sample output only. Not built: per-user history over time, a verified hardware check
+  (compare reported GPU against measured tokens per second), and showing the board inside the Steam overlay.
+
 ### What this does not give you
 
 - **No real identity:** a ban costs the volunteer their token, but whoever issues tokens can be asked for a new one, and on

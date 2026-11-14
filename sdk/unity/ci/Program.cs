@@ -63,7 +63,13 @@ static class Program
         Check(cr != null && cr.balance == 0 && cr.pending == 0 && cr.nodes == 0, "credits of a new player are zero");
         var ln = c.LinkNodeAsync("ABCD-EFGH").GetAwaiter().GetResult();
         Check(!ln.Linked && ln.Reason == "bad_code", "unknown link code is reported as bad_code");
+        var board = c.LeaderboardAsync("day", 5).GetAwaiter().GetResult();
+        Check(board != null && board.period == "day" && board.nodes != null && board.nodes.Count == 0 && board.users != null && board.users.Count == 0, "leaderboard of a gateway with no volunteers is empty");
+        var nm = new Client(url, "demo", "change-me", () => "dev:sdk-name-cs").SetLeaderboardNameAsync("Tester <b>CS</b>").GetAwaiter().GetResult();
+        Check(nm.Set && nm.Name == "Tester <b>CS</b>", "leaderboard name is accepted and returned as text");
+        Check(new Client(url, "demo", "change-me", () => "dev:sdk-name-cs").SetLeaderboardNameAsync("").GetAwaiter().GetResult().Name == null, "an empty name opts out");
         var down = new Client("http://127.0.0.1:9", "demo", "change-me", ticket, null, 1);
+        Check(down.LeaderboardAsync().GetAwaiter().GetResult() == null && down.SetLeaderboardNameAsync("x").GetAwaiter().GetResult().Reason == "unavailable", "gateway down: no leaderboard, name unavailable");
         ln = down.LinkNodeAsync("ABCD-EFGH").GetAwaiter().GetResult();
         Check(!ln.Linked && ln.Reason == "unavailable" && down.CreditsAsync().GetAwaiter().GetResult() == null, "gateway down: unavailable, no credits");
         return failures == 0 ? 0 : 1;
