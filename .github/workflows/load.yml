@@ -1,0 +1,69 @@
+name: load
+# Manual run (Actions tab -> load -> Run workflow): two gateway processes sharing one Postgres 16 database, against mock nodes
+# with 50 ms latency. Free Linux runner, no GPU: this measures the gateway and the database, not a model.
+on: workflow_dispatch
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: {POSTGRES_PASSWORD: test}
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements.txt "psycopg[binary]"
+      - name: Machine
+        run: nproc; free -m | head -2; python --version
+      - name: Configs
+        run: |
+          python - <<'EOF'
+          import json
+          c = json.load(open("config.example.json"))
+          c["nodes"] = [{"url": "http://127.0.0.1:9001", "models": ["npc-small"]}, {"url": "http://127.0.0.1:9002", "models": ["npc-small"]}]
+          c["max_inflight_per_player"] = 1000
+          c["max_inflight"] = 1000
+          c["titles"]["demo"]["daily_token_budget"] = 50_000_000
+          json.dump({**c, "db_path": "postgresql://postgres:test@127.0.0.1:5432/postgres"}, open("/tmp/pg.json", "w"))
+          json.dump(c, open("/tmp/mem.json", "w"))   # no db_path: in memory, for comparison
+          c["titles"]["demo"]["daily_token_budget"] = 3000
+          json.dump({**c, "db_path": "postgresql://postgres:test@127.0.0.1:5432/postgres"}, open("/tmp/budget.json", "w"))
+          EOF
+      - name: Start mock nodes
+        run: |
+          python tools/mock_node.py 9001 node-a 0.05 > /tmp/a.log 2>&1 &
+          python tools/mock_node.py 9002 node-b 0.05 > /tmp/b.log 2>&1 &
+          sleep 2
+      - name: Two gateways on Postgres vs two in memory
+        run: |
+          start() { ANANSI_CONFIG=$1 python -m uvicorn gateway.app:make_app --factory --port $2 --log-level warning > /tmp/gw$2.log 2>&1 & }
+          start /tmp/pg.json 8081; start /tmp/pg.json 8082; start /tmp/mem.json 8083; start /tmp/mem.json 8084
+          for p in 8081 8082 8083 8084; do for i in $(seq 30); do curl -sf localhost:$p/healthz >/dev/null && break; sleep 1; done; done
+          for c in 10 50 200; do
+            echo "== concurrency $c, two gateways on Postgres";  python tools/loadtest.py --url http://127.0.0.1:8081,http://127.0.0.1:8082 --key change-me --n 3000 --concurrency $c --accounts 500
+            echo "== concurrency $c, two gateways in memory";    python tools/loadtest.py --url http://127.0.0.1:8083,http://127.0.0.1:8084 --key change-me --n 3000 --concurrency $c --accounts 500
+          done | tee /tmp/load.txt
+          { echo '```'; cat /tmp/load.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          pkill -f "uvicorn gateway.app" || true
+      - name: Player budget stays exact across two gateways on Postgres
+        run: |
+          python - <<'EOF'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:test@127.0.0.1:5432/postgres", autocommit=True) as c:
+              c.execute("DELETE FROM usage")
+          EOF
+          start() { ANANSI_CONFIG=/tmp/budget.json python -m uvicorn gateway.app:make_app --factory --port $1 --log-level warning > /tmp/gwb$1.log 2>&1 & }
+          start 8085; start 8086
+          for p in 8085 8086; do for i in $(seq 30); do curl -sf localhost:$p/healthz >/dev/null && break; sleep 1; done; done
+          python tools/loadtest.py --url http://127.0.0.1:8085,http://127.0.0.1:8086 --key change-me --n 500 --concurrency 100 --accounts 1 | tee /tmp/budget.txt
+          python - <<'EOF' | tee -a /tmp/budget.txt
+          import psycopg
+          with psycopg.connect("postgresql://postgres:test@127.0.0.1:5432/postgres") as c:
+              rows = c.execute("SELECT player, tokens FROM usage").fetchall()
+          print("usage rows (budget 3000):", rows)
+          assert len(rows) == 1 and rows[0][1] <= 3000 + 200, rows   # the request that crosses the limit may keep its reservation (up to ~125 tokens)
+          EOF
+          { echo; echo "Budget check:"; echo '```'; cat /tmp/budget.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
