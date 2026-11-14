@@ -105,6 +105,7 @@ volume, and **M** mutes or unmutes anywhere (the choice is saved in the browser)
 first key press or click, so the title music begins then.
 
 Controls: arrows or WASD to move; Enter, Space or Z to talk and confirm; Esc or X for the menu and to go back; M for sound.
+Touch: tap to walk there; tap a person or object to walk up and use it; tap a list row to choose it (rows with a description take a second tap), tap outside a list to go back, tap anywhere to advance text; the Menu button in the corner opens the menu. Add `?touch` to the address to show the button on a desktop.
 
 Code: `src/rules.js` (stats, damage, levelling, quests; no Phaser, tested by `check.mjs`), `src/data.js` (the written
 maps, dialogue, quest world, personas), `src/atlas.js` (parsing what the model says about a place; the prototype

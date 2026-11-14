@@ -8,7 +8,7 @@ import { upgrade } from "./src/state.js";
 import { MAPS, STAMPS, TALK, QUEST_WORLD, REGIONS, ITEM_SPOTS, PERSONAS, FALLBACK_QUESTS, SHORT_NAMES } from "./src/data.js";
 import { pages } from "./src/ui.js";
 import { SITE_BEATS, completeSite, banter, newPlot, destroyRelay, objective, situation, BEATS, ENDINGS, ACTS, RELAYS_NEEDED, epilogueFallback } from "./src/story.js";
-import { genCity, walkable, LOCALS, ENCOUNTERS } from "./src/city.js";
+import { genCity, walkable, findPath, LOCALS, ENCOUNTERS } from "./src/city.js";
 import { worldSpot } from "./src/overworld.js";
 import { REGIONS as WORLD, REGION_IDS, regionOf, anchorOf } from "./src/regions.js";
 import { hash, parseAtlas, parseClimate, cityPrompt, CLIMATES, suggest, DESTINATIONS } from "./src/atlas.js";
@@ -293,6 +293,12 @@ assert.equal(save.gold, 60 + pay.gold); assert.equal(save.items.potion, 4); asse
   assert(W.zones.length === places.length + 1, "one gate per place and Old Town");
   for (const name of places) { const z = W.zones.find(z => z.enter === name); assert(z, `${name}: no gate`); assert(seen.has(`${z.x},${z.y}`), `${name}: the gate cannot be reached`); }
   assert(audio.music[W.music]);
+  { // tap to move: the route to a far gate is a chain of free neighbouring tiles
+    const { open } = walkable(W), z = W.zones.find(z => z.enter === "Sydney"), path = findPath(open, W.spawn, new Set([`${z.x},${z.y}`]));
+    assert(path && path.length > 40 && `${path.at(-1)}` === `${z.x},${z.y}`, "a route to Sydney");
+    let prev = W.spawn; for (const p of path) { assert(open(...p) && Math.abs(p[0] - prev[0]) + Math.abs(p[1] - prev[1]) === 1, "each step is one free tile"); prev = p; }
+    assert.equal(findPath(open, W.spawn, new Set(["-5,-5"])), null, "no route to nowhere");
+  }
   for (const b of W.biomes) assert(existsSync(here(`assets/tiles/battle_${b.battle}.png`)) && ENCOUNTERS[b.climate], `${b.climate}: no backdrop or wildlife`);
   for (const id of ["town", ...places.map(p => "city:" + p)]) { const [x, y] = worldSpot(id); assert(seen.has(`${x},${y}`), `${id}: arrival on the overworld is blocked`); }
   const t = MAPS.town, tz = t.zones.find(z => z.world), tw = walkable(t).seen;
