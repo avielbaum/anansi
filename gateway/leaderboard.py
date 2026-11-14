@@ -99,8 +99,8 @@ def render(data, period, privacy_url=""):
             "<meta name=robots content='noindex,nofollow'><meta name=color-scheme content='light dark'><title>Volunteer network statistics</title>"
             "<style>body{font:15px system-ui,sans-serif;margin:2rem auto;max-width:60rem;padding:0 1rem}table{border-collapse:collapse;width:100%;"
             "margin:.5rem 0 2rem}td,th{padding:.4rem .6rem;border-bottom:1px solid #8884;text-align:left;vertical-align:top}"
-            ".n{text-align:right;font-variant-numeric:tabular-nums}a{margin-right:1rem}.on{font-weight:700}</style>"
-            f"<h1>Volunteer network statistics</h1><p>Tokens served for players, by the hardware that served them. {nav}</p>")
+            ".n{text-align:right;font-variant-numeric:tabular-nums}.nav a{margin-right:1rem}.on{font-weight:700}</style>"
+            f"<h1>Volunteer network statistics</h1><p>Tokens served for players, by the hardware that served them. <span class=nav>{nav}</span></p>")
     foot = (f"<p><small>These are statistics about groups of machines whose owners chose to send them. No names, accounts or machine ids are "
             + (f"published, and a group of fewer than {data['min_group']} machines is not shown on its own. " if data["min_group"] > 1 else
                "published, but this gateway has set its minimum group size to 1, so a single machine can be recognised. ") +
