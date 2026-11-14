@@ -51,6 +51,10 @@ func go() -> void:
 		await create_timer(3.0).timeout
 		print("offers ", s.offers.size(), " modal ", g.modal, " asked ", g.asked_offers, " sales ", s.morale.sales, " done ", s.contracts_done,
 				" panel ", g.modal_panel.visible, g.modal_panel.get_rect(), " buttons ", g.modal_buttons.get_child_count(), " queue ", g.modal_queue.size())
+	if args.size() > 2 and args[2] == "upgrades":
+		s.event = s.settle_event(Data.EVENTS[4])
+		g._upgrades()
+		await create_timer(0.5).timeout
 	if args.size() > 2 and args[2] == "talk":
 		g.tool = ""
 		g._open_talk("tech")

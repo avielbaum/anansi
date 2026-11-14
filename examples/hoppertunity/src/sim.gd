@@ -22,6 +22,8 @@ var contract := {}
 var contracts_done := 0
 var offers := []  # after a contract ends: the contracts Penny can get. The first is taken unless choose() picks another
 var history := []  # one entry per finished day: {"day", "net", "morale"}
+var upgrades: Array = []  # ids from Data.UPGRADES that have been bought
+var event := {}  # today's event from Data.EVENTS, {} on a quiet day
 var contract_revealed := false  # a tip showed the player the next contract
 var quest := {}  # the active quest: the gateway's shape plus "giver", "step", "have", "need"
 var quests_done := {}  # crew id -> finished quests, which paces their storyline
@@ -113,7 +115,7 @@ func expand() -> bool:
 
 ## How fast a coworker's station runs: 0.8 at morale 0, 1.2 at 100.
 func mult(crew: String) -> float:
-	return 0.8 + 0.4 * morale[crew] / 100.0
+	return (0.8 + 0.4 * morale[crew] / 100.0) * float(event.get("speed", {}).get(crew, 1.0))
 
 
 func team_morale() -> float:
@@ -189,6 +191,27 @@ func choose(i: int) -> void:
 		contract = offers[i]
 		offers = []
 		contract_changed.emit(false)
+
+
+func buy_upgrade(id: String) -> bool:
+	if id in upgrades or not Data.UPGRADES.has(id) or money < Data.UPGRADES[id].cost:
+		return false
+	money -= Data.UPGRADES[id].cost
+	today.built += Data.UPGRADES[id].cost
+	upgrades.append(id)
+	return true
+
+
+## What an event from Data.EVENTS comes to today: its one-off effects are applied now, and what is returned lasts the
+## day. A coworker in good spirits heads their kind of trouble off, and then only the story of it is left.
+func settle_event(e: Dictionary) -> Dictionary:
+	if e.has("saved_by") and morale[e.saved_by] >= 70.0:
+		return {"text": e.saved}
+	for id in morale:
+		add_morale(id, e.get("morale", 0.0))
+	money += e.get("cash", 0)
+	today.costs -= e.get("cash", 0)
+	return e.duplicate(true)
 
 
 func won() -> bool:
@@ -303,7 +326,7 @@ func step() -> void:
 
 
 func _inbound(pos: Vector2i, c: Dictionary) -> void:
-	c.t += mult("dock") * (1.25 if perks.has("dock") else 1.0)
+	c.t += mult("dock") * (1.25 if perks.has("dock") else 1.0) * (1.25 if "crane" in upgrades else 1.0)
 	var price: int = Data.ITEMS[c.raw].buy
 	if c.t >= Data.INBOUND_INTERVAL and money >= price and _push(pos, c.dir, c.raw):
 		c.t = 0.0
@@ -320,7 +343,7 @@ func _machine(pos: Vector2i, c: Dictionary) -> void:
 	if c.jam > 0:
 		c.jam -= 1
 	elif c.busy:
-		c.prog += mult(b.crew)
+		c.prog += mult(b.crew) * (1.2 if "tooling" in upgrades else 1.0)
 		if c.prog >= b.time:
 			c.merge({"busy": false, "prog": 0.0}, true)
 			if not _push(pos, c.dir, b.out):
@@ -387,13 +410,14 @@ func _push(pos: Vector2i, dir: int, item: String) -> bool:
 
 
 func _price_mult() -> float:
-	return mult("sales") * (1.1 if perks.has("sales") else 1.0) * (1.1 if team_morale() > 70.0 else 1.0)
+	return mult("sales") * (1.1 if perks.has("sales") else 1.0) * (1.1 if team_morale() > 70.0 else 1.0) \
+			* (1.1 if "showroom" in upgrades else 1.0) * float(event.get("price", 1.0))
 
 
 func _sell(pos: Vector2i, item: String) -> void:
 	# an unhappy quality lead lets bad units through: they come back, unpaid and uncounted
 	if Data.BUILD.values().any(func(b): return b.get("out") == item) and not perks.has("qa") \
-			and rng.randf() < 0.15 * (1.0 - morale.qa / 100.0):
+			and rng.randf() < 0.15 * (1.0 - morale.qa / 100.0) * (0.5 if "scanner" in upgrades else 1.0):
 		today.defects += 1
 		sold.emit(pos, item, 0)
 		return
@@ -424,7 +448,8 @@ func _end_day() -> void:
 	var summary := today.duplicate()
 	summary.merge({"day": day, "wages_rent": pay, "walkout": walkout, "missed": false})
 	for id in morale:
-		add_morale(id, 8.0 if walkout else -Data.MORALE_WEAR)  # a day off clears the air; a normal day wears a little
+		# a day off clears the air; a normal day wears a little
+		add_morale(id, 8.0 if walkout else -(Data.MORALE_WEAR - (1.0 if "breakroom" in upgrades else 0.0)))
 		talk_moved[id] = 0.0
 	day += 1
 	tick = 0
@@ -436,6 +461,10 @@ func _end_day() -> void:
 		offers = _offers(contracts_done)
 		contract = offers[0]
 		contract_changed.emit(false)
+	event = {}
+	if day >= 3 and rng.randf() < Data.EVENT_CHANCE:
+		event = settle_event(Data.EVENTS[rng.randi() % Data.EVENTS.size()])
+	summary["event"] = event.get("text", "")
 	walkout = team_morale() < 30.0
 	summary["walkout_next"] = walkout
 	today = {"revenue": 0, "costs": 0, "built": 0, "shipped": 0, "defects": 0}
@@ -445,7 +474,7 @@ func _end_day() -> void:
 # ---------- saving ----------
 
 const _SAVED := ["money", "day", "tick", "ticks", "morale", "wages", "talk_moved", "unlocked", "contract", "contracts_done",
-		"contract_revealed", "offers", "history", "quest", "quests_done", "beats_told", "perks", "walkout", "today"]
+		"contract_revealed", "offers", "history", "upgrades", "event", "quest", "quests_done", "beats_told", "perks", "walkout", "today"]
 
 
 func save() -> Dictionary:

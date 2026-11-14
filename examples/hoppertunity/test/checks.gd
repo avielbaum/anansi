@@ -130,6 +130,36 @@ func run() -> int:
 	s.choose(2)
 	ok(s.contract == bulk and bulk.qty == 45 and bulk.reward == 700 and s.offers.is_empty(), "choosing the bulk order swaps the contract (%d %s for %d)" % [bulk.qty, bulk.item, bulk.reward])
 
+	# --- upgrades and events ---
+	s = Sim.new()
+	ok(not s.buy_upgrade("showroom") and s.buy_upgrade("breakroom") and not s.buy_upgrade("breakroom") and s.money == Data.START_MONEY - 400,
+			"an upgrade is bought once, and only with the money for it")
+	run_ticks(s, Data.TICKS_PER_DAY)
+	ok(s.morale.tech == 50.0 - Data.MORALE_WEAR + 1.0, "the break room slows the daily wear")
+	out = []
+	for tooled in [false, true]:
+		s = line(["inbound", "press", "outbound"])
+		s.morale.qa = 100.0
+		if tooled:
+			s.buy_upgrade("tooling")
+		run_ticks(s, 200)
+		out.append(s.today.shipped)
+	ok(out[1] > out[0], "better tooling makes more (%d vs %d)" % [out[1], out[0]])
+	var all_ok := true
+	for e in Data.EVENTS:  # every event must name real coworkers and carry the words for both outcomes
+		all_ok = all_ok and e.has("text") and (not e.has("saved_by") or (Data.CREW.has(e.saved_by) and e.has("saved")))
+		for id in e.get("speed", {}):
+			all_ok = all_ok and Data.CREW.has(id)
+	ok(all_ok, "every event is well formed")
+	s = Sim.new()
+	s.event = s.settle_event(Data.EVENTS[0])
+	ok(is_equal_approx(s.mult("dock"), 0.7) and is_equal_approx(s.mult("tech"), 1.0), "a late truck slows the docks for the day")
+	s.morale.dock = 75.0
+	s.event = s.settle_event(Data.EVENTS[0])
+	ok(not s.event.has("speed") and s.event.text == Data.EVENTS[0].saved, "a happy Dot heads the late truck off")
+	s.event = s.settle_event(Data.EVENTS[2])
+	ok(s.money == Data.START_MONEY - 60, "a fine comes out of the till")
+
 	s = Sim.new()
 	var m0 := s.money
 	run_ticks(s, Data.TICKS_PER_DAY * 2)

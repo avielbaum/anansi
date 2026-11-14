@@ -18,6 +18,11 @@ floor manager of the Hopper Works, a small gadget plant on its last chance.
 - **Days:** a day is one minute at normal speed. At the end you pay wages, rent and 5 coins of upkeep per machine,
   and see the day's profit (building spend is listed apart), each coworker's morale and wage, and a chart of the last
   two weeks. Fall 500 coins into debt and the Works closes.
+- **Events:** from day 3, some mornings bring news: a late truck slows the docks, a power dip slows the machines, a
+  trade fair lifts prices, an inspector fines a loose cable. A coworker at morale 70 or more heads off their own kind
+  of trouble. Coworkers are told the day's news, so you can talk to them about it.
+- **Upgrades:** five one-off improvements (break room, dock crane, better tooling, quality scanner, showroom) give
+  spare cash somewhere to go.
 - **Tutorial:** eight steps walk a new manager from the first dock to the first errand, pulsing the button to press.
   It can be skipped, and a saved game remembers where you were.
 - **Trouble shows:** a machine that is jammed, blocked or short of an input says so above it.

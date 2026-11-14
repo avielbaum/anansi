@@ -51,6 +51,34 @@ const CONTRACTS := [
 	{"item": "boxed", "qty": 50, "days": 4, "reward": 1000},
 ]
 
+## One-off improvements to buy: somewhere for late-game cash to go. Their effects are in sim.gd (search for the id).
+const UPGRADES := {
+	"breakroom": {"name": "Break room", "cost": 400, "does": "Everyone loses 1 less morale a day."},
+	"crane": {"name": "Dock crane", "cost": 500, "does": "Inbound docks unload a quarter faster."},
+	"tooling": {"name": "Better tooling", "cost": 600, "does": "Machines work a fifth faster."},
+	"scanner": {"name": "Quality scanner", "cost": 700, "does": "Half as many defective units."},
+	"showroom": {"name": "Showroom", "cost": 800, "does": "Everything sells for a tenth more."},
+}
+
+## What can happen on a morning from day 3 on (45% of days). speed: today's multiplier for a coworker's station.
+## price: today's multiplier on what things sell for. morale: added to everyone, once. cash: added to the till, once.
+## saved_by: if that coworker's morale is 70 or more, nothing bad happens and `saved` is what the player reads.
+const EVENT_CHANCE := 0.45
+const EVENTS := [
+	{"text": "The steel truck is stuck behind a parade. The docks run slow today.", "speed": {"dock": 0.7}, "saved_by": "dock",
+		"saved": "A parade blocked the main road, but Dot had the trucks come round the back. No delay."},
+	{"text": "The power company is \"looking into it\". Machines run slow today.", "speed": {"tech": 0.75, "qa": 0.75}, "saved_by": "tech",
+		"saved": "The power dipped, but Sprocket had the backup generator humming before anyone noticed."},
+	{"text": "A safety inspector fines the Works 60 coins for a loose cable.", "cash": -60, "saved_by": "qa",
+		"saved": "A safety inspector came by. Tilly's floor was spotless: no fine."},
+	{"text": "A buyer sends back a pallet over a scratch. Penny refunds 40 coins.", "cash": -40, "saved_by": "sales",
+		"saved": "A buyer grumbled about a scratch, and Penny talked them round. No refund."},
+	{"text": "A trade fair is in town. Buyers pay a fifth more today.", "price": 1.2},
+	{"text": "The local paper ran a kind piece on the Works. Buyers pay a tenth more today.", "price": 1.1},
+	{"text": "It is somebody's birthday and there is cake. Everyone cheers up a little.", "morale": 4.0},
+	{"text": "The heating is out and everyone is a bit grumpy.", "morale": -3.0},
+]
+
 ## The coworkers. perk: what finishing their storyline gives, applied in sim.gd. beat: the buildings they walk between.
 const CREW := {
 	"dock": {"name": "Dot", "role": "dock supervisor", "wage": 15, "beat": ["inbound", "outbound"],

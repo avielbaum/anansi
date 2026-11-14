@@ -125,4 +125,5 @@ func _brief(id: String) -> String:
 	return ("You are %s, the %s at the Hopper Works. %s You are talking to %s. Your morale is %d out of 100 (%s). "
 			+ "It is day %d. The plant has %d coins. Current contract: %d %s due by the end of day %d, %d shipped so far. %s") % [
 			c.name, c.role, c.persona, Data.PLAYER, int(sim.morale[id]), sim.mood(id), sim.day, sim.money,
-			k.qty, Data.ITEMS[k.item].name, k.due, k.done, _story_so_far(id)]
+			k.qty, Data.ITEMS[k.item].name, k.due, k.done, _story_so_far(id)] + (
+			" News at the plant today: " + sim.event.text if sim.event.has("text") else "")

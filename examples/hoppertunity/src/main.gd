@@ -79,7 +79,7 @@ var top: Label
 var contract_label: Label
 var quest_label: Label
 var day_bar: ProgressBar
-var build_bar: HBoxContainer
+var build_bar: HFlowContainer  # wraps onto a second row when everything is unlocked
 var toast: Label
 var talk_panel: PanelContainer
 var talk_log: RichTextLabel
@@ -905,7 +905,7 @@ func _ui() -> void:
 	_button("New game", row, _confirm_new_game)
 
 	var bottom := _panel(Control.PRESET_BOTTOM_WIDE, root)
-	build_bar = HBoxContainer.new()
+	build_bar = HFlowContainer.new()
 	bottom.add_child(build_bar)
 
 	toast = Label.new()
@@ -993,6 +993,30 @@ func _build_buttons() -> void:
 			b.tooltip_text = _does(kind)
 			build_buttons[kind] = b
 	_button("Bigger floor %d" % sim.expand_cost(), build_bar, _expand).tooltip_text = "Two more rows and columns of floor."
+	_button("Upgrades", build_bar, _upgrades).tooltip_text = "One-off improvements to the whole plant."
+
+
+func _upgrades() -> void:
+	var picks := []
+	var owned := []
+	for id in Data.UPGRADES:
+		var u: Dictionary = Data.UPGRADES[id]
+		if id in sim.upgrades:
+			owned.append(u.name)
+		else:
+			picks.append(["%s, %d coins: %s" % [u.name, u.cost, u.does], _buy.bind(id)])
+	picks.append(["Close", Callable()])
+	_ask("[b]Upgrades[/b]\nOne-off improvements to the whole plant. You have %d coins.%s" % [sim.money,
+			"\nInstalled: " + ", ".join(owned) + "." if not owned.is_empty() else ""], picks)
+
+
+func _buy(id: String) -> void:
+	if sim.buy_upgrade(id):
+		_toast("%s installed. %s" % [Data.UPGRADES[id].name, Data.UPGRADES[id].does])
+		_sfx("win")
+	else:
+		_toast("Not enough money for the %s." % Data.UPGRADES[id].name.to_lower())
+		_sfx("error")
 
 
 ## What a kind of building does, in a sentence: for the build bar's tooltips and for clicking on one.
@@ -1030,7 +1054,8 @@ func _hud() -> void:
 		_ask("[b]Penny has customers on the line.[/b]\nWhich contract do you take? The happier Penny is, the more she can line up.", picks)
 	elif sim.offers.size() <= 1:
 		asked_offers = false
-	quest_label.visible = not sim.quest.is_empty()
+	quest_label.visible = not sim.quest.is_empty() or sim.event.has("text")
+	quest_label.text = "Today: " + sim.event.get("text", "")
 	if not sim.quest.is_empty():
 		var s: Dictionary = sim.quest.steps[sim.quest.step]
 		quest_label.text = "Quest for %s: %s%s" % [Data.CREW[sim.quest.giver].name, s.get("description", ""),
@@ -1113,6 +1138,8 @@ func _on_day_end(s: Dictionary) -> void:
 		lines.append("The crew stayed home today. A day off cleared the air a little.")
 	if s.missed:
 		lines.append("[color=tomato]The contract deadline was missed. The customer took a penalty and Penny took the call.[/color]")
+	if s.event != "":
+		lines.append("[color=#f2a13c]Tomorrow: %s[/color]" % s.event)
 	if s.walkout_next:
 		lines.append("[color=tomato]Morale is on the floor: the crew will not work tomorrow. Talk to them, help them, pay them.[/color]")
 	for id in Data.CREW:
