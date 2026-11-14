@@ -195,6 +195,7 @@ assert(audioBytes < 8e6, `audio is ${(audioBytes / 1e6).toFixed(1)} MB; keep the
 for (const M of Object.values(MAPS)) assert(audio.music[M.music] && (!M.boss || audio.music[M.boss.music]), `${M.name}: missing music`);
 for (const c of CLIMATES) assert(audio.music[genCity("Testville", parseAtlas(atlasText), c).map.music], `no music for the ${c} climate`);
 assert(existsSync(here("assets/CREDITS_AUDIO.csv")), "run python tools/build_audio.py");
+for (const k of Object.keys(SKILLS)) assert(existsSync(here(`assets/icons/skill_${k}.png`)), `${k}: no icon`);
 for (const s of Object.values(SKILLS)) assert(s.sound && audio.sfx[s.sound], "every skill has a sound");
 
 // cities look different from each other

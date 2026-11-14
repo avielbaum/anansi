@@ -6,7 +6,7 @@ import { Field } from "./field.js";
 import { Battle } from "./battle.js";
 import { Menu } from "./menu.js";
 import { Ending } from "./ending.js";
-import { EQUIP, ENEMIES } from "./rules.js";
+import { EQUIP, ENEMIES, SKILLS } from "./rules.js";
 import { HOUSES } from "./data.js";
 import { preloadAudio, initAudio, music } from "./audio.js";
 
@@ -24,7 +24,7 @@ class Boot extends Phaser.Scene {
       for (const [id, c] of Object.entries(cast))
         for (const anim of Object.keys(c.anims)) this.load.spritesheet(`${id}-${anim}`, `assets/sprites/${id}/${anim}.png`, { frameWidth: 64, frameHeight: 64 });
     });
-    for (const id of Object.keys(EQUIP)) this.load.image("icon-" + id, `assets/icons/${id}.png`); // equipment icons, 24x24
+    for (const id of [...Object.keys(EQUIP), ...Object.keys(SKILLS).map(k => "skill_" + k)]) this.load.image("icon-" + id, `assets/icons/${id}.png`); // equipment icons, 24x24
     for (const t of TILES) this.load.image(`tile-${t}`, `assets/tiles/${t}.png`);
     for (const e of ENEMY_IMGS) this.load.image(`enemy-${e}`, `assets/enemies/${e}.png`);
   }

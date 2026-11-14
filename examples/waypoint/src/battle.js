@@ -107,8 +107,8 @@ export class Battle extends Phaser.Scene {
         if (f) { await this.strike(b, f); done = true; }
       } else if (cmd === 1) {
         const ids = HEROES[h.id].skills, help = text(this, 18, 18, "").setDepth(20001);
-        const k = await choose(this, 8, H - 152, 220, ids.map(id => ({ label: `${SKILLS[id].name.padEnd(13)}${String(SKILLS[id].mp).padStart(2)} MP`, disabled: SKILLS[id].mp > h.mp })),
-          { onMove: i => help.setText(SKILLS[ids[i]].desc) });
+        const k = await choose(this, 8, H - 152, 220, ids.map(id => ({ label: `${SKILLS[id].name.padEnd(13)}${String(SKILLS[id].mp).padStart(2)} MP`, icon: "icon-skill_" + id, disabled: SKILLS[id].mp > h.mp })),
+          { rowH: 28, onMove: i => help.setText(SKILLS[ids[i]].desc) });
         help.destroy();
         if (k < 0) continue;
         const sk = SKILLS[ids[k]];

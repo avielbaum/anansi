@@ -58,7 +58,7 @@ def main():
             icon = frame(spec["frame"])
             icon.alpha_composite(sprite, ((24 - sprite.width) // 2, (24 - sprite.height) // 2))
         else:
-            rel = f"Ui/Skill Icon/Items & Weapon/{spec['skill']}.png"
+            rel = f"Ui/Skill Icon/{spec.get('dir', 'Items & Weapon')}/{spec['skill']}.png"
             icon = Image.open(os.path.join(src, rel)).convert("RGBA")
             if spec.get("hue"):
                 icon = rotate_hue(icon, spec["hue"])

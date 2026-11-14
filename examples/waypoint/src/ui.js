@@ -78,19 +78,21 @@ export function choose(scene, x, y, w, items, { cancel = true, onMove, keep = fa
   return new Promise(done => {
     items = items.map(i => (typeof i === "string" ? { label: i } : i));
     const win = drawWindow(scene, x, y, w, items.length * rowH + 20);
-    const labels = items.map((it, i) => text(scene, x + 30, y + 11 + i * rowH, it.label, { color: it.disabled ? "#7f86a8" : "#ffffff" }));
+    const lx = items.some(it => it.icon) ? x + 58 : x + 30; // room for the 24px icons
+    const icons = items.map((it, i) => it.icon && scene.add.image(x + 44, y + 11 + i * rowH + 11, it.icon).setScrollFactor(0).setDepth(10002).setAlpha(it.disabled ? 0.45 : 1));
+    const labels = items.map((it, i) => text(scene, lx, y + 11 + i * rowH, it.label, { color: it.disabled ? "#7f86a8" : "#ffffff" }));
     const cur = text(scene, x + 12, 0, "▶", { color: "#ffd76a" });
     let i = items[start] && !items[start].disabled ? start : Math.max(0, items.findIndex(it => !it.disabled));
     const move = d => { i = (i + d + items.length) % items.length; cur.setY(y + 11 + i * rowH); onMove?.(i); };
     move(0);
-    const close = r => { stop(); if (!keep) [win, cur, ...labels].forEach(o => o.destroy()); done(r); };
+    const close = r => { stop(); if (!keep) [win, cur, ...labels, ...icons].forEach(o => o?.destroy()); done(r); };
     const stop = listen(scene, k => {
       if (k === "UP") { sfx("move", { volume: 0.5 }); move(-1); }
       else if (k === "DOWN") { sfx("move", { volume: 0.5 }); move(1); }
       else if (OK.includes(k) && !items[i].disabled) { sfx("accept"); close(i); }
       else if (BACK.includes(k) && cancel) { sfx("cancel"); close(-1); }
     });
-    choose.last = { win, cur, labels }; // for callers that keep the window open (keep: true) and destroy it later
+    choose.last = { win, cur, labels: [...labels, ...icons.filter(Boolean)] }; // for callers that keep the window open (keep: true) and destroy it later
   });
 }
 
