@@ -47,6 +47,7 @@ var floor_mm := MultiMesh.new()
 var ghost := Node3D.new()
 var ghost_key := ""
 var crew_nodes := {}  # crew id (and "pip") -> Node3D
+var pip_goal := Vector3.ZERO  # where Pip is walking to
 
 var top: Label
 var contract_label: Label
@@ -243,7 +244,7 @@ func _refresh(pos: Vector2i) -> void:
 	var c: Dictionary = sim.cells[pos]
 	var n := _model(c.kind, c.dir)
 	n.position = _center(pos)
-	if c.kind in ["inbound", "outbound", "hopper"]:
+	if c.kind not in ["belt", "splitter"]:
 		var tag := Label3D.new()
 		tag.name = "tag"
 		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -251,7 +252,7 @@ func _refresh(pos: Vector2i) -> void:
 		tag.font_size = 40
 		tag.outline_size = 10
 		tag.pixel_size = 0.006 / n.scale.x
-		tag.position = Vector3(0, (2.0 if c.kind != "hopper" else 1.5) / n.scale.x, 0)
+		tag.position = Vector3(0, (2.0 if c.kind in ["inbound", "outbound"] else 1.5) / n.scale.x, 0)
 		n.add_child(tag)
 	add_child(n)
 	views[pos] = n
@@ -293,6 +294,7 @@ func _place_crew() -> void:
 		n.add_child(tag)
 		add_child(n)
 		crew_nodes[id] = n
+	pip_goal = crew_nodes.pip.position
 
 
 func _process(delta: float) -> void:
@@ -304,11 +306,34 @@ func _process(delta: float) -> void:
 			if modal:
 				acc = 0.0
 				break
+	_walk_pip(delta)
 	_camera(delta)
 	_draw_items(acc / TICK)
 	_draw_tags()
 	_draw_ghost()
 	_hud()
+
+
+## Pip strolls in a straight line to whatever was clicked last. She is not part of the sim, so she walks through things.
+func _walk_pip(delta: float) -> void:
+	var pip: Node3D = crew_nodes.pip
+	var to := pip_goal - pip.position
+	var moving := to.length() > 0.05
+	if moving:
+		pip.position += to.limit_length(4.0 * delta)
+		pip.rotation.y = atan2(to.x, to.z)
+	_play(pip, "walk" if moving else "idle")
+
+
+## Loop an animation, or play one once and fall back to idle. Does nothing if that animation is already looping.
+static func _play(n: Node3D, anim: String, once := false) -> void:
+	var ap: AnimationPlayer = n.find_children("*", "AnimationPlayer", true, false)[0]
+	if once:
+		ap.play(anim)
+		ap.queue("idle")
+	elif ap.current_animation != anim and not ap.current_animation.begins_with("emote"):
+		ap.get_animation(anim).loop_mode = Animation.LOOP_LINEAR
+		ap.play(anim)
 
 
 func _camera(delta: float) -> void:
@@ -348,10 +373,27 @@ func _draw_tags() -> void:
 	for pos in views:
 		var tag = views[pos].get_node_or_null("tag")
 		if tag != null:
-			var c: Dictionary = sim.cells[pos]
-			tag.text = "IN: " + Data.ITEMS[c.raw].name if c.kind == "inbound" else "OUT" if c.kind == "outbound" else "%d/%d" % [c.store.size(), Data.HOPPER_CAP]
+			tag.text = _tag_text(sim.cells[pos])
 	for id in Data.CREW:
 		crew_nodes[id].get_node("tag").text = "%s %s %d" % [Data.CREW[id].name, {"low": ":(", "mid": ":|", "high": ":)"}[sim.mood(id)], int(sim.morale[id])]
+
+
+## What floats over a building: what a dock handles, how full a hopper is, and for a machine only what is wrong.
+func _tag_text(c: Dictionary) -> String:
+	match c.kind:
+		"inbound": return "IN: " + Data.ITEMS[c.raw].name
+		"outbound": return "OUT"
+		"hopper": return "%d/%d" % [c.store.size(), Data.HOPPER_CAP]
+	if c.jam > 0:
+		return "JAMMED"
+	if c.out != "":
+		return "blocked"
+	if not c.busy:
+		var need: Dictionary = Data.BUILD[c.kind]["in"]
+		var missing: Array = need.keys().filter(func(i): return c.buf.get(i, 0) < need[i])
+		if not missing.is_empty():
+			return "needs " + " and ".join(missing.map(func(i): return Data.ITEMS[i].name))
+	return ""
 
 
 func _draw_ghost() -> void:
@@ -436,6 +478,7 @@ func _click(pos: Vector2i) -> void:
 	if c == null:
 		return
 	sim.quest_event("inspect", c.kind)
+	pip_goal = _center(pos) + Vector3(0.0, 0, 0.8)
 	if c.kind == "inbound":
 		sim.cycle_raw(pos)
 		_toast("This dock now orders %s (%d a crate)." % [Data.ITEMS[c.raw].name, Data.ITEMS[c.raw].buy])
@@ -641,6 +684,7 @@ func _on_day_end(s: Dictionary) -> void:
 func _open_talk(id: String) -> void:
 	talking = id
 	tool = ""
+	pip_goal = crew_nodes[id].position + Vector3(0.3, 0, 1.2)
 	talk_title.text = "%s, %s" % [Data.CREW[id].name, Data.CREW[id].role]
 	talk_log.clear()
 	raise_row.hide()
@@ -685,6 +729,8 @@ func _say(text: String) -> void:
 	talk_input.grab_focus()
 	_log(Data.CREW[id].name, r.say)
 	_say_note(r.note)
+	if r.note.contains("morale"):
+		_play(crew_nodes[id], "emote-yes" if r.note.contains("rises") else "emote-no", true)
 	if r.raise:
 		_log("", "%s is asking for a raise." % Data.CREW[id].name)
 		raise_row.show()
@@ -693,4 +739,5 @@ func _say(text: String) -> void:
 func _answer_raise(grant: bool) -> void:
 	raise_row.hide()
 	sim.answer_raise(talking, grant)
+	_play(crew_nodes[talking], "emote-yes" if grant else "emote-no", true)
 	_log("", "You %s. %s's wage is %d a day." % ["agree" if grant else "say no", Data.CREW[talking].name, sim.wages[talking]])

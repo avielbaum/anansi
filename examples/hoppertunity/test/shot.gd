@@ -31,6 +31,7 @@ func go() -> void:
 	if OS.get_cmdline_user_args().size() > 2:
 		g.tool = ""
 		g._open_talk("tech")
-		await create_timer(0.5).timeout
+		g._answer_raise(true)
+		await create_timer(0.7).timeout
 	root.get_texture().get_image().save_png(OS.get_cmdline_user_args()[0])
 	quit()

@@ -163,6 +163,31 @@ func run() -> int:
 	run_ticks(t, 400)
 	ok(t.money == s.money and t.day == s.day and JSON.stringify(t.save()) == JSON.stringify(s.save()), "a saved game continues exactly as the original")
 
+	# --- size: the largest floor, every cell a moving belt (rows joined into one long snake that ends in a dock) ---
+	s = Sim.new()
+	s.money = 1000000
+	s.floor_size = Vector2i(28, 24)
+	s.unlocked = Data.BUILD.keys() + Data.ITEMS.keys()
+	for y in 24:
+		for x in 28:
+			var east := y % 2 == 0
+			var end := x == (27 if east else 0)
+			s.build("belt", Vector2i(x, y), 1 if end else (0 if east else 2))
+	s.demolish(Vector2i(0, 0))
+	s.build("inbound", Vector2i(0, 0), 0)
+	s.demolish(Vector2i(0, 23))
+	s.build("outbound", Vector2i(0, 23), 0)
+	s.demolish(Vector2i(1, 23))
+	s.build("belt", Vector2i(1, 23), 2)
+	for id in s.morale:
+		s.morale[id] = 100.0
+	run_ticks(s, 700)
+	var t0 := Time.get_ticks_usec()
+	run_ticks(s, 200)
+	var ms := (Time.get_ticks_usec() - t0) / 200000.0
+	print("     %d cells, %d crates moving, %.2f ms a tick" % [s.cells.size(), items_on(s), ms])
+	ok(s.today.shipped > 0 and items_on(s) > 100 and ms < 25.0, "a full 28x24 floor of belts ticks well inside a 250 ms tick, even at 4x speed")
+
 	# --- crew: what an answer may do (a scripted Anansi, so every action is exercised) ---
 	s = Sim.new()
 	var crew := Crew.new()
