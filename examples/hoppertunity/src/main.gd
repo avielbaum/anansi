@@ -290,7 +290,12 @@ func _paint_chart() -> void:
 
 func _on_quest(done: bool) -> void:
 	if done:
-		_toast("Quest finished.")
+		var r: Dictionary = sim.last_reward
+		var who: String = Data.CREW[r.giver].name
+		_toast("Errand done: %d coins, and %s is happier.%s" % [r.cash, who,
+				" %s is fired up: their work runs a fifth faster until the end of %s." % [who, "tomorrow" if r.boost == 1 else "the day after tomorrow"]
+				if r.boost > 0 else ""])
+		_play(crew_nodes[r.giver], "emote-yes", true)
 		_sfx("win")
 
 
@@ -1027,7 +1032,8 @@ func _crew_sheet() -> void:
 	for id in Data.CREW:
 		var c: Dictionary = Data.CREW[id]
 		lines.append("[b]%s[/b], %s" % [c.name, c.role])
-		lines.append("   morale %d (%s): their work runs at %d%%" % [int(sim.morale[id]), sim.mood(id), int(round(sim.mult(id) * 100.0))])
+		lines.append("   morale %d (%s): their work runs at %d%%%s" % [int(sim.morale[id]), sim.mood(id), int(round(sim.mult(id) * 100.0)),
+				"  [color=#f2a13c]fired up[/color]" if sim.boosts.has(id) else ""])
 		lines.append("   wage %d a day, %d errand(s) done, story %d of 4%s" % [sim.wages[id], sim.quests_done[id], sim.beats_told[id],
 				"  [color=#f2a13c]%s[/color]" % c.perk if sim.perks.has(id) else ""])
 	lines.append("")

@@ -115,7 +115,10 @@ const RAISE_MORALE := 15.0
 const REFUSE_MORALE := -10.0
 
 ## Quest reward tiers (the model picks the tier, never the numbers).
-const REWARDS := {"small": {"cash": 60, "morale": 5.0}, "medium": {"cash": 140, "morale": 8.0}, "large": {"cash": 280, "morale": 12.0}}
+## boost: full days after today that the giver stays fired up, their station running BOOST times as fast.
+const REWARDS := {"small": {"cash": 60, "morale": 5.0, "boost": 0}, "medium": {"cash": 140, "morale": 8.0, "boost": 1},
+		"large": {"cash": 280, "morale": 12.0, "boost": 2}}
+const BOOST := 1.2
 const DELIVER_QTY := {"small": 5, "medium": 10, "large": 15}  # units a "deliver" step asks for
 
 ## Spoken when the gateway is unreachable: by coworker, then by mood (low < 35 <= mid < 70 <= high).

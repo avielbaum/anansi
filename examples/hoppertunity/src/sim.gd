@@ -29,6 +29,8 @@ var quest := {}  # the active quest: the gateway's shape plus "giver", "step", "
 var quests_done := {}  # crew id -> finished quests, which paces their storyline
 var beats_told := {}  # crew id -> storyline beats already told
 var perks := {}  # crew id -> true once their storyline is finished
+var boosts := {}  # crew id -> day-ends left of being fired up after an errand (see Data.REWARDS)
+var last_reward := {}  # what the last finished quest gave: {"giver", "cash", "morale", "boost"}
 var walkout := false
 var today := {"revenue": 0, "costs": 0, "built": 0, "shipped": 0, "defects": 0}
 var rng := RandomNumberGenerator.new()
@@ -115,7 +117,8 @@ func expand() -> bool:
 
 ## How fast a coworker's station runs: 0.8 at morale 0, 1.2 at 100.
 func mult(crew: String) -> float:
-	return (0.8 + 0.4 * morale[crew] / 100.0) * float(event.get("speed", {}).get(crew, 1.0))
+	return (0.8 + 0.4 * morale[crew] / 100.0) * float(event.get("speed", {}).get(crew, 1.0)) \
+			* (Data.BOOST if boosts.get(crew, 0) > 0 else 1.0)
 
 
 func team_morale() -> float:
@@ -282,6 +285,9 @@ func quest_event(objective: String, target: String) -> void:
 	today.revenue += r.cash
 	add_morale(quest.giver, r.morale)
 	quests_done[quest.giver] += 1
+	if r.boost > 0:
+		boosts[quest.giver] = maxi(boosts.get(quest.giver, 0), r.boost + 1)  # the rest of today, and r.boost days more
+	last_reward = {"giver": quest.giver, "cash": r.cash, "morale": r.morale, "boost": r.boost}
 	quest = {}
 	quest_changed.emit(true)
 
@@ -461,6 +467,10 @@ func _end_day() -> void:
 		offers = _offers(contracts_done)
 		contract = offers[0]
 		contract_changed.emit(false)
+	for id in boosts.keys():
+		boosts[id] -= 1
+		if boosts[id] <= 0:
+			boosts.erase(id)
 	event = {}
 	if day >= 3 and rng.randf() < Data.EVENT_CHANCE:
 		event = settle_event(Data.EVENTS[rng.randi() % Data.EVENTS.size()])
@@ -474,7 +484,7 @@ func _end_day() -> void:
 # ---------- saving ----------
 
 const _SAVED := ["money", "day", "tick", "ticks", "morale", "wages", "talk_moved", "unlocked", "contract", "contracts_done",
-		"contract_revealed", "offers", "history", "upgrades", "event", "quest", "quests_done", "beats_told", "perks", "walkout", "today"]
+		"contract_revealed", "offers", "history", "upgrades", "event", "quest", "quests_done", "beats_told", "perks", "boosts", "walkout", "today"]
 
 
 func save() -> Dictionary:

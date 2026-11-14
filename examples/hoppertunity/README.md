@@ -44,7 +44,7 @@ can do more than the table below.
 | Call | When | Effect in the game |
 |---|---|---|
 | `chat` (structured) | You type to a coworker | `morale_up` / `morale_down`: 5 morale, at most 10 a day per coworker. `offer_quest`: starts their quest. `share_tip`: reveals the next contract. `ask_raise`: asks you for a raise (you decide: +5 wage a day and +15 morale, or -10 morale). |
-| `quest` | Generated ahead of time, one per coworker | Steps are `talk_to` a coworker, `inspect` a station or `deliver` goods, built only from what your plant has unlocked. The reward tier pays 60, 140 or 280 coins and lifts the giver's morale. |
+| `quest` | Generated ahead of time, one per coworker | Steps are `talk_to` a coworker, `inspect` a station or `deliver` goods, built only from what your plant has unlocked. The reward tier pays 60, 140 or 280 coins and lifts the giver's morale; a medium or large one also leaves them fired up, their station running a fifth faster for a day or two. |
 | `chat_stream` | At the end of each day | The coworker with the lowest morale says a word about the day under the day's report, sentence by sentence. A streamed reply carries no action, so it changes nothing in the game. Only tried when the gateway answered last time; otherwise a written line appears at once. |
 | `storyline` | Once per coworker at the start of a game | Four beats, told one at a time as you finish that coworker's quests. The last beat gives a permanent perk (no more jams, no more defects, faster docks, better prices). |
 

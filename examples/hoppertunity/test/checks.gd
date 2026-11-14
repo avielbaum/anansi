@@ -204,6 +204,18 @@ func run() -> int:
 	ok(s.quest.is_empty() and s.money == m0 + 60 and s.morale.tech == 55.0 and s.quests_done.tech == 1, "a finished quest pays its tier")
 
 	s = Sim.new()
+	s.start_quest(Data.QUESTS.tech[1], "tech")  # a medium errand: ship panels, then talk to Sprocket
+	for i in Data.DELIVER_QTY.medium:
+		s.quest_event("deliver", "panel")
+	s.quest_event("talk_to", "tech")
+	var fired := s.mult("tech")
+	run_ticks(s, Data.TICKS_PER_DAY)
+	var still := s.boosts.has("tech")
+	run_ticks(s, Data.TICKS_PER_DAY)
+	ok(s.quest.is_empty() and is_equal_approx(fired, (0.8 + 0.4 * 0.58) * Data.BOOST) and still and not s.boosts.has("tech") and s.last_reward.boost == 1,
+			"a medium errand leaves its giver fired up for the rest of the day and the next")
+
+	s = Sim.new()
 	ok(s.next_beat("qa") == 0, "the first story beat is ready at once")
 	s.tell_beat("qa")
 	ok(s.next_beat("qa") == -1, "the next beat waits for a finished quest")
@@ -355,6 +367,10 @@ func run() -> int:
 	ok(g.talk_panel.visible and g.sim.quest.giver == "tech" and g.sim.wages.tech == 20
 			and (g.routes.pip.size() > 0 or g.crew_nodes.pip.position.distance_to(g.crew_home.pip) > 0.5),
 			"talking works with no gateway: a written line, an errand, a raise, and Pip walks over")
+	g._click(Vector2i(3, 3))  # the errand is "Bertha's rattle": look at the press, then tell Sprocket
+	g._open_talk("tech")
+	ok(g.sim.quest.is_empty() and g.sim.quests_done.tech == 1 and g.toast.text.begins_with("Errand done"),
+			"doing what the errand asks, by clicking, finishes it and says what it paid")
 	g._close_talk()
 	g.sim.money = 5000  # the purchases below must not depend on how the two days went
 	g._upgrades()
