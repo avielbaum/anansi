@@ -59,7 +59,7 @@ export class Menu extends Phaser.Scene {
 
   async status() {
     for (const h of G.s.party) {
-      await say(this, h.name, `Lv ${h.lvl}  ATK ${h.atk}  MAG ${h.mag}  DEF ${h.def}  SPD ${h.spd}\nSkills: ${HEROES[h.id].skills.map(s => SKILLS[s].name).join(", ")}`);
+      await say(this, h.name, `Lv ${h.lvl}  ATK ${h.atk}  MAG ${h.mag}  DEF ${h.def}  SPD ${h.spd}\nGear: ${SLOTS.map(k => (h.eq?.[k] ? EQUIP[h.eq[k]].name : "-")).join(", ")}\nSkills: ${HEROES[h.id].skills.map(s => SKILLS[s].name).join(", ")}`);
     }
   }
 
