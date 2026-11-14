@@ -197,6 +197,19 @@ for (const c of CLIMATES) assert(audio.music[genCity("Testville", parseAtlas(atl
 assert(existsSync(here("assets/CREDITS_AUDIO.csv")), "run python tools/build_audio.py");
 for (const s of Object.values(SKILLS)) assert(s.sound && audio.sfx[s.sound], "every skill has a sound");
 
+// cities look different from each other
+{
+  const names = ["Kyoto", "Lisbon", "Cairo", "Reykjavik", "Lima", "Oslo", "Hanoi", "Perth", "Nairobi", "Quito", "Dubai", "Tromso"];
+  const looks = new Set();
+  for (const n of names) for (const c of CLIMATES) {
+    const M = genCity(n, parseAtlas(atlasText), c).map;
+    assert(existsSync(here(`assets/tiles/battle_${M.battle}.png`)), `${n}: no backdrop ${M.battle}`);
+    looks.add(M.battle);
+  }
+  assert(looks.size >= 10, `only ${looks.size} different battle backdrops`);
+  const M = genCity("Kyoto", parseAtlas(atlasText), "temperate").map;
+  assert(new Set(M.objects.filter(o => o[0] === "house").map(o => o[3].tint)).size > 1, "houses differ in colour");
+}
 // equipment
 {
   const g = newGame("lead_m"), kai = g.party[0], mira = g.party[1];

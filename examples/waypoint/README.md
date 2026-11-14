@@ -13,6 +13,8 @@ prototype, with real-world destinations, is in `prototype/`.
 - **Battles:** side view, with a gauge per fighter (time waits while you choose). Commands are Fight, Skill, Item, Defend
   and Flee. Kai has Blink Strike and Rift Burst; Mira has Mend and Static Lance. You earn XP, gold and level-ups; losing
   returns you to the title.
+- **Variety between cities:** each city is seeded by its name to pick a battle backdrop for its climate (day or night; 17 in all),
+  a colour for every house, and tints for the paving and ground, on top of its own street layout.
 - **Equipment:** Menu → Equip. Each hero has a weapon, armor and accessory slot; the stats show what a piece would change before you
   choose it. Weapons are for one lead (Kai: blades, Mira: rods and tomes). Gear comes from Tobias' shop (Buy → Gear), chests in the
   Undercroft and the Spire, the Warden, and the first three relays. Icons: Ninja Adventure pack (CC0), `tools/build_icons.py`.

@@ -27,9 +27,9 @@ export class Field extends Phaser.Scene {
     this.cast = this.cache.json.get("cast");
     this.solids = [];
     this.things = []; // things you can face and press confirm at: {box, act}
-    this.add.tileSprite(0, 0, M.w * T, M.h * T, `tile-${M.ground}`).setOrigin(0).setDepth(-10);
+    this.add.tileSprite(0, 0, M.w * T, M.h * T, `tile-${M.ground}`).setOrigin(0).setDepth(-10).setTint(M.tints?.ground ?? 0xffffff);
     for (const [tex, x, y, w, h, solid] of M.paint) {
-      this.add.tileSprite(x * T, y * T, w * T, h * T, `tile-${tex}`).setOrigin(0).setDepth(-9);
+      this.add.tileSprite(x * T, y * T, w * T, h * T, `tile-${tex}`).setOrigin(0).setDepth(-9).setTint(tex === "cobble" ? M.tints?.paving ?? 0xffffff : 0xffffff);
       if (solid) this.solids.push({ x: x * T, y: y * T, w: w * T, h: h * T });
     }
     for (const [key, tx, ty, opt = {}] of M.objects) this.addStamp(key, tx, ty, opt);
@@ -73,6 +73,7 @@ export class Field extends Phaser.Scene {
     const st = STAMPS[key], x = tx * T, y = ty * T;
     if (opt.chest && G.s.flags[opt.chest]) return this.add.image(x, y, "tile-chest").setOrigin(0).setDepth(y + st.h).setTint(0x777777);
     const img = this.add.image(x, y, `tile-${key}`).setOrigin(0).setDepth(st.flat ? -5 : y + st.h);
+    if (opt.tint) img.setTint(opt.tint);
     if (st.foot) {
       const box = { x: x + st.foot[0], y: y + st.foot[1], w: st.foot[2], h: st.foot[3] };
       this.solids.push(box);

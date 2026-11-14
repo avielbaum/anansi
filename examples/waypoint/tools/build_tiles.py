@@ -11,6 +11,11 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "assets")
 BASE = "lpc-base/x/LPC Base Assets/tiles/"
+# the backdrops that generated cities pick from (city.js BACKDROPS), each by day and by night: name -> file in the pack
+BACKDROPS = {}
+for _n, _f in {"dunes": 1, "desert": 2, "beach": 3, "snow": 4, "forest": 6, "ruins": 9, "meadow": 10, "castle": 11, "town": 12}.items():
+    BACKDROPS[_n + "_night" if _n == "town" else _n] = f"{_f}-night.png" if _n == "town" else f"{_f}.png"
+    if _n != "town": BACKDROPS[_n + "_night"] = f"{_f}-night.png"
 SOURCES = [  # (folder, pack, authors, licences, url)
     ("lpc-base", "LPC Base Assets", "Lanea Zimmerman (Sharm); Stephen Challener (Redshrike); Charles Sanchez (CharlesGabriel); Manuel Riecke (MrBeast); Daniel Armstrong (HughSpectrum)",
      "CC-BY-SA 3.0; GPL 3.0", "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles"),
@@ -140,7 +145,7 @@ def main():
         save(sheet.crop((b[0], b[1], b[2] + 1, b[3] + 1)), f"enemies/{name}.png")
 
     # battle backgrounds, cropped to 640x360
-    for name, file in {"town": "12.png", "dungeon": "5-night.png"}.items():
+    for name, file in {"town": "12.png", "dungeon": "5-night.png", **BACKDROPS}.items():
         bb = S("pixelboy-battlebacks/x/pb/640x480/" + file)
         save(bb.crop((0, 60, 640, 420)), f"tiles/battle_{name}.png")
 

@@ -13,6 +13,12 @@ const TREES = { temperate: 7, desert: 2, snow: 7, tropical: 8 };
 export const LOCALS = ["local_f", "local_m", "local_f2", "local_m2", "shopkeeper"]; // sprites the people of a city wear
 const ENCOUNTERS = [["spider_bot"], ["drone_tank"], ["spider_bot", "spider_bot"], ["drone_tank", "spider_bot"]];
 const CITY_MUSIC = { temperate: "road", desert: "ruins", snow: "snow", tropical: "tropical" };
+// What a city looks like besides its streets: battle backdrops (each also by night), and colours for roofs, paving and ground.
+// Drawn from their own generator seeded by the name, so adding or changing them never moves a street.
+const BACKDROPS = { temperate: ["town", "forest", "meadow", "castle", "ruins"], desert: ["desert", "dunes", "ruins"], snow: ["snow", "castle", "town"], tropical: ["beach", "meadow", "forest"] };
+const ROOFS = { temperate: [0xffffff, 0xffd9b0, 0xb8d8ff, 0xc8f0c0, 0xf0c0d0, 0xe8d8ff], desert: [0xffffff, 0xffd9a0, 0xffc08a, 0xf5e6b0, 0xe8b8a0], snow: [0xffffff, 0xc8dcff, 0xb0c8f0, 0xe0d0ff, 0xd0e8e8], tropical: [0xffffff, 0xffe890, 0xffb8a8, 0xa8f0d8, 0xb8e0ff, 0xf8c0e8] };
+const GROUND_TINTS = { temperate: [0xffffff, 0xd8f0c0, 0xf0f0c8], desert: [0xffffff, 0xf0c8a0, 0xffe0b0], snow: [0xffffff, 0xd8e8ff], tropical: [0xffffff, 0xc0f0d0, 0xe8ffc0] };
+const PAVING_TINTS = [0xffffff, 0xe8d0b8, 0xc8c8d8, 0xd8e8d0, 0xf0d8c0];
 const BANDS = [[0, 13], [13, 27], [27, W]]; // the three districts, one per landmark, left to right
 
 /** The solid boxes [x, y, w, h], in pixels, that the walking code collides with. */
@@ -111,7 +117,11 @@ function layout(dest, world, vibe, climate, ri) {
     const p = c[ri(c.length)]; itemTaken.push(p); itemSpots[it.id] = [id, p[0], p[1]];
   }
 
-  const map = { name: dest, w: W, h: H, ground: GROUND[climate], battle: "town", paint, objects, labels, npcs, zones: [], spawn, encounters: ENCOUNTERS, vibe, climate, music: CITY_MUSIC[climate], relay: { x: relay[0], y: relay[1] } };
+  const look = rng(hash(dest.toLowerCase() + "|look")), pick = list => list[Math.floor(look() * list.length)];
+  for (const o of objects) if (o[0] === "house") o[3] = { tint: pick(ROOFS[climate]) }; // every house its own colour
+  const backdrop = pick(BACKDROPS[climate]), night = backdrop !== "snow" && look() < 0.3;
+  const tints = { ground: pick(GROUND_TINTS[climate]), paving: pick(PAVING_TINTS) };
+  const map = { name: dest, w: W, h: H, ground: GROUND[climate], tints, battle: night ? backdrop + "_night" : backdrop, paint, objects, labels, npcs, zones: [], spawn, encounters: ENCOUNTERS, vibe, climate, music: CITY_MUSIC[climate], relay: { x: relay[0], y: relay[1] } };
   const { seen } = walkable(map);
   const reach = (x, y) => [[x, y], [x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]].some(([a, b]) => seen.has(`${a},${b}`));
   const ok = npcs.every(n => reach(n.x, n.y)) && reach(relay[0], relay[1]) && Object.values(itemSpots).every(([, x, y]) => seen.has(`${x},${y}`));
