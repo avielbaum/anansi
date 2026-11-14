@@ -475,7 +475,7 @@ func _panel(anchor: int, parent: Node, min_size := Vector2.ZERO) -> PanelContain
 	p.custom_minimum_size = min_size
 	parent.add_child(p)
 	p.grow_horizontal = Control.GROW_DIRECTION_BEGIN if anchor == Control.PRESET_CENTER_RIGHT else Control.GROW_DIRECTION_BOTH
-	p.grow_vertical = Control.GROW_DIRECTION_BEGIN if anchor == Control.PRESET_BOTTOM_WIDE else Control.GROW_DIRECTION_BOTH
+	p.grow_vertical = Control.GROW_DIRECTION_BEGIN if anchor == Control.PRESET_BOTTOM_WIDE else Control.GROW_DIRECTION_END if anchor == Control.PRESET_TOP_WIDE else Control.GROW_DIRECTION_BOTH
 	p.set_anchors_and_offsets_preset(anchor, Control.PRESET_MODE_MINSIZE, 10)
 	return p
 
@@ -675,9 +675,11 @@ func _say(text: String) -> void:
 	var id := talking
 	talk_input.text = ""
 	talk_input.editable = false
+	talk_input.placeholder_text = "%s is thinking..." % Data.CREW[id].name
 	_log("Pip", text)
 	var r: Dictionary = await crew.talk(id, text)
 	talk_input.editable = true
+	talk_input.placeholder_text = "Say something, then Enter"
 	if talking != id:
 		return
 	talk_input.grab_focus()

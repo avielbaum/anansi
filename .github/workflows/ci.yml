@@ -54,17 +54,28 @@ jobs:
           godot --headless --path sdk/godot --script res://test/run.gd > godot.log 2>&1 || true
           cat godot.log
           grep -q "0 failed" godot.log && ! grep -q "SCRIPT ERROR\|Parse Error" godot.log
-      - name: Cache the Godot export template
+      - name: Hoppertunity (examples/hoppertunity) self-checks, against a gateway serving its title
+        run: |
+          diff -r sdk/godot/addons/anansi examples/hoppertunity/addons/anansi   # the game ships a copy of the SDK: keep it in step
+          python -c "import json; c=json.load(open('examples/hoppertunity/config.hoppertunity.json')); c['nodes']=[{'url':'http://127.0.0.1:9001','models':['npc-small'],'region':'local'}]; json.dump(c,open('/tmp/hop.json','w'))"
+          ANANSI_CONFIG=/tmp/hop.json python -m uvicorn gateway.app:make_app --factory --port 8081 --log-level warning &
+          sleep 5
+          godot --headless --path examples/hoppertunity --import || true
+          HOP_GATEWAY=http://127.0.0.1:8081 HOP_REQUIRE_LIVE=1 godot --headless --path examples/hoppertunity --script res://test/run.gd > hop.log 2>&1 || true
+          cat hop.log
+          grep -q "^0 failed" hop.log && ! grep -q "SCRIPT ERROR\|Parse Error" hop.log
+      - name: Cache the Godot export templates
         uses: actions/cache@v4
-        with: {path: ~/.local/share/godot/export_templates, key: "godot-templates-${{ env.GODOT }}"}
-      - name: Install the Linux export template (checksum from the release page)
+        with: {path: ~/.local/share/godot/export_templates, key: "godot-templates-linux-web-${{ env.GODOT }}"}
+      - name: Install the Linux and web export templates (checksum from the release page)
         run: |
           d=~/.local/share/godot/export_templates/${GODOT/-/.}   # 4.3-stable -> 4.3.stable
-          if [ ! -f $d/linux_release.x86_64 ]; then
+          if [ ! -f $d/web_nothreads_release.zip ]; then
             f=Godot_v${GODOT}_export_templates.tpz
             curl -fsSL -O https://github.com/godotengine/godot/releases/download/$GODOT/$f
             grep " $f\$" SHA512-SUMS.txt | sha512sum -c -
-            mkdir -p $d && unzip -q -j $f templates/linux_release.x86_64 templates/version.txt -d $d   # only what this test needs
+            mkdir -p $d   # only what these tests need
+            unzip -q -j $f templates/linux_release.x86_64 templates/web_nothreads_release.zip templates/version.txt -d $d
           fi
       - name: Export the test game and run it (the SDK in a release build, not the editor)
         run: |
@@ -75,3 +86,9 @@ jobs:
           ./build/anansi_test.x86_64 --headless > game.log 2>&1 || true
           cat game.log
           grep -q "0 failed" game.log && ! grep -q "SCRIPT ERROR\|Parse Error" game.log
+      - name: Export Hoppertunity for the browser (WebGL 2, no threads)
+        run: |
+          mkdir -p examples/hoppertunity/build/web
+          godot --headless --path examples/hoppertunity --export-release "Web" build/web/index.html > hopweb.log 2>&1 || true
+          tail -5 hopweb.log
+          test -s examples/hoppertunity/build/web/index.wasm && test -s examples/hoppertunity/build/web/index.pck

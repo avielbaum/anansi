@@ -17,7 +17,7 @@ func setup(s: Sim, url: String, title: String, key: String, player_id: String) -
 	sim = s
 	add_child(api)
 	api.setup(url, title, key, "dev:" + player_id)
-	api.timeout_s = 20.0  # a small local model on CPU needs longer than the SDK's 3 s default
+	api.timeout_s = 45.0  # a small local model on CPU: 30 s for a first reply was measured, the SDK's default is 3 s
 	for id in Data.CREW:
 		history[id] = []
 		if not stories.has(id):
