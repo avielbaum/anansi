@@ -37,6 +37,12 @@ func go() -> void:
 		g.pivot = Vector3(v[0], 0, v[1])
 		g.zoom = v[2]
 	await create_timer(float(OS.get_cmdline_user_args()[1]) if OS.get_cmdline_user_args().size() > 1 else 6.0).timeout
+	if args.size() > 2 and args[2] == "walk":  # check nobody is standing inside a building after walking their beat
+		var inside := 0
+		for id in g.crew_nodes:
+			var p: Vector3 = g.crew_nodes[id].position
+			inside += int(s.cells.has(Vector2i(floori(p.x), floori(p.z))))
+		print("people inside buildings: ", inside)
 	if args.size() > 2 and args[2] == "talk":
 		g.tool = ""
 		g._open_talk("tech")

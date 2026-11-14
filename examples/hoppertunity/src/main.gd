@@ -62,9 +62,8 @@ var floor_mm := MultiMesh.new()
 var ghost := Node3D.new()
 var ghost_key := ""
 var crew_nodes := {}  # crew id (and "pip") -> Node3D
-var pip_goal := Vector3.ZERO  # where Pip is walking to
+var routes := {}  # crew id or "pip" -> the points they still have to walk through
 var crew_home := {}  # crew id -> their spot by the back wall
-var crew_goal := {}  # crew id -> where they are walking to
 var crew_stop := {}  # crew id -> which stop of their beat they are on
 var crew_wait := {}  # crew id -> seconds until they move on
 
@@ -427,10 +426,9 @@ func _place_crew() -> void:
 		add_child(n)
 		crew_nodes[id] = n
 		crew_home[id] = n.position
-		crew_goal[id] = n.position
+		routes[id] = []
 		crew_stop[id] = 0
 		crew_wait[id] = 4.0 + i * 3.0
-	pip_goal = crew_nodes.pip.position
 
 
 func _process(delta: float) -> void:
@@ -442,7 +440,6 @@ func _process(delta: float) -> void:
 			if modal:
 				acc = 0.0
 				break
-	_walk_pip(delta)
 	_walk_crew(delta)
 	_camera(delta)
 	if belts_dirty:
@@ -453,36 +450,60 @@ func _process(delta: float) -> void:
 	_hud()
 
 
-## Pip strolls in a straight line to whatever was clicked last. She is not part of the sim, so she walks through things.
-func _walk_pip(delta: float) -> void:
-	var pip: Node3D = crew_nodes.pip
-	var to := pip_goal - pip.position
-	var moving := to.length() > 0.05
+## Send someone to a spot, around the buildings: Godot's grid pathfinder over the floor and a strip around it. If the
+## spot is inside a building they stop as near as they can get; with no way through at all they walk straight there.
+func _send(id: String, to: Vector3) -> void:
+	var grid := AStarGrid2D.new()
+	grid.region = Rect2i(Vector2i(-2, -2), sim.floor_size + Vector2i(4, 4))
+	grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	grid.update()
+	for pos in sim.cells:
+		grid.set_point_solid(pos)
+	var from: Vector3 = crew_nodes[id].position
+	var a := Vector2i(floori(from.x), floori(from.z))
+	var b := Vector2i(floori(to.x), floori(to.z))
+	var route := []
+	if grid.is_in_boundsv(a) and grid.is_in_boundsv(b):
+		grid.set_point_solid(a, false)  # something was built where they stand: let them walk out of it
+		for cell in grid.get_id_path(a, b, true).slice(1):
+			route.append(_center(cell))
+	if route.is_empty():
+		route = [to]
+	elif not sim.cells.has(b):
+		route[-1] = to  # the exact spot, not the middle of its tile
+	routes[id] = route
+
+
+## Move someone along their route by `pace` and play the matching animation.
+func _walk(id: String, pace: float) -> void:
+	var n: Node3D = crew_nodes[id]
+	var route: Array = routes[id]
+	var moving := not route.is_empty() and pace > 0.0
 	if moving:
-		pip.position += to.limit_length(4.0 * delta)
-		pip.rotation.y = atan2(to.x, to.z)
-	_play(pip, "walk" if moving else "idle")
+		var to: Vector3 = route[0] - n.position
+		n.position += to.limit_length(pace)
+		if to.length() > 0.01:
+			n.rotation.y = atan2(to.x, to.z)
+		if to.length() <= pace:
+			route.pop_front()
+	_play(n, "walk" if moving else "idle")
 
 
-## Coworkers walk their beat: every so often on to the next building they look after, to stand beside it. They are not
-## part of the sim either: where they stand changes nothing, their morale does. They stay put while you talk to them,
-## stand still while the game is paused, and go back to the wall on a walkout day.
+## Pip walks to whatever was clicked last. Coworkers walk their beat: every so often on to the next building they look
+## after, to stand beside it. None of them is part of the sim: where they stand changes nothing, their morale does.
+## A coworker stays put while you talk to them, stands still while the game is paused, and goes back to the wall on a
+## walkout day.
 func _walk_crew(delta: float) -> void:
+	_walk("pip", 4.0 * delta)
 	for id in Data.CREW:
-		var n: Node3D = crew_nodes[id]
 		if id == talking:
-			crew_goal[id] = n.position
+			routes[id] = []
 		else:
 			crew_wait[id] -= delta * speed
 			if crew_wait[id] <= 0.0:
 				crew_wait[id] = 10.0 + randf() * 10.0
-				crew_goal[id] = _next_stop(id)
-		var to: Vector3 = crew_goal[id] - n.position
-		var moving := to.length() > 0.05 and speed > 0.0
-		if moving:
-			n.position += to.limit_length(2.5 * delta)
-			n.rotation.y = atan2(to.x, to.z)
-		_play(n, "walk" if moving else "idle")
+				_send(id, _next_stop(id))
+		_walk(id, 2.5 * delta if speed > 0.0 else 0.0)
 
 
 ## The next place on a coworker's beat: a free tile beside one of their buildings, or home when there is none.
@@ -500,7 +521,9 @@ func _next_stop(id: String) -> Vector3:
 		spots.append(crew_home[id])
 	crew_stop[id] = (crew_stop[id] + 1) % spots.size()
 	var nudge := Data.CREW.keys().find(id) - 1.5  # so two people sent to the same tile do not stand inside each other
-	return spots[crew_stop[id]] + Vector3(nudge * 0.4, 0, nudge * 0.25)
+	var spot: Vector3 = spots[crew_stop[id]]
+	var nudged := spot + Vector3(nudge * 0.4, 0, nudge * 0.25)
+	return spot if sim.cells.has(Vector2i(floori(nudged.x), floori(nudged.z))) else nudged
 
 
 ## Loop an animation, or play one once and fall back to idle. Does nothing if that animation is already looping.
@@ -688,7 +711,7 @@ func _click(pos: Vector2i) -> void:
 	if c == null:
 		return
 	sim.quest_event("inspect", c.kind)
-	pip_goal = _center(pos) + Vector3(0.0, 0, 0.8)
+	_send("pip", _center(pos) + Vector3(0.0, 0, 0.8))
 	if c.kind == "inbound":
 		sim.cycle_raw(pos)
 		_toast("This dock now orders %s (%d a crate)." % [Data.ITEMS[c.raw].name, Data.ITEMS[c.raw].buy])
@@ -950,7 +973,7 @@ func _on_day_end(s: Dictionary) -> void:
 func _open_talk(id: String) -> void:
 	talking = id
 	tool = ""
-	pip_goal = crew_nodes[id].position + Vector3(0.3, 0, 1.2)
+	_send("pip", crew_nodes[id].position + Vector3(0.3, 0, 1.2))
 	talk_title.text = "%s, %s" % [Data.CREW[id].name, Data.CREW[id].role]
 	talk_log.clear()
 	raise_row.hide()
