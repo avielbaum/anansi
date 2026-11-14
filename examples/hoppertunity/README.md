@@ -15,6 +15,8 @@ floor manager of the Hopper Works, a small gadget plant on its last chance.
   next machine and material; five finished contracts save the plant. A missed deadline costs a penalty.
 - **Days:** a day is one minute at normal speed. At the end you pay wages and rent and see the day's numbers. Fall 500
   coins into debt and the Works closes. Each machine also costs 5 coins a day to keep running.
+- **Tutorial:** eight steps walk a new manager from the first dock to the first errand, pulsing the button to press.
+  It can be skipped, and a saved game remembers where you were.
 - **Trouble shows:** a machine that is jammed, blocked or short of an input says so above it.
 - **The crew:** Dot (docks), Sprocket (machines), Tilly (packing and quality) and Penny (sales) each have a morale from
   0 to 100. Morale scales their station from 0.8x to 1.2x: truck turnaround, machine speed and jams, defective units
@@ -70,7 +72,7 @@ title key, so do not put it on the public internet as it is (see `docs/sdk.md`, 
 Click a build button, then the floor. **R** turns the piece (or the building under the mouse), right-click cancels
 the tool or removes a building for half its price. Drag to lay conveyor. Click a coworker to talk, a building to
 inspect it, an inbound dock to change what it orders. **WASD** or the arrows move the view, **Q**/**E** turn it, the
-wheel zooms, **Space** pauses.
+wheel zooms, **Space** pauses, **M** mutes.
 
 ## Code
 
@@ -79,7 +81,7 @@ wheel zooms, **Space** pauses.
 | `src/data.gd` | Every number and every written word: items, machines, contracts, the crew, fallback lines, quests, stories |
 | `src/sim.gd` | The whole game as plain data on a fixed tick: no nodes, so it runs headless and saves as one dictionary |
 | `src/crew.gd` | Every Anansi call, and what each answer may do to the sim |
-| `src/main.gd` | The 3D view, input and interface, all built in code |
+| `src/main.gd` | The 3D view, input, interface, tutorial and sound, all built in code |
 | `addons/anansi` | A copy of `sdk/godot/addons/anansi`; CI fails if the two differ |
 | `test/checks.gd` | Self-checks: `godot --headless --path examples/hoppertunity --script res://test/run.gd` |
 
@@ -91,7 +93,12 @@ misses three deadlines and has not won by day 20. A full 28x24 floor of moving b
 ## Not done yet
 
 - Coworkers that walk the floor (they stand along the back wall; Pip walks to whatever you click, in a straight
-  line), forklifts, sound, a tutorial.
-- The browser build was run by hand in Chromium, without a gateway and with one (Ollama, `qwen3:1.7b` on CPU: a first
-  reply took 30 s, so the chat timeout is 45 s). CI checks that it exports, not that it runs.
+  line), forklifts, music.
+- The sound effects (Kenney, CC0) were wired up on a machine with no audio device: nobody has listened to the mix yet.
+- The browser build was run by hand in Chrome on a 2013 laptop GPU (Quadro K1100M), without a gateway and with one
+  (Ollama, `qwen3:1.7b` on CPU: a first reply took 30 s, so the chat timeout is 45 s). It held 55 frames a second for
+  a new game and for the largest floor with every tile a moving conveyor (`?stress` in the address, or `-- stress` on
+  the desktop; **F3** shows the frame rate). CI checks that the web build exports, not that it runs.
+- Conveyors and arrows are drawn in four batches. Machines, docks and hoppers are still one node each: 672 separate
+  nodes drew nothing at all in the browser, 336 were fine, so a floor of several hundred machines may hit that limit.
 - Replies arrive whole (`chat`), not sentence by sentence: `chat_stream` is untested in a browser.

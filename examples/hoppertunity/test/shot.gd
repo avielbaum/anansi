@@ -30,6 +30,7 @@ func go() -> void:
 	g._build_buttons()
 	g.speed = 4.0
 	g.tool = "press"
+	g.tutorial = 99
 	var args := OS.get_cmdline_user_args()
 	if args.size() > 3:
 		var v := args[3].split_floats(",")

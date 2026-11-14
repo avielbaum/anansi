@@ -22,7 +22,19 @@ const ITEM_LOOK := {
 	"boxed": ["box-large", 0.5, Color.WHITE],
 }
 const CREW_LOOK := {"dock": "character-worker", "tech": "character-male-c", "qa": "character-female-e", "sales": "character-female-b"}
-const HELP := "Click a build button, then the floor. R turns the piece, right-click cancels or removes. Click a coworker to talk, a building to inspect it, an inbound dock to change what it orders. WASD or arrows move, Q and E turn the view, the wheel zooms, Space pauses."
+const HELP := "Click a build button, then the floor. R turns the piece, right-click cancels or removes. Click a coworker to talk, a building to inspect it, an inbound dock to change what it orders. WASD or arrows move, Q and E turn the view, the wheel zooms, Space pauses, M mutes, F3 shows the frame rate."
+## The tutorial: what Pip is told, and the build button that pulses while she is told it. _tutorial_done() says when
+## each step is finished.
+const TUTORIAL := [
+	["Welcome to the Hopper Works, Pip! Steel arrives at a dock. Click [b]Inbound dock[/b] below, then click a floor tile.", "inbound"],
+	["The orange arrow shows where a building sends things. Choose [b]Press[/b] and place it where the arrow points. R turns a piece before you place it.", "press"],
+	["Panels need to leave. Place an [b]Outbound dock[/b] a tile or two past the press.", "outbound"],
+	["Join them with [b]Conveyor[/b] so crates travel dock, press, dock. Drag to lay a run. Right-click removes a mistake.", "belt"],
+	["First sale! The contract up top wants 20 panels by the end of day 2. The buttons > >> >>> speed time up; || or Space pauses.", ""],
+	["Your crew stands along the back wall. Their mood changes how fast their part of the plant runs. Click one of them.", ""],
+	["Type anything and press Enter: kindness lifts morale, rudeness sinks it. Or click [b]Any work?[/b] for an errand that pays.", ""],
+	["Do the errand: the orange line up top says how. Everyone loses a little morale each day, so keep talking, helping and paying fairly. That is the job. Good luck!", ""],
+]
 const INK := Color("2b2a3a")
 const ORANGE := Color("f2a13c")
 
@@ -35,12 +47,16 @@ var tool := ""  # the building being placed, "" for none
 var tool_dir := 0
 var talking := ""  # the coworker in the talk panel
 var modal := false  # the day-end screen is up: time stands still
+var show_fps := false
+var tutorial := 0  # the step Pip is on; past the end means finished or skipped
 
 var cam := Camera3D.new()
 var pivot := Vector3(6, 0, 4)
 var yaw := 0
 var zoom := 16.0
-var views := {}  # Vector2i -> the building's Node3D
+var views := {}  # Vector2i -> the building's Node3D (conveyors have none: they are drawn in batches, see _draw_belts)
+var belt_mm := {}  # "belt", "corner", "splitter", "arrow" -> MultiMesh
+var belts_dirty := true
 var item_mm := {}  # item id -> MultiMesh
 var floor_mm := MultiMesh.new()
 var ghost := Node3D.new()
@@ -62,12 +78,48 @@ var raise_row: HBoxContainer
 var day_panel: PanelContainer
 var day_text: RichTextLabel
 var net_label: Label
+var tut_panel: PanelContainer
+var tut_text: RichTextLabel
+var build_buttons := {}  # kind -> its button in the build bar
+var sounds := {}  # sound name -> its AudioStreamPlayer
+var last_sell := 0  # when the sale sound last played, so a busy dock does not machine-gun it
 
 
 func _ready() -> void:
+	for f in ["click", "place", "remove", "sell", "error", "talk", "win", "step", "day", "up", "down"]:
+		var a := AudioStreamPlayer.new()
+		a.stream = load("res://assets/audio/%s.ogg" % f)
+		add_child(a)
+		sounds[f] = a
 	_world()
 	_ui()
-	_start(_load())
+	var stress := "stress" in OS.get_cmdline_user_args() or (OS.has_feature("web") and "stress" in str(JavaScriptBridge.eval("location.search")))
+	_start({} if stress else _load())
+	if stress:
+		_stress()
+
+
+## Developer aid (`?stress` in the browser, `-- stress` on the desktop): the largest floor, every tile a moving conveyor,
+## to see what the frame rate does. F3 shows it. Nothing is saved over a real game until a day ends.
+func _stress() -> void:
+	sim.money = 1000000
+	sim.floor_size = Vector2i(28, 24)
+	tutorial = TUTORIAL.size()
+	show_fps = true
+	var rows := 24
+	if OS.has_feature("web"):  # ?stress=6 fills only six rows
+		rows = clampi(int(str(JavaScriptBridge.eval("new URLSearchParams(location.search).get('stress') || 24"))), 1, 24)
+	for y in rows:
+		for x in 28:
+			var east := y % 2 == 0
+			var kind := "inbound" if x + y == 0 else ("outbound" if Vector2i(x, y) == Vector2i(0, 23) else "belt")
+			sim.build(kind, Vector2i(x, y), 1 if x == (27 if east else 0) else (0 if east else 2))
+	_floor()
+	for pos in sim.cells:
+		_refresh(pos)
+	pivot = Vector3(14, 0, 12)
+	zoom = 34.0
+	speed = 4.0
 
 
 # ---------- a game begins ----------
@@ -79,7 +131,9 @@ func _start(saved: Dictionary) -> void:
 	crew = Crew.new()
 	if saved.is_empty():
 		player_id = "pip-%08x" % (randi() & 0x7fffffff)
+		tutorial = 0
 	else:
+		tutorial = int(saved.get("tutorial", TUTORIAL.size()))
 		sim.restore(saved.sim)
 		crew.stories = saved.stories
 		player_id = saved.player
@@ -102,19 +156,19 @@ func _start(saved: Dictionary) -> void:
 	modal = false
 	acc = 0.0
 	crew.refill()
-	if saved.is_empty():
-		_toast("Welcome, Pip. Build an inbound dock, a press and an outbound dock, and join them with conveyors. Press ? for the controls.")
 
 
 func _on_contract(done: bool) -> void:
 	if done:
 		_toast("Contract shipped! Check the build bar for anything new.")
+		_sfx("win")
 		_build_buttons()
 
 
 func _on_quest(done: bool) -> void:
 	if done:
 		_toast("Quest finished.")
+		_sfx("win")
 
 
 func _new_game() -> void:
@@ -146,7 +200,7 @@ func _load() -> Dictionary:
 func _save() -> void:
 	var f := FileAccess.open(SAVE, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"sim": sim.save(), "stories": crew.stories, "player": player_id}))
+		f.store_string(JSON.stringify({"sim": sim.save(), "stories": crew.stories, "player": player_id, "tutorial": tutorial}))
 
 
 # ---------- the 3D world ----------
@@ -189,7 +243,41 @@ func _world() -> void:
 		mi.material_override = mat
 		add_child(mi)
 		item_mm[id] = mm
+	for key in ["belt", "corner", "splitter", "arrow"]:
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = _arrow_mesh() if key == "arrow" else _mesh(MODELS + ("conveyor-stripe-corner" if key == "corner" else "conveyor-stripe") + ".glb")
+		var mi := MultiMeshInstance3D.new()
+		mi.multimesh = mm
+		if key == "splitter":
+			var mat: BaseMaterial3D = mm.mesh.surface_get_material(0).duplicate()
+			mat.albedo_color = LOOK.splitter[2]
+			mi.material_override = mat
+		add_child(mi)
+		belt_mm[key] = mm
 	add_child(ghost)
+
+
+func _sfx(sound: String, db := 0.0) -> void:
+	sounds[sound].volume_db = db
+	sounds[sound].play()
+
+
+## A small flat orange arrowhead pointing along +X: every building wears one to show which way it sends things.
+static func _arrow_mesh() -> Mesh:
+	var m := PrismMesh.new()
+	m.size = Vector3(0.3, 0.26, 0.03)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = ORANGE
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.material = mat
+	return m
+
+
+## Where an arrow sits: the prism's tip (+Y) turned to the building's direction, lying flat at the given height.
+static func _arrow_at(at: Vector3, dir: int) -> Transform3D:
+	var ahead := Vector3(Data.DIRS[dir].x, 0, Data.DIRS[dir].y)
+	return Transform3D(Basis(ahead.cross(Vector3.UP), ahead, Vector3.UP), at)
 
 
 static func _mesh(path: String) -> Mesh:
@@ -214,8 +302,8 @@ static func _center(pos: Vector2i) -> Vector3:
 	return Vector3(pos.x + 0.5, 0.0, pos.y + 0.5)
 
 
-## A building: the kit's piece, an arrow lying flat on top that points the way it sends things, and for anything but
-## a belt a floating tag. turn >= 0 draws a conveyor as the corner piece, turned that many quarter turns.
+## A building's model, with a floating tag for anything but a conveyor. turn >= 0 gives the conveyor corner piece,
+## turned that many quarter turns (only the build preview needs that: placed conveyors are drawn in batches).
 func _model(kind: String, dir: int, turn := -1) -> Node3D:
 	var look: Array = LOOK[kind]
 	var n := Node3D.new()
@@ -225,15 +313,6 @@ func _model(kind: String, dir: int, turn := -1) -> Node3D:
 	if look[2] != Color.WHITE:
 		_tint(m, look[2])
 	n.add_child(m)
-	var arrow := Label3D.new()
-	arrow.text = ">"
-	arrow.font_size = 96
-	arrow.outline_size = 24
-	arrow.modulate = ORANGE
-	arrow.rotation = Vector3(-PI / 2, -dir * PI / 2, 0)
-	var ahead := Vector3(Data.DIRS[dir].x, 0, Data.DIRS[dir].y)
-	arrow.position = Vector3(0, look[3], 0) + (Vector3.ZERO if kind in ["belt", "splitter"] else ahead * 0.3)
-	n.add_child(arrow)
 	if kind not in ["belt", "splitter"]:
 		var tag := Label3D.new()
 		tag.name = "tag"
@@ -245,6 +324,30 @@ func _model(kind: String, dir: int, turn := -1) -> Node3D:
 		tag.position = Vector3(0, 2.0 if kind in ["inbound", "outbound"] else 1.5, 0)
 		n.add_child(tag)
 	return n
+
+
+## Where the arrow of a building of this kind goes, given the building's centre.
+static func _arrow_spot(kind: String, center: Vector3, dir: int) -> Vector3:
+	var ahead := Vector3(Data.DIRS[dir].x, 0, Data.DIRS[dir].y)
+	return center + Vector3(0, LOOK[kind][3] + 0.02, 0) + (Vector3.ZERO if kind in ["belt", "splitter"] else ahead * 0.3)
+
+
+## Conveyors, splitters and every building's arrow are drawn as four batches, however many there are: a floor full of
+## conveyors as separate nodes drew nothing at all in the browser.
+func _draw_belts() -> void:
+	belts_dirty = false
+	var lists := {"belt": [], "corner": [], "splitter": [], "arrow": []}
+	for pos in sim.cells:
+		var c: Dictionary = sim.cells[pos]
+		lists.arrow.append(_arrow_at(_arrow_spot(c.kind, _center(pos), c.dir), c.dir))
+		if c.kind in ["belt", "splitter"]:
+			var turn := _corner(pos)
+			var key: String = "corner" if turn >= 0 else c.kind
+			lists[key].append(Transform3D(Basis(Vector3.UP, -(c.dir if turn < 0 else turn) * PI / 2), _center(pos)))
+	for key in lists:
+		belt_mm[key].instance_count = lists[key].size()
+		for i in lists[key].size():
+			belt_mm[key].set_instance_transform(i, lists[key][i])
 
 
 ## Would the building at `from` hand things to its neighbour `to`?
@@ -267,22 +370,16 @@ func _corner(pos: Vector2i) -> int:
 	return -1 if right == left else (c.dir + (3 if right else 2)) % 4
 
 
-## Redraw the building at pos after it was built, turned or removed, and the conveyors beside it, whose shape depends on it.
+## Redraw the building at pos after it was built, turned or removed.
 func _refresh(pos: Vector2i) -> void:
-	_redraw(pos)
-	for d in Data.DIRS:
-		if sim.cells.has(pos + d) and sim.cells[pos + d].kind == "belt":
-			_redraw(pos + d)
-
-
-func _redraw(pos: Vector2i) -> void:
+	belts_dirty = true
 	if views.has(pos):
 		views[pos].queue_free()
 		views.erase(pos)
-	if not sim.cells.has(pos):
+	if not sim.cells.has(pos) or sim.cells[pos].kind in ["belt", "splitter"]:
 		return
 	var c: Dictionary = sim.cells[pos]
-	var n := _model(c.kind, c.dir, _corner(pos))
+	var n := _model(c.kind, c.dir)
 	n.position = _center(pos)
 	add_child(n)
 	views[pos] = n
@@ -338,6 +435,8 @@ func _process(delta: float) -> void:
 				break
 	_walk_pip(delta)
 	_camera(delta)
+	if belts_dirty:
+		_draw_belts()
 	_draw_items(acc / TICK)
 	_draw_tags()
 	_draw_ghost()
@@ -435,6 +534,10 @@ func _draw_ghost() -> void:
 		ghost_key = want
 		if tool != "":
 			ghost.add_child(_model(tool, tool_dir))
+			var arrow := MeshInstance3D.new()
+			arrow.mesh = belt_mm.arrow.mesh
+			arrow.transform = _arrow_at(_arrow_spot(tool, Vector3.ZERO, tool_dir), tool_dir)
+			ghost.add_child(arrow)
 	ghost.visible = tool != "" and Rect2i(Vector2i.ZERO, sim.floor_size).has_point(pos)
 	ghost.position = _center(pos) + Vector3(0, 0.05, 0)
 
@@ -464,6 +567,8 @@ func _unhandled_input(e: InputEvent) -> void:
 					tool = ""
 				else:
 					var pos := _mouse_cell()
+					if sim.cells.has(pos):
+						_sfx("remove")
 					sim.demolish(pos)
 					_refresh(pos)
 	elif e is InputEventMouseMotion and e.button_mask & MOUSE_BUTTON_MASK_LEFT and tool == "belt":
@@ -471,7 +576,7 @@ func _unhandled_input(e: InputEvent) -> void:
 	elif e is InputEventMouseMotion and e.button_mask & MOUSE_BUTTON_MASK_MIDDLE:
 		pivot -= Basis(Vector3.UP, yaw * PI / 2 + PI / 4) * Vector3(e.relative.x, 0, e.relative.y * 1.5) * zoom / 700.0
 	elif e is InputEventKey and e.pressed and not e.echo:
-		match e.physical_keycode:
+		match e.physical_keycode if e.physical_keycode != 0 else e.keycode:  # some browsers and tools send no physical key
 			KEY_R:
 				if tool != "":
 					tool_dir = (tool_dir + 1) % 4
@@ -484,14 +589,18 @@ func _unhandled_input(e: InputEvent) -> void:
 				tool = ""
 				_close_talk()
 			KEY_SPACE: speed = 0.0 if speed > 0.0 else 1.0
+			KEY_M: AudioServer.set_bus_mute(0, not AudioServer.is_bus_mute(0))
+			KEY_F3: show_fps = not show_fps
 
 
 func _click(pos: Vector2i) -> void:
 	if tool != "":
 		if sim.build(tool, pos, tool_dir):
 			_refresh(pos)
+			_sfx("place")
 		elif not sim.cells.has(pos) and sim.money < Data.BUILD[tool].cost:
 			_toast("Not enough money for that.")
+			_sfx("error")
 		return
 	var m := get_viewport().get_mouse_position()
 	var o := cam.project_ray_origin(m)
@@ -538,6 +647,7 @@ func _button(text: String, parent: Node, act: Callable) -> Button:
 	b.add_theme_stylebox_override("hover", _box(Color("5d5a8c")))
 	b.add_theme_stylebox_override("pressed", _box(ORANGE))
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	b.pressed.connect(_sfx.bind("click", -6.0))
 	b.pressed.connect(act)
 	parent.add_child(b)
 	return b
@@ -548,8 +658,9 @@ func _panel(anchor: int, parent: Node, min_size := Vector2.ZERO) -> PanelContain
 	p.add_theme_stylebox_override("panel", _box(Color(INK, 0.92)))
 	p.custom_minimum_size = min_size
 	parent.add_child(p)
-	p.grow_horizontal = Control.GROW_DIRECTION_BEGIN if anchor == Control.PRESET_CENTER_RIGHT else Control.GROW_DIRECTION_BOTH
-	p.grow_vertical = Control.GROW_DIRECTION_BEGIN if anchor == Control.PRESET_BOTTOM_WIDE else Control.GROW_DIRECTION_END if anchor == Control.PRESET_TOP_WIDE else Control.GROW_DIRECTION_BOTH
+	p.grow_horizontal = {Control.PRESET_CENTER_RIGHT: Control.GROW_DIRECTION_BEGIN, Control.PRESET_TOP_LEFT: Control.GROW_DIRECTION_END}.get(anchor, Control.GROW_DIRECTION_BOTH)
+	p.grow_vertical = {Control.PRESET_BOTTOM_WIDE: Control.GROW_DIRECTION_BEGIN, Control.PRESET_TOP_WIDE: Control.GROW_DIRECTION_END,
+			Control.PRESET_TOP_LEFT: Control.GROW_DIRECTION_END}.get(anchor, Control.GROW_DIRECTION_BOTH)
 	p.set_anchors_and_offsets_preset(anchor, Control.PRESET_MODE_MINSIZE, 10)
 	return p
 
@@ -628,6 +739,16 @@ func _ui() -> void:
 	talk_input.text_submitted.connect(_say)
 	tv.add_child(talk_input)
 
+	tut_panel = _panel(Control.PRESET_TOP_LEFT, root, Vector2(380, 0))
+	tut_panel.offset_top = 120
+	var uv := VBoxContainer.new()
+	tut_panel.add_child(uv)
+	tut_text = RichTextLabel.new()
+	tut_text.bbcode_enabled = true
+	tut_text.fit_content = true
+	uv.add_child(tut_text)
+	_button("Skip the tutorial", uv, func(): tutorial = TUTORIAL.size())
+
 	day_panel = _panel(Control.PRESET_CENTER, root, Vector2(460, 380))
 	var dv := VBoxContainer.new()
 	day_panel.add_child(dv)
@@ -641,14 +762,17 @@ func _ui() -> void:
 func _build_buttons() -> void:
 	for ch in build_bar.get_children():
 		ch.queue_free()
+	build_buttons = {}
 	for kind in Data.BUILD:
 		if kind in sim.unlocked:
-			_button("%s %d" % [Data.BUILD[kind].name, Data.BUILD[kind].cost], build_bar, func(): tool = kind)
+			build_buttons[kind] = _button("%s %d" % [Data.BUILD[kind].name, Data.BUILD[kind].cost], build_bar, func(): tool = kind)
 	_button("Bigger floor %d" % sim.expand_cost(), build_bar, _expand)
 
 
 func _hud() -> void:
 	top.text = "%d coins   Day %d   Crew morale %d" % [sim.money, sim.day, int(sim.team_morale())]
+	if show_fps:
+		top.text += "   %d fps, %d buildings" % [Engine.get_frames_per_second(), sim.cells.size()]
 	day_bar.value = sim.tick
 	var k: Dictionary = sim.contract
 	contract_label.text = "Contract: %d/%d %s by the end of day %d, pays %d" % [k.done, k.qty, Data.ITEMS[k.item].name, k.due, k.reward]
@@ -658,33 +782,44 @@ func _hud() -> void:
 		contract_label.text = "BANKRUPT. The Hopper Works closes its doors. Press New game."
 	elif sim.won():
 		contract_label.text = "Hoppertunity seized! The Works is saved.   " + contract_label.text
-	quest_label.visible = true
-	quest_label.text = _next_step()
+	quest_label.visible = not sim.quest.is_empty()
 	if not sim.quest.is_empty():
 		var s: Dictionary = sim.quest.steps[sim.quest.step]
 		quest_label.text = "Quest for %s: %s%s" % [Data.CREW[sim.quest.giver].name, s.get("description", ""),
 				" (%d/%d)" % [sim.quest.have, sim.quest.need] if sim.quest.need > 1 else ""]
 	net_label.text = "Anansi live" if crew.online else "Anansi offline"
+	_tutorial()
 
 
-## With no quest running, the orange line under the contract says what a new manager should do next.
-func _next_step() -> String:
-	var have := {}
-	for c in sim.cells.values():
-		have[c.kind] = true
-	var maker := ""
-	for kind in Data.BUILD:
-		if Data.BUILD[kind].get("out") == sim.contract.item:
-			maker = kind
-	if not have.has("inbound"):
-		return "Next: place an Inbound dock (it orders raw materials)."
-	if not have.has(maker):
-		return "Next: place a %s (it makes %s)." % [Data.BUILD[maker].name, Data.ITEMS[sim.contract.item].name]
-	if not have.has("outbound"):
-		return "Next: place an Outbound dock, then join them with Conveyors."
-	if sim.day == 1 and sim.quests_done.values().max() == 0:
-		return "Tip: click a coworker to talk. A happy crew works faster."
-	return ""
+func _has(kind: String) -> bool:
+	return sim.cells.values().any(func(c): return c.kind == kind)
+
+
+func _tutorial_done(step: int) -> bool:
+	match step:
+		0: return _has("inbound")
+		1: return _has("press")
+		2: return _has("outbound")
+		3: return sim.today.shipped > 0 or sim.contract.done > 0 or sim.contracts_done > 0
+		4: return sim.contract.done >= 5 or sim.contracts_done > 0 or speed != 1.0
+		5: return talking != ""
+		6: return not sim.quest.is_empty() or sim.quests_done.values().max() > 0
+	return sim.quests_done.values().max() > 0
+
+
+## Show the current tutorial step, move on when it is done, and pulse the build button it talks about.
+func _tutorial() -> void:
+	if tutorial < TUTORIAL.size() and _tutorial_done(tutorial):
+		tutorial += 1
+		_sfx("step")
+	tut_panel.visible = tutorial < TUTORIAL.size()
+	var want: String = TUTORIAL[tutorial][1] if tut_panel.visible else ""
+	if tut_panel.visible:
+		tut_text.text = "[color=#f2a13c]Step %d of %d[/color]
+%s" % [tutorial + 1, TUTORIAL.size(), TUTORIAL[tutorial][0]]
+	var glow := 0.75 + 0.5 * absf(sin(Time.get_ticks_msec() / 300.0))
+	for kind in build_buttons:
+		build_buttons[kind].modulate = Color(glow, glow, glow * 0.6) if kind == want else Color.WHITE
 
 
 func _toast(text: String) -> void:
@@ -697,6 +832,9 @@ func _toast(text: String) -> void:
 
 
 func _on_sold(pos: Vector2i, _item: String, amount: int) -> void:
+	if Time.get_ticks_msec() - last_sell > 180:
+		last_sell = Time.get_ticks_msec()
+		_sfx("sell" if amount > 0 else "error", -12.0)
 	var l := Label3D.new()
 	l.text = "+%d" % amount if amount > 0 else "returned!"
 	l.modulate = ORANGE if amount > 0 else Color.TOMATO
@@ -713,6 +851,7 @@ func _on_sold(pos: Vector2i, _item: String, amount: int) -> void:
 
 func _on_day_end(s: Dictionary) -> void:
 	modal = true
+	_sfx("day")
 	_save()
 	var lines := ["[b]End of day %d[/b]" % s.day, "",
 			"Shipped: %d units%s" % [s.shipped, ", %d returned as defective" % s.defects if s.defects > 0 else ""],
@@ -781,8 +920,10 @@ func _say(text: String) -> void:
 	talk_input.grab_focus()
 	_log(Data.CREW[id].name, r.say)
 	_say_note(r.note)
+	_sfx("talk")
 	if r.note.contains("morale"):
 		_play(crew_nodes[id], "emote-yes" if r.note.contains("rises") else "emote-no", true)
+		_sfx("up" if r.note.contains("rises") else "down")
 	if r.raise:
 		_log("", "%s is asking for a raise." % Data.CREW[id].name)
 		raise_row.show()
@@ -791,5 +932,6 @@ func _say(text: String) -> void:
 func _answer_raise(grant: bool) -> void:
 	raise_row.hide()
 	sim.answer_raise(talking, grant)
+	_sfx("up" if grant else "down")
 	_play(crew_nodes[talking], "emote-yes" if grant else "emote-no", true)
 	_log("", "You %s. %s's wage is %d a day." % ["agree" if grant else "say no", Data.CREW[talking].name, sim.wages[talking]])
