@@ -14,10 +14,14 @@ const GEAR = {
 };
 const mk = (id, lvl, gear) => { const h = newHero(id, lvl); kit(h, GEAR[gear][id]); return h; };
 
+// the guest wears a vest from the shop and their own sigil (the player gives it to whoever they like)
+const SIGIL = { sora: "lantern_sigil", ilse: "clock_sigil", oluwa: "dune_sigil" };
+const guestKit = h => { kit(h, ["leather_vest", SIGIL[h.id]]); return h; };
+
 let POLICY = "smart";
 function fight(lvl, foeIds, potions = 3, ether = 1, rand = Math.random, gear = "start", guest = null) {
-  // a freed jumper (Act III, between sites) fights as a third member at the party's level, without equipment
-  const party = [mk("lead_m", lvl, gear), mk("lead_f", lvl, gear), ...(guest ? [newHero(guest, lvl)] : [])].map(h => ({ h, atb: rand() * 60 }));
+  // a freed jumper (Act III, between sites) fights as a third member at the party's level, in a vest and their own sigil
+  const party = [mk("lead_m", lvl, gear), mk("lead_f", lvl, gear), ...(guest ? [guestKit(newHero(guest, lvl))] : [])].map(h => ({ h, atb: rand() * 60 }));
   const foes = foeIds.map(id => ({ ...ENEMIES[id], id, maxhp: ENEMIES[id].hp, atb: rand() * 60, turns: 0 }));
   const alive = a => a.filter(x => (x.h ? x.h.hp : x.hp) > 0);
   let t = 0, items = { potion: potions, ether };
