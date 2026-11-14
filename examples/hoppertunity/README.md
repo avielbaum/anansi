@@ -47,6 +47,23 @@ Each coworker is sent who they are, their morale, the day, the cash and the cont
 (`src/data.gd`: twelve quests, three per coworker). The Any work? and Offer a raise buttons work either way. The top bar shows whether the last answer
 was live.
 
+### Tried with a real model
+
+With Ollama's `qwen3:1.7b` on a laptop CPU, through this example's gateway config (one run of each, by hand; a spot
+check, not an evaluation):
+
+- **Chat:** five different lines to Dot (praise, "got any work?", an insult, "any big orders coming up?", "let us talk
+  about your pay") came back in character with `morale_up`, `offer_quest`, `morale_down`, `share_tip` and `ask_raise`.
+  Before `action_gates` were added to the config, a compliment once came back as `offer_quest`. A reply takes 10 to
+  40 s; the chat timeout is 75 s, and background generation waits while a conversation is open.
+- **Quests:** 20 to 30 s each. Asked only with the coworker's role as the theme, every quest was the same errand for
+  nobody in particular; asked for "a favour that Sprocket, the machine technician, asks of the new manager" it wrote
+  "A Favor for Sprocket". Quests may only name buildings standing on the floor and goods the plant makes, and every
+  generated quest passed the game's own check.
+- **Storylines:** about 38 s. A plain theme gave a tour of the plant; asking for "a worry they carry from their past,
+  something that stirs it up, a turning point, and how it is put to rest" gave four beats about an old mistake and a
+  father. The written stories in `src/data.gd` are still tighter.
+
 ## Run it
 
 You need [Godot 4.3](https://godotengine.org/download/archive/4.3-stable/) (the version CI uses).
@@ -106,7 +123,7 @@ misses three deadlines and has not won by day 20. A full 28x24 floor of moving b
 - The sound effects (Kenney, CC0) and the music loop ("Bossa Nova" by Joth, CC0) were chosen by name and wired up on
   a machine with no audio device: nobody has listened to them in the game yet.
 - The browser build was run by hand in Chrome on a 2013 laptop GPU (Quadro K1100M), without a gateway and with one
-  (Ollama, `qwen3:1.7b` on CPU: a first reply took 30 s, so the chat timeout is 45 s). It held 55 frames a second for
+  (Ollama, `qwen3:1.7b` on CPU). It held 55 frames a second for
   a new game and for the largest floor with every tile a moving conveyor (`?stress` in the address, or `-- stress` on
   the desktop; **F3** shows the frame rate). CI checks that the web build exports, not that it runs.
 - A few hundred `Label3D` nodes make the browser build draw no 3D at all (672 labelled buildings: blank; the same
