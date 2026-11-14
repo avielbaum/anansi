@@ -98,7 +98,7 @@ Ollama Cloud and OpenRouter. See
 | Godot 4 addon (GDScript) | working: 18 checks in the real Godot 4.3 engine against a live gateway in CI, in the editor and in an exported Linux release build (not tried on other export targets or consoles) |
 | Unreal Engine 5 plugin (C++, Blueprint-callable) | **written, never compiled or run: no Unreal install was available** |
 | Linux | working: gateway and SDKs in CI on Ubuntu; Docker compose (vLLM + gateway), the systemd unit, llama-server and `join.sh` run on Ubuntu 22.04 with an NVIDIA A10 |
-| macOS Apple Silicon | untested: no Mac hardware |
+| macOS Apple Silicon | gateway and agent self-checks (78) and the hardware readers pass on a Mac mini (Apple M6, 16 GB, macOS 27); Ollama, a real model and the SDKs not yet run there |
 | GPU nodes (vLLM, llama-server) | working on an NVIDIA A10 with Qwen3-1.7B: vLLM about 165 requests/s at 32 in flight (p99 0.3 s), llama-server 0.07 s per reply; AMD and Intel GPUs untested |
 | **Live platform identity check** (Steam is the only one written) | **not tested, needs a Steam publisher key** |
 | Persistence (budgets, bans) and a volunteer work ledger in SQLite, or Postgres for gateways on several machines | working, tested across a restart and on Postgres 16 |

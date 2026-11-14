@@ -49,7 +49,9 @@ forgets it within about `pull_ttl_s` seconds and it registers again (and passes 
 idle. Change the limits with `--cpu-limit` and `--gpu-limit`, or serve regardless with `--ignore-load`. Load in the 15 seconds
 after the agent's own job is ignored, and a job queued just before a pause waits for the gateway's timeout and is retried on
 another node. Not measured: Intel GPUs on Linux (only the CPU counts there). Tested: the Windows counters on a PC with an Intel and an
-NVIDIA GPU (the Intel one rose under a WebGL load); the Linux and Mac readers only against sample output, not on real machines.
+NVIDIA GPU (the Intel one rose under a WebGL load); the Mac readers on a Mac mini (Apple M6, 16 GB, macOS 27): `ioreg` gives the GPU's "Device Utilization %" without root (0 at idle), and the CPU check is the 1-minute load
+average per core, as on Linux, so it reacts to sustained use within a minute or two, not at once (0.13 at idle, 0.26 after 8 s of full load
+on all 12 cores); the Linux NVIDIA reader on a real A10; the AMD reader only against sample output.
 
 ### One-step setup
 
@@ -161,7 +163,8 @@ for counsel).
 - **Tested.** The hardware readers have run on a real Windows PC (CPU, an Intel and an NVIDIA GPU, idle GPU load) and the whole flow
   (real agent, real gateway, real local model, the page in a browser, the opt-out, and a database left by an earlier design losing its
   name tables) on that PC. The Linux NVIDIA reader uses `nvidia-smi`, the same command the busy check has run on a real A10; the AMD (sysfs)
-  and macOS (`system_profiler`) readers follow the documented formats and are tested on sample output only. Each privacy control (the
+  reader follows the documented format and is tested on sample output only; the macOS reader ran on a Mac mini (Apple M6, 16 GB, macOS 27) and reported
+  "Apple M6" with no separate video memory (Apple GPUs share the system memory), so its statistics label has no GB. Each privacy control (the
   minimum group, the "Other" rule, hidden hardware, the report limits, the https refusal, the slow average, the 2-day retention, the
   headers) has a self-check that fails when the control is removed. Not built: a verified hardware check (compare reported GPU against
   measured tokens per second), history over time, and a stored report that cannot be linked to the ledger.
@@ -186,8 +189,7 @@ way (`ghcr.io/ggml-org/llama.cpp:server-cuda` with `--jinja`). The agent's busy 
 ## macOS (Apple Silicon)
 
 Install Ollama (uses Metal), `ollama pull qwen3:1.7b`, run the agent. Unified memory means no separate VRAM; the 1 to 2
-GB budget applies to RAM. An 8 GB Mac should run only the 1.7B model. See DESIGN.md section 19.1. Untested on a real
-Mac.
+GB budget applies to RAM. An 8 GB Mac should run only the 1.7B model. See DESIGN.md section 19.1. On a Mac mini (Apple M6, 16 GB, macOS 27) the gateway self-checks and the hardware readers pass; Ollama and a real model have not been run on a Mac yet.
 
 ## Windows
 

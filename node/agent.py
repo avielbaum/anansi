@@ -146,7 +146,7 @@ def mac_utilisation(ioreg_text):
 def _mac_gpu_util():
     if sys.platform != "darwin":
         return None
-    try:  # UNTESTED on a Mac. [verify] Needs no root; the key is present on Apple Silicon and recent Intel Macs.
+    try:  # needs no root; ran on an Apple M6 (macOS 27), which reports "Device Utilization %"; Intel Macs untested
         out = subprocess.run(["ioreg", "-r", "-d", "1", "-c", "IOAccelerator"], capture_output=True, text=True, timeout=3).stdout
         return mac_utilisation(out)
     except (OSError, subprocess.SubprocessError):
