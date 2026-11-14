@@ -22,13 +22,15 @@ func go() -> void:
 			["belt", 3, 3, 1], ["hopper", 3, 4, 1], ["belt", 3, 5, 1], ["belt", 3, 6, 0], ["belt", 4, 6, 0], ["outbound", 5, 6, 0],
 			["inbound", 7, 5, 3], ["molder", 7, 4, 3], ["belt", 7, 3, 3], ["inbound", 9, 4, 3], ["belt", 9, 3, 3],
 			["inbound", 13, 6, 3], ["belt", 13, 5, 3], ["belt", 13, 4, 2], ["belt", 12, 4, 2], ["belt", 11, 4, 1], ["belt", 11, 5, 1],
-			["belt", 11, 6, 0], ["belt", 12, 6, 1], ["outbound", 12, 7, 1]]
+			["belt", 11, 6, 0], ["belt", 12, 6, 1], ["outbound", 12, 7, 1],
+			["inbound", 1, 9, 0], ["winder", 2, 9, 0], ["belt", 3, 9, 0], ["fitter", 4, 9, 0], ["outbound", 5, 9, 0]]
 	for p in plan:
 		s.build(p[0], Vector2i(p[1], p[2]), p[3])
 		g._refresh(Vector2i(p[1], p[2]))
 	s.cycle_raw(Vector2i(7, 5))
 	s.cycle_raw(Vector2i(9, 4))
 	s.cycle_raw(Vector2i(9, 4))
+	s.cells[Vector2i(1, 9)].raw = "copper"
 	g._build_buttons()
 	g.speed = 4.0
 	g.tool = "press"

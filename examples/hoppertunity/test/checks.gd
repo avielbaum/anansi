@@ -65,6 +65,22 @@ func run() -> int:
 	run_ticks(s, 200)
 	ok(got.get("gadget", 0) > 3 and got.size() == 1, "assembler joins panels and casings into gadgets %s" % got)
 
+	s = line(["inbound", "winder", "belt", "outbound"])
+	s.cells[Vector2i(0, 0)].raw = "copper"
+	s.morale.qa = 100.0
+	run_ticks(s, 120)
+	ok(s.today.shipped > 5 and s.today.revenue == s.today.shipped * 12, "the coil winder turns copper wire into coils (%d)" % s.today.shipped)
+	var chains := true
+	for kind in Data.BUILD:  # every recipe's inputs must be things something makes or a dock can order
+		for item in Data.BUILD[kind].get("in", {}):
+			chains = chains and (Data.ITEMS[item].has("buy") or Data.BUILD.values().any(func(b): return b.get("out") == item))
+	for u in Data.UNLOCKS:
+		for id in u:
+			chains = chains and (Data.BUILD.has(id) or Data.ITEMS.has(id))
+	for k in Data.CONTRACTS:
+		chains = chains and Data.BUILD.values().any(func(b): return b.get("out") == k.item)
+	ok(chains, "every recipe, unlock and contract names things that exist and can be made")
+
 	s = line(["inbound", "splitter", "belt", "outbound"])
 	s.build("belt", Vector2i(1, 1), 1)
 	s.build("hopper", Vector2i(1, 2), 1)

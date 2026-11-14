@@ -8,11 +8,14 @@ floor manager of the Hopper Works, a small gadget plant on its last chance.
 
 ## The game
 
-- **Build a line:** inbound docks order raw materials, conveyors and splitters move them, hoppers buffer them, presses,
-  molders, assemblers and packers turn them into goods, and outbound docks sell them. Belts back up, docks stop
+- **Build a line:** inbound docks order raw materials, conveyors and splitters move them, hoppers buffer them, six
+  kinds of machine turn them into goods, and outbound docks sell them. Steel becomes panels, plastic becomes casings,
+  the two become gadgets, and gadgets are boxed; later, copper wire becomes coils and gadgets with coils become smart
+  gadgets. Belts back up, docks stop
   ordering when there is nowhere to unload, and you pay only for crates that arrive.
 - **Contracts:** ship a set number of one product before the deadline for a bonus. Each finished contract unlocks the
-  next machine and material; five finished contracts save the plant. A missed deadline costs a penalty. After each
+  next machine and material; five finished contracts save the plant, and the coil winder and the fitter arrive around
+  then for whoever keeps playing. A missed deadline costs a penalty. After each
   one, Penny lines up the next: sour (morale under 35) she has one customer; otherwise you also get a rush job (less
   to ship, less time, less pay), and when she is happy (60 or more) a bulk order too.
 - **Days:** a day is one minute at normal speed. At the end you pay wages, rent and 5 coins of upkeep per machine,

@@ -15,12 +15,15 @@ const LOOK := {
 	"inbound": ["structure-doorway-wide", 0.5, Color(0.75, 1.0, 0.8), 1.53], "outbound": ["structure-doorway-wide", 0.5, Color(1.0, 0.8, 0.6), 1.53],
 	"press": ["machine", 0.75, Color.WHITE, 1.0], "molder": ["machine-window", 0.75, Color(0.75, 0.95, 1.0), 1.0],
 	"assembler": ["machine-fortified", 0.72, Color(1.0, 0.9, 0.75), 1.0], "packer": ["robot-arm-a", 0.42, Color.WHITE, 0.03],
+	"winder": ["machine", 0.75, Color(1.0, 0.72, 0.5), 1.0], "fitter": ["robot-arm-b", 0.42, Color(0.75, 1.0, 0.8), 0.03],
 }
 const ITEM_LOOK := {
 	"steel": ["box-small", 0.55, Color(0.62, 0.66, 0.78)], "plastic": ["box-small", 0.55, Color(0.45, 0.9, 1.0)],
 	"cardboard": ["box-wide", 0.5, Color.WHITE], "panel": ["cog-a", 0.5, Color(0.8, 0.84, 0.95)],
 	"casing": ["cog-a", 0.5, Color(0.45, 0.9, 1.0)], "gadget": ["button-floor-round", 1.0, Color.WHITE],
 	"boxed": ["box-large", 0.5, Color.WHITE],
+	"copper": ["box-small", 0.55, Color(1.0, 0.6, 0.35)], "coil": ["cog-a", 0.5, Color(1.0, 0.6, 0.35)],
+	"smart": ["button-floor-round", 1.0, Color(0.6, 1.0, 0.7)],
 }
 const CREW_LOOK := {"dock": "character-worker", "tech": "character-male-c", "qa": "character-female-e", "sales": "character-female-b"}
 const HELP := "Click a build button (or press its number), then the floor. R turns the piece, right-click cancels or removes. Click a coworker to talk, a building to inspect it, an inbound dock to change what it orders. WASD or arrows move, Q and E turn the view, the wheel zooms, Space pauses, M mutes everything, N just the music, F3 shows the frame rate."
@@ -1009,7 +1012,8 @@ func _build_buttons() -> void:
 	build_buttons = {}
 	for kind in Data.BUILD:
 		if kind in sim.unlocked:
-			var b := _button("%d  %s %d" % [build_buttons.size() + 1, Data.BUILD[kind].name, Data.BUILD[kind].cost], build_bar, func(): tool = kind)
+			var key := "%d  " % (build_buttons.size() + 1) if build_buttons.size() < 9 else ""  # number keys 1 to 9
+			var b := _button("%s%s %d" % [key, Data.BUILD[kind].name, Data.BUILD[kind].cost], build_bar, func(): tool = kind)
 			b.tooltip_text = _does(kind)
 			build_buttons[kind] = b
 	_button("Bigger floor %d" % sim.expand_cost(), build_bar, _expand).tooltip_text = "Two more rows and columns of floor."

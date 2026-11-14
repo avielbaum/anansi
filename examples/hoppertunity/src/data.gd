@@ -23,6 +23,9 @@ const ITEMS := {
 	"casing": {"name": "casings", "sell": 8},
 	"gadget": {"name": "gadgets", "sell": 22},
 	"boxed": {"name": "boxed gadgets", "sell": 34},
+	"copper": {"name": "copper wire", "buy": 3, "sell": 1},
+	"coil": {"name": "coils", "sell": 12},
+	"smart": {"name": "smart gadgets", "sell": 52},
 }
 
 ## in/out/time make a kind a machine. crew: whose morale scales it. place: how quests and coworkers call it.
@@ -36,19 +39,25 @@ const BUILD := {
 	"molder": {"name": "Molder", "cost": 200, "crew": "tech", "in": {"plastic": 1}, "out": "casing", "time": 8.0, "place": "the molder"},
 	"assembler": {"name": "Assembler", "cost": 400, "crew": "tech", "in": {"panel": 1, "casing": 1}, "out": "gadget", "time": 12.0, "place": "the assembler"},
 	"packer": {"name": "Packer", "cost": 300, "crew": "qa", "in": {"gadget": 1, "cardboard": 1}, "out": "boxed", "time": 6.0, "place": "the packing station"},
+	"winder": {"name": "Coil winder", "cost": 350, "crew": "tech", "in": {"copper": 1}, "out": "coil", "time": 10.0, "place": "the coil winder"},
+	"fitter": {"name": "Fitter", "cost": 500, "crew": "qa", "in": {"gadget": 1, "coil": 1}, "out": "smart", "time": 10.0, "place": "the fitting station"},
 }
 
 ## What a new game can build and buy, and what each finished contract adds.
 const START_UNLOCKS := ["belt", "splitter", "hopper", "inbound", "outbound", "press", "steel", "panel"]
-const UNLOCKS := [["molder", "plastic", "casing"], ["assembler", "gadget"], ["packer", "cardboard", "boxed"]]
+const UNLOCKS := [["molder", "plastic", "casing"], ["assembler", "gadget"], ["packer", "cardboard", "boxed"],
+		["winder", "copper", "coil"], ["fitter", "smart"]]
 
-## Contracts in order; after the list, the last one repeats with more to ship.
+## Contracts in order. The first five save the plant (WIN_CONTRACTS); the last two are for the third product line, which
+## opens up around then. After the list it comes round again, half as big again each time (Sim._contract).
 const CONTRACTS := [
 	{"item": "panel", "qty": 20, "days": 2, "reward": 200},
 	{"item": "casing", "qty": 25, "days": 3, "reward": 350},
 	{"item": "gadget", "qty": 20, "days": 3, "reward": 500},
 	{"item": "boxed", "qty": 30, "days": 3, "reward": 700},
 	{"item": "boxed", "qty": 50, "days": 4, "reward": 1000},
+	{"item": "coil", "qty": 30, "days": 3, "reward": 600},
+	{"item": "smart", "qty": 25, "days": 4, "reward": 1400},
 ]
 
 ## One-off improvements to buy: somewhere for late-game cash to go. Their effects are in sim.gd (search for the id).
@@ -84,10 +93,10 @@ const CREW := {
 	"dock": {"name": "Dot", "role": "dock supervisor", "wage": 15, "beat": ["inbound", "outbound"],
 		"persona": "Dot runs the loading docks. Brisk, dry humour, counts everything twice, hates late trucks.",
 		"perk": "Trucks unload faster for good."},
-	"tech": {"name": "Sprocket", "role": "machine technician", "wage": 15, "beat": ["press", "molder", "assembler"],
+	"tech": {"name": "Sprocket", "role": "machine technician", "wage": 15, "beat": ["press", "molder", "assembler", "winder"],
 		"persona": "Sprocket keeps the machines alive. Gentle, tinkers constantly, talks to the machines by name.",
 		"perk": "The machines never jam again."},
-	"qa": {"name": "Tilly", "role": "packing and quality lead", "wage": 15, "beat": ["packer", "outbound"],
+	"qa": {"name": "Tilly", "role": "packing and quality lead", "wage": 15, "beat": ["packer", "fitter", "outbound"],
 		"persona": "Tilly checks every unit that leaves. Exacting, proud of the work, soft spot for a tidy box.",
 		"perk": "No more defective units."},
 	"sales": {"name": "Penny", "role": "sales rep", "wage": 15, "beat": ["outbound"],
