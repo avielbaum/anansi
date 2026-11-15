@@ -111,7 +111,10 @@ remembered.
 
 Everything the keyboard, wheel and right button do also has a button in the bottom bar (Turn, Remove, +, -, View),
 clicking a build button again puts the tool away, and dragging the floor moves the view. That is meant to make the game
-playable on a touch screen; it was tried with a mouse only, never on a real phone or tablet.
+playable on a touch screen. In a small window (a phone held sideways) the interface is scaled up, the build bar stays
+closed until the Build button opens it, and Turn and Put away stay on screen while a tool is in hand; held upright, it
+asks you to turn the device. All of this was tried in desktop windows of phone size with a mouse, never on a real
+phone or tablet.
 
 ## Code
 

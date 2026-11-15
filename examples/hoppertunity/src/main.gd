@@ -101,6 +101,12 @@ var sound_box := VBoxContainer.new()  # the ? screen's volume sliders
 var net_label: Label
 var tut_panel: PanelContainer
 var sideways: Label  # shown over everything on a screen taller than it is wide
+var bottom_panel: PanelContainer  # the build bar's panel
+var bar_toggle: Button  # on a small screen the build bar is closed until this opens it
+var bar_open := false
+var new_game_button: Button
+var bar_tool := ""  # the tool in hand when the bar was last looked at, to close the bar when one is picked
+var mini: PanelContainer  # on a small screen, with the bar closed and a tool in hand: Turn and Put away
 var tag_canvas := Control.new()  # building tags are painted here, under the panels
 var tags_seen := []
 var saved_at := 0  # sim.ticks at the last save
@@ -934,9 +940,10 @@ func _panel(anchor: int, parent: Node, min_size := Vector2.ZERO) -> PanelContain
 	p.add_theme_stylebox_override("panel", _box(Color(INK, 0.92)))
 	p.custom_minimum_size = min_size
 	parent.add_child(p)
-	p.grow_horizontal = {Control.PRESET_CENTER_RIGHT: Control.GROW_DIRECTION_BEGIN, Control.PRESET_TOP_LEFT: Control.GROW_DIRECTION_END}.get(anchor, Control.GROW_DIRECTION_BOTH)
+	p.grow_horizontal = {Control.PRESET_CENTER_RIGHT: Control.GROW_DIRECTION_BEGIN, Control.PRESET_TOP_LEFT: Control.GROW_DIRECTION_END,
+			Control.PRESET_BOTTOM_LEFT: Control.GROW_DIRECTION_END}.get(anchor, Control.GROW_DIRECTION_BOTH)
 	p.grow_vertical = {Control.PRESET_BOTTOM_WIDE: Control.GROW_DIRECTION_BEGIN, Control.PRESET_TOP_WIDE: Control.GROW_DIRECTION_END,
-			Control.PRESET_TOP_LEFT: Control.GROW_DIRECTION_END}.get(anchor, Control.GROW_DIRECTION_BOTH)
+			Control.PRESET_TOP_LEFT: Control.GROW_DIRECTION_END, Control.PRESET_BOTTOM_LEFT: Control.GROW_DIRECTION_BEGIN}.get(anchor, Control.GROW_DIRECTION_BOTH)
 	p.set_anchors_and_offsets_preset(anchor, Control.PRESET_MODE_MINSIZE, 10)
 	return p
 
@@ -979,11 +986,17 @@ func _ui() -> void:
 	for s in [["||", 0.0], [">", 1.0], [">>", 2.0], [">>>", 4.0]]:
 		speed_buttons[s[1]] = _button(s[0], row, func(): speed = s[1])
 	_button("?", row, func(): _ask("[b]How to play[/b]\n" + HELP, [["Close", Callable()]], "sound"))
-	_button("New game", row, _confirm_new_game)
+	new_game_button = _button("New game", row, _confirm_new_game)
+	bar_toggle = _button("Build", row, func(): bar_open = not bar_open)
 
-	var bottom := _panel(Control.PRESET_BOTTOM_WIDE, root)
+	bottom_panel = _panel(Control.PRESET_BOTTOM_WIDE, root)
 	build_bar = HFlowContainer.new()
-	bottom.add_child(build_bar)
+	bottom_panel.add_child(build_bar)
+	mini = _panel(Control.PRESET_BOTTOM_LEFT, root)
+	var mini_row := HBoxContainer.new()
+	mini.add_child(mini_row)
+	_button("Turn", mini_row, _turn)
+	_button("Put away", mini_row, func(): tool = "")
 
 	toast = Label.new()
 	toast.add_theme_stylebox_override("normal", _box(Color(INK, 0.92)))
@@ -1172,6 +1185,24 @@ func _hud() -> void:
 		quest_label.text = "Quest for %s: %s%s" % [Data.CREW[sim.quest.giver].name, s.get("description", ""),
 				" (%d/%d)" % [sim.quest.have, sim.quest.need] if sim.quest.need > 1 else ""]
 	net_label.text = "Anansi live" if crew.online else "Anansi offline"
+	# The interface is laid out for 1280x720 and shrinks with the window. On a phone that leaves the text too small to
+	# read or tap, so below about 85% size everything is scaled back up (and the bars wrap onto more rows).
+	var window := Vector2(DisplayServer.window_get_size())
+	var shrink := minf(window.x / 1280.0, window.y / 720.0)
+	get_tree().root.content_scale_factor = clampf(0.85 / maxf(shrink, 0.01), 1.0, 1.8)
+	var compact := shrink < 0.8  # no room for a build bar that is always open
+	if tool != bar_tool:
+		bar_tool = tool
+		if tool != "":
+			bar_open = false
+	bar_toggle.visible = compact
+	net_label.visible = not compact  # the top bar has no room for these on a phone; the title screen offers New game
+	new_game_button.visible = not compact
+	if compact:
+		top.text = "%d coins  day %d\nmorale %d" % [sim.money, sim.day, int(sim.team_morale())]
+	bar_toggle.text = "Close" if bar_open else "Build"
+	bottom_panel.visible = not compact or bar_open
+	mini.visible = compact and not bar_open and tool != ""
 	var screen := get_viewport().get_visible_rect().size
 	sideways.visible = screen.y > screen.x * 1.1
 	for sp in speed_buttons:
