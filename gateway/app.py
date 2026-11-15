@@ -91,6 +91,9 @@ def schema_hint(s):
     return "{" + ", ".join(f'"{k}": {one(v)}' for k, v in props.items()) + "}"
 
 
+NO_ACTION_NOTE = (" This turn you take no action: do not say or imply that you will do anything for or against the player; "
+                  "only talk.")  # added when the gateway refused the action a reply was written around
+
 PLAIN_NOTE = (' Reply with only the words the character says out loud: no action names, no "Action:" line, no reasoning, '
               "no notes about what you chose.")  # added to a title's prompt when it has actions but this request wants plain text
 
@@ -349,6 +352,29 @@ def make_app(config=None, transport=None):
                 warned.add(req["model"])
                 print(f"warning: action_check model {req['model']!r} gave no YES/NO answer; its actions become none", file=sys.stderr, flush=True)
         return act if v == "YES" else "none"
+
+    async def reask(t, up, node, msgs, key):
+        """The model picked an action the gateway refused, so its words may promise it ("I'll call the guards!"). Ask the same
+        node once more with only none allowed; if it still picks an action, cannot answer or fails the reply checks, the
+        fallback line goes out. shortcut: this second call is not counted in the player's token budget (one call, veto turns only)."""
+        m = up["messages"]
+        m = [{**m[0], "content": m[0]["content"] + NO_ACTION_NOTE}] + m[1:] if m[0]["role"] == "system" else [
+            {"role": "system", "content": NO_ACTION_NOTE.strip()}] + m
+        up2 = {**up, "messages": m, "response_format": {"type": "json_schema", "json_schema": {"name": "npc_reply", "schema": {
+            "type": "object", "additionalProperties": False, "required": ["say", "action"],
+            "properties": {"say": {"type": "string"}, "action": {"type": "string", "enum": ["none"]}}}}}}
+        try:
+            r = await client.post(node.url + "/v1/chat/completions", json=payload_for(up2, node), headers=node.headers)
+            data = r.json() if r.status_code == 200 else None
+            if data:
+                charge(node, data, m, reply_text(data))
+            text = reply_text(data) if data else ""
+            d = json.loads(json_slice(text) if not node.schema else text)
+            if d.get("action", "none") == "none":
+                return await vet(t, msgs, str(d["say"]), key)
+        except Exception:  # no answer, bad JSON, a dead node: the fallback line, never the broken promise
+            pass
+        return t.get("fallback_line", "..."), True
 
     def sanitize(t, text):
         if bad(t, text):
@@ -670,6 +696,7 @@ def make_app(config=None, transport=None):
                 say, act = str(d["say"]), d.get("action", "none")
             except Exception:
                 say, act, filtered = t.get("fallback_line", "..."), "none", True
+            picked = act
             if act not in t["actions"]:
                 act = "none"
             act = gate(t, msgs, act)
@@ -677,6 +704,8 @@ def make_app(config=None, transport=None):
                 act, (say, f2) = await asyncio.gather(confirm_action(t, msgs, act, key), vet(t, msgs, say, key))
             else:
                 say, f2 = await vet(t, msgs, say, key)
+            if picked != "none" and act == "none" and not f2:  # the words were written for an action the gateway refused
+                say, f2 = await reask(t, up, node, msgs, key)
             filtered = filtered or f2
             text = json.dumps({"say": say, "action": "none" if f2 else act})
         else:
