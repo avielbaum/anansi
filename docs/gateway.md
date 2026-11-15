@@ -61,12 +61,6 @@ With `"structured": true`, the node is asked for JSON `{"say", "action"}` under 
 the title's `actions` or `none`. The gateway re-validates: an unlisted action becomes `none`, malformed JSON becomes
 the fallback line.
 
-When the model picks an action that the gateway then refuses (unlisted, or vetoed by `action_gates`, `action_check` or the
-order rules), its words were written for that action ("Ten percent off, then!", "I'll call the guards!"). The gateway asks
-the same node once more with only `none` allowed and a note to take no action, and runs the reply checks on the new words;
-if the model still picks an action or cannot answer, the fallback line goes out. This costs one extra call, on refused
-turns only. In the G1 runs, up to 31 of 211 replies with action `none` still mentioned a discount or the guards.
-
 Each action should also be confirmed against the player's line, one of two ways. `action_check` (below) asks a second model
 and is what `config.ollama.json` uses. `action_gates` maps an action to a regular expression that the player's line must
 match; it needs no extra model, which is why the mock, vLLM, OpenRouter and volunteer example configs keep it, but a word

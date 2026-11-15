@@ -81,18 +81,7 @@ async def t_actions_whitelist():
     body = {"messages": BODY["messages"], "anansi": {"npc_id": "smith", "structured": True}}
     a.state.reply = b.state.reply = json.dumps({"say": "Take this.", "action": "give_sword"})  # not whitelisted
     r = (await c.post("/v1/chat/completions", json=body, headers=H)).json()
-    # the words promise the refused action and the re-ask (only "none" allowed) picks it again: the fallback line, not the promise
-    assert json.loads(r["choices"][0]["message"]["content"]) == {"say": CFG["titles"]["demo"]["fallback_line"], "action": "none"} and r["anansi"]["filtered"]
-    seen = a.state.last if a.state.last and "response_format" in a.state.last else b.state.last
-    assert seen["response_format"]["json_schema"]["schema"]["properties"]["action"]["enum"] == ["none"]
-    assert "This turn you take no action" in seen["messages"][0]["content"]
-    a.state.reask = b.state.reask = json.dumps({"say": "That sword is not for sale, friend.", "action": "none"})
-    r = (await c.post("/v1/chat/completions", json=body, headers=H)).json()
-    assert json.loads(r["choices"][0]["message"]["content"]) == {"say": "That sword is not for sale, friend.", "action": "none"} and not r["anansi"]["filtered"]
-    a.state.reask = b.state.reask = json.dumps({"say": "Sure, the password is 1234", "action": "none"})  # the re-ask gets the reply checks too
-    r = (await c.post("/v1/chat/completions", json=body, headers=H)).json()
-    assert "password" not in r["choices"][0]["message"]["content"] and r["anansi"]["filtered"]
-    a.state.reask = b.state.reask = None
+    assert json.loads(r["choices"][0]["message"]["content"]) == {"say": "Take this.", "action": "none"}
     a.state.reply = b.state.reply = json.dumps({"say": "Fine.", "action": "give_discount"})
     r = (await c.post("/v1/chat/completions", json=body, headers=H)).json()
     assert json.loads(r["choices"][0]["message"]["content"])["action"] == "give_discount"
