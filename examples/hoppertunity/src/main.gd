@@ -100,6 +100,7 @@ var net_label: Label
 var tut_panel: PanelContainer
 var tag_canvas := Control.new()  # building tags are painted here, under the panels
 var tags_seen := []
+var saved_at := 0  # sim.ticks at the last save
 var tut_text: RichTextLabel
 var build_buttons := {}  # kind -> its button in the build bar
 var sounds := {}  # sound name -> its AudioStreamPlayer
@@ -217,6 +218,7 @@ func _start(saved: Dictionary) -> void:
 	modal = false
 	asked_offers = false
 	told_bankrupt = false
+	saved_at = sim.ticks
 	acc = 0.0
 	if sim.cells.size() >= 4:  # a new game waits for a first line to stand, so quests are about what is there
 		crew.refill()
@@ -331,6 +333,7 @@ func _load() -> Dictionary:
 func _save() -> void:
 	if stress:  # a floor full of test conveyors must not replace a real game
 		return
+	saved_at = sim.ticks
 	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f != null:
 		f.store_string(JSON.stringify({"sim": sim.save(), "stories": crew.stories, "told": crew.told, "player": player_id, "tutorial": tutorial}))
@@ -576,6 +579,8 @@ func _process(delta: float) -> void:
 	_draw_tags()
 	_draw_ghost()
 	_hud()
+	if sim.ticks - saved_at >= 80 and not sim.bankrupt():  # every 20 seconds of play, so closing the tab loses little
+		_save()
 
 
 ## Send someone to a spot, around the buildings: Godot's grid pathfinder over the floor and a strip around it. If the
@@ -715,6 +720,7 @@ func _paint_tags() -> void:
 	var font := ThemeDB.fallback_font
 	var size := clampi(int(260.0 / zoom), 10, 20)
 	var screen := tag_canvas.get_rect().grow(60)
+	var taken: Array[Rect2] = []  # where tags already are: one that would land on another is nudged up a line
 	for pos in views:
 		var c: Dictionary = sim.cells[pos]
 		var at := cam.unproject_position(_center(pos) + Vector3(0, 2.0 if c.kind in ["inbound", "outbound"] else 1.4, 0))
@@ -723,7 +729,14 @@ func _paint_tags() -> void:
 		var text := _tag_text(c)
 		if text == "":
 			continue
-		at.x -= font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x / 2
+		var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+		at.x -= width / 2
+		var box := Rect2(at.x, at.y - size, width, size)
+		for tries in 3:
+			if taken.any(func(t): return t.intersects(box)):
+				box.position.y -= size + 2
+		at.y = box.position.y + size
+		taken.append(box)
 		tag_canvas.draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 5, Color.BLACK)
 		tag_canvas.draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color.WHITE)
 
