@@ -547,16 +547,6 @@ func _place_crew() -> void:
 		ap.get_animation("idle").loop_mode = Animation.LOOP_LINEAR
 		ap.play("idle")
 		ap.seek(i * 0.4)
-		var tag := Label3D.new()
-		tag.name = "tag"
-		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		tag.no_depth_test = true
-		tag.font_size = 40
-		tag.outline_size = 10
-		tag.pixel_size = 0.006 / n.scale.x
-		tag.position = Vector3(0, 1.0, 0)
-		tag.text = "Pip (you)" if id == "pip" else ""
-		n.add_child(tag)
 		add_child(n)
 		crew_nodes[id] = n
 		crew_home[id] = n.position
@@ -707,23 +697,30 @@ func _draw_items(frac: float) -> void:
 
 
 func _draw_tags() -> void:
-	var now := [cam.transform, zoom, sim.ticks, sim.cells.size()]
+	var now := [cam.transform, zoom, sim.ticks, sim.cells.size(), crew_nodes.values().map(func(n): return n.position)]
 	if now != tags_seen:  # repaint only when the view or the factory changed
 		tags_seen = now
 		tag_canvas.queue_redraw()
-	for id in Data.CREW:
-		crew_nodes[id].get_node("tag").text = "%s %s %d" % [Data.CREW[id].name, {"low": ":(", "mid": ":|", "high": ":)"}[sim.mood(id)], int(sim.morale[id])]
 
 
 ## Paint every building's tag on one 2D overlay. They used to be a Label3D each, and a few hundred of those made the
 ## browser build draw no 3D at all (672 hoppers with labels: blank; without: fine).
 func _paint_tags() -> void:
-	if zoom > 26.0:  # too far out to read: skip them, which also keeps a huge floor fast
-		return
 	var font := ThemeDB.fallback_font
 	var size := clampi(int(260.0 / zoom), 10, 20)
-	var screen := tag_canvas.get_rect().grow(60)
 	var taken: Array[Rect2] = []  # where tags already are: one that would land on another is nudged up a line
+	for id in crew_nodes:  # people first: their names and morale, coloured by mood, at any zoom
+		var label := "Pip (you)" if id == "pip" else "%s %d" % [Data.CREW[id].name, int(sim.morale[id])]
+		var ink: Color = Color.WHITE if id == "pip" else {"low": Color.TOMATO, "mid": Color("ffe9a8"), "high": Color("9be8a4")}[sim.mood(id)]
+		var spot := cam.unproject_position(crew_nodes[id].position + Vector3(0, 1.45, 0))
+		var wide := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+		spot.x -= wide / 2
+		taken.append(Rect2(spot.x, spot.y - size, wide, size))
+		tag_canvas.draw_string_outline(font, spot, label, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 5, Color.BLACK)
+		tag_canvas.draw_string(font, spot, label, HORIZONTAL_ALIGNMENT_LEFT, -1, size, ink)
+	if zoom > 26.0:  # too far out to read the buildings' tags: skip them, which also keeps a huge floor fast
+		return
+	var screen := tag_canvas.get_rect().grow(60)
 	for pos in views:
 		var c: Dictionary = sim.cells[pos]
 		var at := cam.unproject_position(_center(pos) + Vector3(0, 2.0 if c.kind in ["inbound", "outbound"] else 1.4, 0))

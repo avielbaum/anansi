@@ -147,7 +147,7 @@ flat colour: the failure that hit the browser build twice while the desktop buil
 - A few hundred `Label3D` nodes make the browser build draw no 3D at all (672 labelled buildings: blank; the same
   672 without labels: fine; the desktop build never minded). So building tags are painted on one 2D overlay, and
   conveyors and arrows are drawn in four batches. With that, 672 hoppers (`?stress&fill=hopper`) also hold 55 frames a
-  second. The crew's name tags and the "+8" sale pop-ups are still `Label3D`, a handful at a time.
+  second. Only the "+8" sale pop-ups are still `Label3D`, a handful at a time.
 - Conversations arrive whole (`chat`), because the game needs the action and a streamed reply carries none; the
   day-end remark is the streamed one. In the desktop build against the real model its two sentences arrived 1.2 s
   apart (8.0 s and 9.2 s), and in the browser build in Chrome also 1.2 s apart (4.2 s and 5.4 s; `?remark` in the
