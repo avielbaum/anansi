@@ -39,6 +39,7 @@ const TUTORIAL := [
 	["Type anything and press Enter: kindness lifts morale, rudeness sinks it. Or click [b]Any work?[/b] for an errand that pays.", ""],
 	["Do the errand: the orange line up top says how. Everyone loses a little morale each day, so keep talking, helping and paying fairly. That is the job. Good luck!", ""],
 ]
+const PERSONAL := 0.55  # how close two people may stand, in tiles
 const INK := Color("2b2a3a")
 const ORANGE := Color("f2a13c")
 
@@ -636,6 +637,15 @@ func _walk_crew(delta: float) -> void:
 				crew_wait[id] = 10.0 + randf() * 10.0
 				_send(id, _next_stop(id))
 		_walk(id, 2.5 * delta if speed > 0.0 else 0.0)
+	# nobody walks through or stands inside anybody else: anyone closer than PERSONAL to another is eased away
+	var people: Array = crew_nodes.values()
+	for i in people.size():
+		for j in range(i + 1, people.size()):
+			var gap: Vector3 = people[j].position - people[i].position
+			if gap.length() < PERSONAL:
+				var push := (gap.normalized() if gap.length() > 0.001 else Vector3.RIGHT) * (PERSONAL - gap.length()) * minf(1.0, 6.0 * delta)
+				people[i].position -= push * 0.5
+				people[j].position += push * 0.5
 
 
 ## The next place on a coworker's beat: a free tile beside one of their buildings, or home when there is none.

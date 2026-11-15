@@ -398,6 +398,13 @@ func run() -> int:
 	ok(g.sim.today.has("built"), "a saved copy can be changed without touching the running game")
 	s2.restore(JSON.parse_string(JSON.stringify(old)))
 	ok(s2.build("belt", Vector2i(9, 9), 0), "a save from before building spend was tracked still loads and plays")
+	g.crew_nodes.dock.position = g.crew_nodes.tech.position
+	g.routes.dock = []
+	g.routes.tech = []
+	g.crew_wait.dock = 99.0
+	g.crew_wait.tech = 99.0
+	await get_tree().create_timer(1.5).timeout  # by the clock, not by frames: a fast machine's frames are short
+	ok(g.crew_nodes.dock.position.distance_to(g.crew_nodes.tech.position) > g.PERSONAL * 0.8, "two people on the same spot step apart")
 	g.tool = "belt"
 	g._click(Vector2i(10, 10))
 	g.tool = ""

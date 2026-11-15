@@ -142,8 +142,8 @@ flat colour: the failure that hit the browser build twice while the desktop buil
 
 ## Not done yet
 
-- Forklifts. People walk around buildings (Godot's `AStarGrid2D`), but not around each other, and where they stand
-  changes nothing in the sim.
+- Forklifts. People walk around buildings (Godot's `AStarGrid2D`) and ease apart when they get close, but where they
+  stand changes nothing in the sim.
 - The sound effects (Kenney, CC0) and the music loop ("Bossa Nova" by Joth, CC0) were chosen by name and wired up on
   a machine with no audio device: nobody has listened to them in the game yet.
 - The browser build was run by hand in Chrome on a 2013 laptop GPU (Quadro K1100M), without a gateway and with one
