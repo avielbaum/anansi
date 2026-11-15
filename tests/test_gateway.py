@@ -1956,6 +1956,10 @@ async def t_agent_pauses_while_the_owner_is_busy():
         ag.SETTLE_S, ag.FORCE_S, ag.cpu_busy_fraction, ag.gpu_util = saved
         ag.CHECK.update(due=0.0, drain=False, paused=False)
     assert ag.cpu_busy_fraction() is None or 0 <= ag.cpu_busy_fraction() <= 1  # the real reader works on this machine
+    assert ag._cpu_ticks() is not None  # tick counts on Windows, Linux and macOS, not the 1-minute load average
+    # Linux /proc/stat: user nice system idle iowait irq softirq steal guest guest_nice; iowait is idle, guest is inside user
+    assert ag.parse_proc_stat("cpu  100 0 50 800 50 0 0 0 7 0\ncpu0 1 2 3 4\n") == (850, 1000)
+    assert ag.parse_proc_stat("cpu 10 0 10 80\n") == (80, 100)  # old kernels: four fields
     assert ag.gpu_util() is None or 0 <= ag.gpu_util() <= 100
     # every GPU vendor on Windows: engine load is summed over processes, the GPU's load is its busiest engine
     e = "pid_{}_luid_0x00000000_0x0000C939_phys_0_eng_{}_engtype_{}"

@@ -41,17 +41,17 @@ whole after the node finishes.
 
 ### Staying out of the owner's way
 
-By default the agent pauses while the machine is busy: CPU above 60 percent (sampled on Windows, load per core on Linux and macOS)
+By default the agent pauses while the machine is busy: CPU above 60 percent (measured over half a second from the system's CPU counters)
 or any GPU above 60 percent. GPU load comes from `nvidia-smi` for NVIDIA anywhere; on Windows, from the system's GPU engine
 counters (the ones Task Manager shows), which cover every vendor; on Linux, from the amdgpu driver for AMD; on Macs, from
 `ioreg`. The highest reading wins. While paused it does not register or poll, so no job reaches it; the gateway
 forgets it within about `pull_ttl_s` seconds and it registers again (and passes the entry check again) when the machine is
-idle. Change the limits with `--cpu-limit` and `--gpu-limit`, or serve regardless with `--ignore-load`. Load in the 15 seconds
+idle. Change the limits with `--cpu-limit` and `--gpu-limit`, or serve regardless with `--ignore-load`. Load in the 5 seconds
 after the agent's own job is ignored, and a job queued just before a pause waits for the gateway's timeout and is retried on
 another node. Not measured: Intel GPUs on Linux (only the CPU counts there). Tested: the Windows counters on a PC with an Intel and an
-NVIDIA GPU (the Intel one rose under a WebGL load); the Mac readers on a Mac mini (Apple M6, 16 GB, macOS 27): `ioreg` gives the GPU's "Device Utilization %" without root (0 at idle), and the CPU check is the 1-minute load
-average per core, as on Linux, so it reacts to sustained use within a minute or two, not at once (0.13 at idle, 0.26 after 8 s of full load
-on all 12 cores); the Linux NVIDIA reader on a real A10; the AMD reader only against sample output.
+NVIDIA GPU (the Intel one rose under a WebGL load); the Mac readers on a Mac mini (Apple M6, 16 GB, macOS 27): `ioreg` gives the GPU's "Device Utilization %" without root (0 at idle), and the CPU check reads 1.0 with all 12 cores
+busy and 0.0 five seconds after the agent's own work ends. (It used to read the 1-minute load average on Linux and macOS, which still
+showed 0.87 five seconds after 90 s of CPU jobs, so a CPU-only node paused itself for its own work.) the Linux NVIDIA reader on a real A10; the AMD reader only against sample output.
 
 ### One-step setup
 

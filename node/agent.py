@@ -33,31 +33,56 @@ REPORT_S = 300  # how often --telemetry sends its report
 SAMPLE_S = 30  # how often it samples the GPU while none of our jobs run
 GRACE_S = 180  # the first report waits this long for a first sample, then goes without one (a GPU that cannot be read)
 IDLE = {"gpu": None}  # the owner's GPU load, smoothed, measured only while none of our jobs run
-SETTLE_S = 5  # our own load must fade before a reading means the owner's (GPU samples ~1 s; Linux CPU is a 1-min average)
+SETTLE_S = 5  # our own load must fade before a reading means the owner's (GPU and CPU are both sampled over about a second)
 FORCE_S = 60  # with jobs arriving nonstop the machine is never idle long enough to check, so force a check this often
 CHECK = {"due": 0.0, "drain": False, "paused": False}  # shared by all workers: the machine pauses as one
 
 
-def cpu_busy_fraction():
-    """CPU use from 0 to 1: sampled over half a second on Windows, the 1-minute load per core on Linux and macOS.
-    None if it cannot be measured (then the machine is never treated as busy)."""
-    if hasattr(os, "getloadavg"):
-        return min(1.0, os.getloadavg()[0] / (os.cpu_count() or 1))
+def parse_proc_stat(text):
+    """(idle, total) CPU ticks from Linux /proc/stat's first line; iowait counts as idle."""
+    v = [int(x) for x in text.split("\n", 1)[0].split()[1:]]
+    return v[3] + (v[4] if len(v) > 4 else 0), sum(v[:8])
+
+
+def _cpu_ticks():
+    """(idle, total) since boot from the OS, or None. Two readings half a second apart give the load right now; a load
+    average would still count this agent's own jobs a minute after they end (measured on a Mac: 0.87 five seconds after
+    90 s of CPU jobs, so a CPU-only node paused itself)."""
+    if sys.platform.startswith("linux"):
+        try:
+            with open("/proc/stat") as f:
+                return parse_proc_stat(f.read())
+        except (OSError, ValueError, IndexError):
+            return None
     try:
         import ctypes
+        if sys.platform == "darwin":  # host_statistics(HOST_CPU_LOAD_INFO): user, system, idle, nice ticks; no root needed
+            lib = ctypes.CDLL("/usr/lib/libSystem.dylib")
+            lib.mach_host_self.restype = ctypes.c_uint32
+            ticks, n = (ctypes.c_uint32 * 4)(), ctypes.c_uint32(4)
+            if lib.host_statistics(lib.mach_host_self(), 3, ticks, ctypes.byref(n)) != 0:
+                return None
+            return ticks[2], sum(ticks)
         from ctypes import wintypes
-
-        def sample():
-            idle, kern, user = (wintypes.FILETIME() for _ in range(3))
-            ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kern), ctypes.byref(user))
-            return [(f.dwHighDateTime << 32) | f.dwLowDateTime for f in (idle, kern, user)]
-        a = sample()
-        time.sleep(0.5)
-        b = sample()
-        total = (b[1] - a[1]) + (b[2] - a[2])  # kernel time includes idle time
-        return max(0.0, 1 - (b[0] - a[0]) / total) if total else None
+        idle, kern, user = (wintypes.FILETIME() for _ in range(3))
+        if not ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kern), ctypes.byref(user)):
+            return None
+        t = [(f.dwHighDateTime << 32) | f.dwLowDateTime for f in (idle, kern, user)]
+        return t[0], t[1] + t[2]  # kernel time includes idle time
     except (AttributeError, OSError, ImportError):
         return None
+
+
+def cpu_busy_fraction():
+    """CPU use from 0 to 1 over the next half second, or None if it cannot be measured (then the machine is never treated as
+    busy). Falls back to the 1-minute load per core where the OS gives no tick counts."""
+    a = _cpu_ticks()
+    if a is None:
+        return min(1.0, os.getloadavg()[0] / (os.cpu_count() or 1)) if hasattr(os, "getloadavg") else None
+    time.sleep(0.5)
+    b = _cpu_ticks()
+    total = b[1] - a[1] if b else 0
+    return max(0.0, min(1.0, 1 - (b[0] - a[0]) / total)) if total > 0 else None
 
 
 def gpu_util():
