@@ -225,6 +225,52 @@ async def t_stream_filter_and_leak():
     assert not (await c.post("/v1/chat/completions", json=BODY, headers=H)).json()["anansi"]["filtered"]
 
 
+def t_sdk_direct_fallback():
+    from sdk.anansi_client import Anansi, check_direct
+    state = {"gw": "down", "llm": json.dumps({"say": "Fine, ten percent off.", "action": "give_discount"}), "llm_status": 200, "calls": []}
+
+    def handler(req):
+        if req.url.host == "llm":  # the public LLM
+            state["calls"].append(json.loads(req.content))
+            return httpx.Response(state["llm_status"], json={"choices": [{"message": {"content": state["llm"]}}]}, headers={"Retry-After": "120"})
+        if state["gw"] == "down":
+            raise httpx.ConnectError("refused")
+        return httpx.Response(state["gw"], json={"error": "x"})
+    system = "You are Brom, a blacksmith in the valley who sells swords and never gives credit to strangers."
+    npc = Anansi("http://gw", "demo", "k", "dev:1", fallback=lambda m: "Hm.", transport=httpx.MockTransport(handler),
+                 direct={"url": "http://llm/v1", "system": system, "actions": ["give_discount"], "min_interval_s": 30})
+    ask = lambda text="Any discount for two?", structured=True: npc.chat([{"role": "system", "content": "hidden"}, {"role": "user", "content": text}], structured=structured)
+    r = ask()
+    assert r == {"source": "direct", "say": "Fine, ten percent off.", "action": "give_discount", "filtered": False}
+    sent = state["calls"][-1]
+    assert sent["messages"][0]["role"] == "system" and sent["messages"][0]["content"].startswith(system) and '"give_discount" | "none"' in sent["messages"][0]["content"]
+    assert [m["role"] for m in sent["messages"]] == ["system", "user"]  # the game's own system lines are not forwarded
+    assert ask()["source"] == "fallback" and len(state["calls"]) == 1  # one call per 30 s: the second turn gets the local line, no request
+    for status, direct in ((503, True), (502, True), (429, False), (401, False), (403, False)):  # only an absent gateway, never a refusal
+        npc._next_direct = 0
+        state["gw"] = status
+        assert (ask()["source"] == "direct") == direct, status
+    state["gw"] = "down"
+    npc._next_direct, state["llm_status"] = 0, 402  # over the free limit: wait as long as the service says
+    assert ask()["source"] == "fallback" and npc._next_direct - time.monotonic() > 100
+    state["llm_status"] = 200
+    npc._next_direct, state["llm"] = 0, json.dumps({"say": "Take it.", "action": "give_sword"})
+    assert ask() ["action"] == "none"  # not on the list
+    npc._next_direct, state["llm"] = 0, "Hello there, traveller."
+    assert ask(structured=False)["say"] == "Hello there, traveller."
+    assert Anansi("http://gw", "demo", "k", "dev:1", transport=httpx.MockTransport(handler)).chat([{"role": "user", "content": "x"}])["source"] == "fallback"  # off unless set
+    # what must not reach a player
+    assert check_direct("As an AI language model I cannot do that.", system, [], False) is None
+    assert check_direct("I sell swords and never gives credit to strangers here.", system, [], False) is None  # five words of the prompt
+    assert check_direct("not json", system, ["give_discount"], True) is None and check_direct('{"say": ""}', system, [], True) is None
+    assert check_direct('Sure! {"say": "Ten off.", "action": "give_discount"} ok', system, ["give_discount"], True) == ("Ten off.", "give_discount")
+    assert check_direct("Lovely day.  Action: none", system, [], False) == ("Lovely day.", "none")
+    assert len(check_direct("word " * 500, system, [], False)[0]) <= 600
+    stream = list(Anansi("http://gw", "demo", "k", "dev:1", transport=httpx.MockTransport(handler),
+                         direct={"url": "http://llm/v1", "system": system}).chat_stream([{"role": "user", "content": "Hi"}]))
+    assert stream == ["Hello there, traveller."]  # a stream that cannot start gets the direct reply whole
+
+
 def t_sdk_stream():
     from sdk.anansi_client import Anansi
     ev = lambda t: "data: " + json.dumps({"choices": [{"delta": {"content": t}}]}) + "\n\n"

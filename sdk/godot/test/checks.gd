@@ -83,5 +83,20 @@ func run() -> int:
 	var board = await c.leaderboard("day", 5)
 	check(board != null and board.period == "day" and board.published == false and board.min_group >= 1 and board.reporting == null and board.gpus.size() == 0 and board.cpus.size() == 0 and board.systems.size() == 0, "statistics of a gateway with no volunteers say nothing yet")
 	check((await plain.leaderboard()) == null, "gateway down: no statistics")
+	# direct fallback, against a mock node standing in for the public LLM ("echo: <reply>" scripts its answer)
+	var dc = make("change-me", "http://127.0.0.1:9")
+	dc.timeout_s = 1.0
+	dc.direct = {"system": "You are Brom, a blacksmith.", "actions": ["give_discount"], "url": "http://127.0.0.1:9001/v1/chat/completions"}
+	var dm := [{"role": "user", "content": "echo: {\"say\": \"Ten off.\", \"action\": \"give_discount\"}"}]
+	r = await dc.chat(dm, "", true)
+	check(r.source == "direct" and r.action == "give_discount" and r.say == "Ten off.", "gateway down: the direct LLM answers, action checked")
+	r = await dc.chat(dm, "", true)
+	check(r.source == "fallback", "one direct call per interval, the next turn gets the local line")
+	r = await down.chat(dm, "", true)
+	check(r.source == "fallback", "direct is off unless set")
+	var t1 = A.check_direct("As an AI language model I cannot.", "x", [], false)
+	var t2 = A.check_direct("{\"say\": \"Take it.\", \"action\": \"give_sword\"}", "x", ["give_discount"], true)
+	var t3 = A.check_direct("Lovely day.  Action: none", "x", [], false)
+	check(t1 == null and t2 != null and t2[1] == "none" and A.check_direct("not json", "x", [], true) == null and t3 != null and t3[0] == "Lovely day.", "direct replies are checked like Python's")
 	print("%d passed, %d failed" % [passes, failures])
 	return failures

@@ -1,5 +1,5 @@
 export interface Message { role: "system" | "user" | "assistant"; content: string }
-export interface Reply { source: "gateway" | "fallback"; say: string; action: string; filtered: boolean }
+export interface Reply { source: "gateway" | "direct" | "fallback"; say: string; action: string; filtered: boolean }
 export interface Entity { id: string; name: string; role?: string }
 export interface World { npcs?: Entity[]; locations?: Entity[]; items?: Entity[] }
 export interface QuestStep { objective: "talk_to" | "explore" | "fetch"; target_id: string; description: string }
@@ -26,7 +26,14 @@ export interface Options {
   streamTimeoutMs?: number;
   generationTimeoutMs?: number;
   fetch?: typeof fetch;
+  /** Off unless set. When the gateway cannot be reached, ask a public LLM directly (default: Pollinations, keyless, one call per
+   *  60 s by default). The prompt ships in your game and the player's text goes to that service: see docs/sdk.md first. */
+  direct?: { system: string; actions?: string[]; url?: string; model?: string; minIntervalMs?: number; timeoutMs?: number; maxTokens?: number };
 }
+
+export const DIRECT_URL: string;
+/** [say, action] if a direct reply may reach the player, else null. */
+export function checkDirect(text: string, system: string, actions: string[], structured: boolean, maxChars?: number): [string, string] | null;
 
 export class Anansi {
   constructor(options: Options);

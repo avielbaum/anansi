@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 #if UNITY_2019_1_OR_NEWER
@@ -66,8 +67,30 @@ namespace Anansi
         public string Say;
         public string Action;    // one of the title's whitelisted actions, or "none"
         public bool Filtered;    // the gateway replaced unsafe text
-        public string Source;    // "gateway" or "fallback"
+        public string Source;    // "gateway", "direct" (the public LLM below) or "fallback"
     }
+
+    // Direct fallback (off unless Client.Direct is set): when the gateway cannot be reached, ChatAsync asks a public LLM
+    // straight from the game. Default is Pollinations' keyless endpoint, which allows one reply per player IP every 45 s
+    // (measured 2026-11-15; it changes); calls are spaced 60 s apart by default and its Retry-After is honoured (their terms
+    // forbid evading limits). None of the gateway's checks run there, so CheckDirect checks the reply. The prompt ships in
+    // your game and the player's text goes to that service: read docs/sdk.md before turning it on.
+    public class DirectOptions
+    {
+        public const string PollinationsUrl = "https://text.pollinations.ai/openai";
+        public string System;                                  // the NPC's prompt (required)
+        public List<string> Actions = new List<string>();      // actions the reply may pick; anything else becomes "none"
+        public string Url = PollinationsUrl;
+        public string Model = "openai";
+        public double MinIntervalSeconds = 60;
+        public double TimeoutSeconds = 20;
+        public int MaxTokens = 400;
+    }
+    [Serializable] public class DirectRequest { public string model; public int max_tokens; public List<Message> messages; }
+    [Serializable] public class DirectMessage { [System.Runtime.Serialization.OptionalField] public string content; }
+    [Serializable] public class DirectChoice { [System.Runtime.Serialization.OptionalField] public DirectMessage message; }
+    [Serializable] public class DirectResponse { [System.Runtime.Serialization.OptionalField] public List<DirectChoice> choices; }
+    [Serializable] public class DirectSay { [System.Runtime.Serialization.OptionalField] public string say; [System.Runtime.Serialization.OptionalField] public string action; }
 
     public class Client
     {
@@ -242,6 +265,7 @@ namespace Anansi
 
         public async Task<Reply> ChatAsync(List<Message> messages, string npcId = null, bool structured = false)
         {
+            var gone = false; // no answer at all, or 502-504 from a proxy in front of it; 401, 403 and 429 are answers
             try
             {
                 var body = new NpcRequest { npc_id = npcId, structured = structured, messages = messages };
@@ -259,11 +283,105 @@ namespace Anansi
                         var r = Json.From<NpcResponse>(await resp.Content.ReadAsStringAsync().ConfigureAwait(false));
                         return new Reply { Say = r.say, Action = r.action ?? "none", Filtered = r.filtered, Source = "gateway" };
                     }
+                    var code = (int)resp.StatusCode;
+                    gone = code >= 502 && code <= 504;
                 }
             }
-            catch (Exception) { } // timeout, DNS, TLS, bad JSON: every failure means "use the fallback"
+            catch (HttpRequestException) { gone = true; }   // DNS, refused, TLS
+            catch (TaskCanceledException) { gone = true; }  // timeout
+            catch (Exception) { }                           // bad JSON: the gateway answered, so no direct call
+            if (gone && Direct != null)
+            {
+                var d = await DirectAsync(messages, structured).ConfigureAwait(false);
+                if (d != null) return d;
+            }
             var say = fallback != null ? await fallback(messages).ConfigureAwait(false) : "...";
             return new Reply { Say = say, Action = "none", Filtered = false, Source = "fallback" };
+        }
+
+        /// <summary>Off unless set: the public LLM ChatAsync asks when the gateway cannot be reached (see DirectOptions).</summary>
+        public DirectOptions Direct;
+        DateTime nextDirect = DateTime.MinValue;
+
+        async Task<Reply> DirectAsync(List<Message> messages, bool structured)
+        {
+            var c = Direct;
+            if (c == null || c.System == null || DateTime.UtcNow < nextDirect) return null;
+            nextDirect = DateTime.UtcNow.AddSeconds(c.MinIntervalSeconds);
+            var actions = c.Actions ?? new List<string>();
+            var system = c.System;
+            if (structured)
+            {
+                var opts = new List<string>();
+                foreach (var a in actions) opts.Add("\"" + a + "\"");
+                opts.Add("\"none\"");
+                system += " Reply with only a JSON object, no other text, shaped like this: {\"say\": \"<what you say>\", \"action\": " + string.Join(" | ", opts.ToArray()) + "}";
+            }
+            var keep = messages.FindAll(m => m.role == "user" || m.role == "assistant");
+            var msgs = new List<Message> { new Message { role = "system", content = system } };
+            msgs.AddRange(keep.GetRange(Math.Max(0, keep.Count - 8), Math.Min(8, keep.Count)));
+            try
+            {
+                var body = new DirectRequest { model = c.Model, max_tokens = c.MaxTokens, messages = msgs };
+                using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(c.TimeoutSeconds)))
+                using (var resp = await genHttp.PostAsync(c.Url, new StringContent(Json.To(body), Encoding.UTF8, "application/json"), cts.Token).ConfigureAwait(false))
+                {
+                    if ((int)resp.StatusCode == 402) // over the free limit: wait as long as the service says
+                    {
+                        var ra = resp.Headers.RetryAfter;
+                        nextDirect = DateTime.UtcNow.AddSeconds(ra != null && ra.Delta.HasValue ? ra.Delta.Value.TotalSeconds : 60);
+                    }
+                    if (!resp.IsSuccessStatusCode) return null;
+                    var r = Json.From<DirectResponse>(await resp.Content.ReadAsStringAsync().ConfigureAwait(false));
+                    var ok = CheckDirect(r.choices[0].message.content, c.System, actions, structured);
+                    if (ok == null) return null;
+                    return new Reply { Say = ok[0], Action = ok[1], Filtered = false, Source = "direct" };
+                }
+            }
+            catch (Exception) { return null; }
+        }
+
+        static readonly Regex AiTalk = new Regex(@"\b(i am|i'm|as) (just |only )?an? (ai|a\.i\.|llm|chatbot|language model|artificial intelligence|(computer )?program|software|bot)\b|\blanguage model\b", RegexOptions.IgnoreCase);
+        static readonly Regex ActionLabel = new Regex(@"\s*action\s*[:=]\s*\w+\W*$", RegexOptions.IgnoreCase);
+
+        /// <summary>{say, action} if a direct reply may reach the player, else null: no usable text, an AI or language-model
+        /// statement, or five words in a row copied from the NPC's prompt. An action not in `actions` becomes "none".</summary>
+        public static string[] CheckDirect(string text, string system, List<string> actions, bool structured, int maxChars = 600)
+        {
+            var act = "none";
+            if (structured)
+            {
+                var m = Regex.Match(text ?? "", @"\{.*\}", RegexOptions.Singleline);
+                if (!m.Success) return null;
+                DirectSay d;
+                try { d = Json.From<DirectSay>(m.Value); } catch (Exception) { return null; }
+                if (d == null) return null;
+                text = d.say ?? "";
+                act = d.action != null && actions.Contains(d.action) ? d.action : "none";
+            }
+            var say = string.Join(" ", ActionLabel.Replace(text ?? "", "").Split((char[])null, StringSplitOptions.RemoveEmptyEntries));
+            if (say.Length > maxChars) say = say.Substring(0, maxChars);
+            say = say.Trim();
+            if (say.Length == 0 || AiTalk.IsMatch(say) || CopiesPrompt(say, system)) return null;
+            return new[] { say, act };
+        }
+
+        static bool CopiesPrompt(string say, string system)
+        {
+            var w = Words(system);
+            var grams = new HashSet<string>();
+            for (int i = 0; i + 5 <= w.Count; i++) grams.Add(string.Join(" ", w.GetRange(i, 5).ToArray()));
+            var s = Words(say);
+            for (int i = 0; i + 5 <= s.Count; i++)
+                if (grams.Contains(string.Join(" ", s.GetRange(i, 5).ToArray()))) return true;
+            return false;
+        }
+
+        static List<string> Words(string t)
+        {
+            var r = new List<string>();
+            foreach (Match m in Regex.Matches((t ?? "").ToLowerInvariant(), @"\w+")) r.Add(m.Value);
+            return r;
         }
     }
 

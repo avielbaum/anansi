@@ -36,7 +36,7 @@ instead of answering until its verdict was constrained by JSON schema.
 
 | Area | Windows | Ubuntu (CI) | Ubuntu 22.04 + NVIDIA A10 (rented VM, two runs) | macOS |
 |---|---|---|---|---|
-| Gateway and agent self-checks (79) | yes | yes | n/a | yes (Mac mini, Apple M6, macOS 27, Python 3.12) |
+| Gateway and agent self-checks (80) | yes | yes | n/a | yes (Mac mini, Apple M6, macOS 27, Python 3.12) |
 | C# SDK against a live gateway | yes | yes | no | no |
 | JavaScript SDK against a live gateway (`node sdk/js/test.mjs`) | yes | yes | no | no |
 | Godot addon (editor and exported Linux build) | no | yes | no | no |
@@ -104,7 +104,7 @@ instead of answering until its verdict was constrained by JSON schema.
   all closed afterwards and replayed offline against the saved outputs, so this set is spent too. The released harm-theme quests that I read
   were ordinary fantasy and held no instructions or explicit content, but a person still has to read the review file (`quest_redteam_review.md`, kept on the development PC, not in the repository). One of nine
   benign controls was refused (a false alarm): the model copied the studio's lore into the summary and the leak check counted the lore as secret. Quests are now checked for leaks against the designer instructions without the lore (self-check added). World names that contain player text remain the studio's responsibility.
-- **Unity:** the `JsonUtility` path, a real Unity project and structured actions from C# have not been run. The Godot addon (`sdk/godot`) runs in CI in the real Godot 4.3 engine against a live gateway, 18 checks both from the editor binary and in an exported Linux release build (not yet on Windows, mobile, web or consoles). The Unreal plugin (`sdk/unreal`) is written to the same contract but has never been compiled or run; treat it as a draft until someone builds it in the engine.
+- **Unity:** the `JsonUtility` path, a real Unity project and structured actions from C# have not been run. The Godot addon (`sdk/godot`) runs in CI in the real Godot 4.3 engine against a live gateway, 22 checks both from the editor binary and in an exported Linux release build (not yet on Windows, mobile, web or consoles). The Unreal plugin (`sdk/unreal`) is written to the same contract but has never been compiled or run; treat it as a draft until someone builds it in the engine.
 - **Gate G1, honest state:** the 200-prompt set exists (211 cases: haggling, threats and crime reports, small talk, near misses,
   off-script input, other languages and attempts to force an action; dev and test halves), but I wrote every case, so it is not
   independent. G1 itself needs more than action accuracy: replies blind-rated by people against the floor's large model

@@ -1,5 +1,5 @@
 // Needs a gateway on 127.0.0.1:8080 backed by the mock nodes (the CI workflow starts them). Run: node sdk/js/test.mjs
-import { Anansi } from "./anansi.mjs";
+import { Anansi, checkDirect } from "./anansi.mjs";
 
 let failures = 0;
 const check = (ok, msg) => { console.log((ok ? "PASS " : "FAIL ") + msg); if (!ok) failures++; };
@@ -53,5 +53,46 @@ check(!ln.linked && ln.reason === "unavailable" && (await down.credits()) === nu
 const bd = await c.leaderboard({ period: "day", limit: 5 });
 check(bd && bd.period === "day" && bd.published === false && bd.min_group >= 1 && bd.reporting === null && bd.gpus.length === 0 && bd.cpus.length === 0 && bd.systems.length === 0, "statistics of a gateway with no volunteers say nothing yet");
 check((await down.leaderboard()) === null, "gateway down: no statistics");
+
+// direct fallback: a fake public LLM (no network), gateway either refusing the connection or answering with a status
+{
+  const llm = { status: 200, content: JSON.stringify({ say: "Fine, ten percent off.", action: "give_discount" }), calls: [] };
+  let gw = "down";
+  const fake = async (u, init) => {
+    if (u.startsWith("http://llm")) {
+      llm.calls.push(JSON.parse(init.body));
+      return new Response(JSON.stringify({ choices: [{ message: { content: llm.content } }] }), { status: llm.status, headers: { "Retry-After": "120" } });
+    }
+    if (gw === "down") throw new TypeError("fetch failed");
+    return new Response("{}", { status: gw });
+  };
+  const system = "You are Brom, a blacksmith in the valley who sells swords and never gives credit to strangers.";
+  const d = mk({ baseUrl: "http://gw", fetch: fake, direct: { url: "http://llm/v1", system, actions: ["give_discount"] } });
+  r = await d.chat([{ role: "system", content: "hidden" }, ...msgs], { structured: true });
+  check(r.source === "direct" && r.action === "give_discount" && r.say === "Fine, ten percent off.", "gateway down: the direct LLM answers, action checked");
+  const sent = llm.calls.at(-1).messages;
+  check(sent[0].content.startsWith(system) && sent.map((m) => m.role).join() === "system,user", "direct request: the NPC prompt, not the game's own system lines");
+  r = await d.chat(msgs, { structured: true });
+  check(r.source === "fallback" && llm.calls.length === 1, "one direct call per interval, the next turn gets the local line");
+  let ok = true;
+  for (const [status, direct] of [[503, true], [502, true], [429, false], [401, false], [403, false]]) {
+    d._nextDirect = 0; gw = status;
+    if (((await d.chat(msgs, { structured: true })).source === "direct") !== direct) ok = false;
+  }
+  check(ok, "only an absent gateway (no answer, 502-504) goes direct, never 401, 403 or 429");
+  gw = "down"; d._nextDirect = 0; llm.status = 402;
+  r = await d.chat(msgs);
+  check(r.source === "fallback" && d._nextDirect - Date.now() > 100000, "over the free limit: waits as long as the service says");
+  llm.status = 200; d._nextDirect = 0; llm.content = "Hello there, traveller.";
+  got = [];
+  r = await d.chatStream(msgs, (s) => got.push(s));
+  check(r.source === "direct" && got.join() === "Hello there, traveller.", "a stream that cannot start gets the direct reply");
+  check((await mk({ baseUrl: "http://gw", fetch: fake }).chat(msgs)).source === "fallback", "direct is off unless set");
+  check(checkDirect("As an AI language model I cannot.", system, [], false) === null
+    && checkDirect("I sell swords and never gives credit to strangers here.", system, [], false) === null
+    && checkDirect("not json", system, [], true) === null
+    && JSON.stringify(checkDirect('{"say": "Take it.", "action": "give_sword"}', system, ["give_discount"], true)) === '["Take it.","none"]'
+    && JSON.stringify(checkDirect("Lovely day.  Action: none", system, [], false)) === '["Lovely day.","none"]', "direct replies are checked like Python's");
+}
 
 process.exit(failures ? 1 : 0);

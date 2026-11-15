@@ -69,6 +69,21 @@ static class Program
         Check(down.LeaderboardAsync().GetAwaiter().GetResult() == null, "gateway down: no statistics");
         ln = down.LinkNodeAsync("ABCD-EFGH").GetAwaiter().GetResult();
         Check(!ln.Linked && ln.Reason == "unavailable" && down.CreditsAsync().GetAwaiter().GetResult() == null, "gateway down: unavailable, no credits");
+
+        // direct fallback, against a mock node standing in for the public LLM ("echo: <reply>" scripts its answer)
+        var dc = new Client("http://127.0.0.1:9", "demo", "change-me", ticket, null, 1);
+        dc.Direct = new DirectOptions { System = "You are Brom, a blacksmith.", Url = "http://127.0.0.1:9001/v1/chat/completions" };
+        dc.Direct.Actions.Add("give_discount");
+        var dm = new List<Message> { new Message { role = "user", content = "echo: {\"say\": \"Ten off.\", \"action\": \"give_discount\"}" } };
+        var dr = dc.ChatAsync(dm, null, true).GetAwaiter().GetResult();
+        Check(dr.Source == "direct" && dr.Action == "give_discount" && dr.Say == "Ten off.", "gateway down: the direct LLM answers, action checked");
+        Check(dc.ChatAsync(dm, null, true).GetAwaiter().GetResult().Source == "fallback", "one direct call per interval, the next turn gets the local line");
+        Check(down.ChatAsync(dm, null, true).GetAwaiter().GetResult().Source == "fallback", "direct is off unless set");
+        var none = new List<string>();
+        Check(Client.CheckDirect("As an AI language model I cannot.", "x", none, false) == null
+              && Client.CheckDirect("{\"say\": \"Take it.\", \"action\": \"give_sword\"}", "x", none, true)[1] == "none"
+              && Client.CheckDirect("not json", "x", none, true) == null
+              && Client.CheckDirect("Lovely day.  Action: none", "x", none, false)[0] == "Lovely day.", "direct replies are checked like Python's");
         return failures == 0 ? 0 : 1;
     }
 }

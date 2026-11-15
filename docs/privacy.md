@@ -87,6 +87,17 @@ The earlier design note that volunteers should get "no player chat" cannot hold 
   one where players type personal details to characters. Floor nodes that the operator runs are the alternative.
 - `allow_volunteers` is off unless a title sets it. Safety judges and the guard never use volunteers.
 
+## Direct fallback to a public LLM
+
+A studio can turn on the SDKs' `direct` option ([sdk.md](sdk.md#direct-fallback-to-a-public-llm)). Then, when the gateway cannot
+be reached, **the player's recent lines and the NPC's prompt go from the player's device straight to Pollinations**
+(text.pollinations.ai, operated by Myceli.AI OÜ, Estonia) and the model provider behind it, with the player's IP address as part
+of the connection. The operator's gateway sees none of it, so none of the gateway's checks, budgets or retention rules apply.
+Under Pollinations' terms the studio is the controller and Pollinations the processor; there is no data processing agreement
+unless the studio arranges one, and processing may happen outside the EEA. Pollinations' own privacy policy governs what it
+keeps. A studio that turns this on must name Pollinations in its privacy policy (add it to the text below) and should not turn it
+on for a title aimed at children. It is off unless the studio sets it.
+
 ## For studios: what to tell your players
 
 Put something like this in your game's privacy policy and, where players first meet an NPC, in the game: *"Some characters in this game

@@ -18,7 +18,7 @@ namespace Anansi { public static class TestHooks {
   public static System.Action<string> OnSentence = s => { lock (Got) Got.Add(s); };
 } }
 '@
-Add-Type -TypeDefinition ((Get-Content "$PSScriptRoot\Anansi.cs" -Raw) + "`n" + $helpers) -ReferencedAssemblies System.Net.Http, System.Runtime.Serialization, System.Xml
+Add-Type -TypeDefinition ((Get-Content "$PSScriptRoot\Anansi.cs" -Raw) + "`n" + $helpers) -ReferencedAssemblies System.Net.Http, System.Runtime.Serialization, System.Core, System.Xml
 
 $env:ANANSI_CONFIG = "config.example.json"
 $py = (Get-Command python).Source
@@ -78,6 +78,14 @@ try {
   $procs[2] | Stop-Process -Force; Start-Sleep 1
   $r = $c.ChatAsync($msgs, "smith", $false).GetAwaiter().GetResult()
   Check ($r.Source -eq "fallback") "gateway down falls back"
+  $dc = New-Object Anansi.Client("http://127.0.0.1:8080", "demo", "change-me", $ticket, $null, 1)
+  $opt = New-Object Anansi.DirectOptions; $opt.System = "You are Brom, a blacksmith."; $opt.Url = "http://127.0.0.1:9001/v1/chat/completions"; $opt.Actions.Add("give_discount"); $dc.Direct = $opt
+  $dm = New-Object 'System.Collections.Generic.List[Anansi.Message]'; $mm = New-Object Anansi.Message; $mm.role = "user"; $mm.content = 'echo: {"say": "Ten off.", "action": "give_discount"}'; $dm.Add($mm)
+  $r = $dc.ChatAsync($dm, $null, $true).GetAwaiter().GetResult()
+  Check ($r.Source -eq "direct" -and $r.Action -eq "give_discount" -and $r.Say -eq "Ten off.") "gateway down: the direct LLM answers, action checked"
+  Check (($dc.ChatAsync($dm, $null, $true).GetAwaiter().GetResult()).Source -eq "fallback") "one direct call per interval, the next turn gets the local line"
+  $acts = New-Object 'System.Collections.Generic.List[string]'
+  Check (([Anansi.Client]::CheckDirect('As an AI language model I cannot.', 'x', $acts, $false, 600)) -eq $null -and ([Anansi.Client]::CheckDirect('{"say": "Take it.", "action": "give_sword"}', 'x', $acts, $true, 600))[1] -eq 'none') "direct replies are checked"
 
   $none = New-Object Anansi.Client("http://127.0.0.1:8080", "demo", "change-me", $ticket, $null, 1)
   $r = $none.ChatAsync($msgs, $null, $false).GetAwaiter().GetResult()

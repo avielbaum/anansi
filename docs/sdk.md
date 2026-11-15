@@ -1,7 +1,49 @@
 # SDKs
 
 All clients follow one contract: ask the gateway, and on a timeout, a `429`, an auth error or any failure, answer from
-a local fallback so the NPC never goes silent. The default fallback is a neutral line (`"..."`).
+a local fallback so the NPC never goes silent (optionally after a public LLM, when the gateway is unreachable: see below). The default fallback is a neutral line (`"..."`).
+
+## Direct fallback to a public LLM (optional, off by default)
+
+When the gateway cannot be reached at all, `chat` can ask a public LLM straight from the game before it falls back to your
+local line. The default is Pollinations' keyless endpoint (`https://text.pollinations.ai/openai`), so no key ships in the game.
+
+```python
+npc = Anansi(url, "demo", key, token, fallback=local_line,
+             direct={"system": "You are Brom, a blacksmith in the valley. Reply in one or two short sentences. ...",
+                     "actions": ["give_discount", "call_guard"]})
+r = npc.chat(msgs, structured=True)   # r["source"] is "gateway", "direct" or "fallback"
+```
+
+The same option is `direct: { system, actions }` in JavaScript, `client.Direct = new DirectOptions { System = ..., Actions = ... }`
+in C#, and `npc.direct = {"system": ..., "actions": [...]}` in Godot (`url`, `model`, the interval and the timeout can be changed).
+Python and JavaScript also use it for a stream that cannot start (the reply arrives whole); C# and Godot streams, quests and
+storylines keep the local fallback. Unreal does not have it.
+
+**When it is used:** only when the gateway gives no answer (refused connection, DNS, timeout) or a proxy in front of it answers
+502, 503 or 504. Never on 401, 403 or 429, so it cannot be used to get round a budget or a ban.
+
+**What you take on by turning it on:**
+
+- **None of the gateway's protection applies.** No blocklist, safety judge, Llama Guard, per-player budget or ban. The SDK checks
+  the reply itself: the action must be one you listed (otherwise `none`), the text is capped at 600 characters, and a reply that
+  says it is an AI or a language model, or copies five words in a row from your prompt, gives your local line instead. That is
+  much weaker than the gateway: do not turn it on for a title aimed at children or where the NPC must never say certain things.
+- **The NPC's prompt ships in your game.** Anyone can read it, so put nothing secret in it.
+- **Players' text goes to Pollinations** (Myceli.AI OÜ, Estonia) and the model provider behind it. Under their terms your studio
+  is the controller and they are the processor, there is no data processing agreement unless you ask them for one, and data may
+  be processed outside the EEA. Say so in your privacy policy (see [privacy.md](privacy.md#direct-fallback-to-a-public-llm)).
+- **Their limits apply per player:** one reply every 45 seconds per IP address (measured 2026-11-15; their documentation said
+  30, and it changes). The SDK waits 60 seconds between direct calls by default and honours the service's `Retry-After`; a turn
+  inside that window gets your local line at once. Their terms forbid evading the limits, so do not lower the interval or rotate
+  addresses. With a free Pollinations key the limits are higher, but a key would ship in the game: keep keys server-side.
+- **No promise of service.** Pollinations offers no uptime guarantee and can change models, limits or the endpoint at any time
+  (its newer endpoint already requires a key). Your local fallback must stand on its own.
+- **The words may not match the action.** As with any model, a reply can promise something the action does not do (one live
+  test answered "Fine, here are the coins." with `call_guard`); the gateway does not check this either.
+
+Measured once, live, from a Windows PC with the gateway down: Python 8.9 s for a structured reply with the right action, JavaScript
+1.4 s; a call 31 s after the previous one was held by the service past the 20 s timeout, which is why the default interval is 60 s.
 
 ## Python (`sdk/anansi_client.py`)
 
@@ -151,7 +193,7 @@ server process (the `ANANSI_TITLE` and `ANANSI_KEY` variables). The red-team too
 
 The C# SDK is tested as plain .NET against a live gateway (Windows PowerShell test and a `dotnet` test run in CI on
 Ubuntu). The Unity `JsonUtility` branch and a real Unity project have not been run. The Godot addon runs in CI in the
-real Godot 4.3 engine against a live gateway (`sdk/godot/test/checks.gd`, 18 checks: replies, streaming, quests, credits, statistics,
+real Godot 4.3 engine against a live gateway (`sdk/godot/test/checks.gd`, 22 checks: replies, streaming, quests, credits, statistics,
 every fallback path), both from the editor binary and in an exported Linux release build. A web export (WebGL 2, no threads) of the
 same test project passed all 18 checks in Chrome once, run by hand, streaming included (the page's origin must be in the gateway's
 `cors_origins`); CI does not run it. In `examples/hoppertunity`'s browser build, a streamed reply from a real model (Ollama, `qwen3:1.7b`)
