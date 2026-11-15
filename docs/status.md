@@ -121,6 +121,12 @@ instead of answering until its verdict was constrained by JSON schema.
 
 Buildable now:
 - **Retrain the adapter with plain-text examples** (`tools/lora_data.py label` now records a plain-chat row for every line; checked against mock nodes), check it no longer answers in JSON, then convert it to GGUF (llama.cpp) so Ollama and llama-server volunteers can run it; about $1 of GPU.
+- **Words that promise a refused action.** When a gate, the action check or the order rules turn the model's action into
+  `none`, its words were written for the action: "I'll call the guard immediately." with no guard called. In the G1 runs up to 31
+  of 211 no-action replies mentioned a discount or the guards (an upper bound: refusals count too). Tried and reverted: asking the
+  same node again with only `none` allowed and a no-action note; on Qwen3-1.7B the words changed but still promised ("I'll call
+  the guard.", "How about a discount?"). Next to try: adapter training rows with in-character refusals, or checking the reply's
+  words with the action check's question; measure either on a model first.
 - **Off-script detector for escalation**: wait for the blind-rating results, since the small models already scored 26 of 26 on
   off-script lines, so it is not yet clear where escalation would help.
 
