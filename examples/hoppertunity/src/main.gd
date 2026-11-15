@@ -31,7 +31,7 @@ const HELP := "Every key has a button in the bottom bar, so a touch screen works
 ## one beside it, one piece at a time. Each step: what she is told, the build button that pulses, and the floor tile that
 ## glows (or null). _tutorial_done() says when a step is finished.
 const TUTORIAL := [
-	["This is your line. Steel comes in at the [b]green dock[/b], the [b]press[/b] stamps it into panels, and the [b]orange dock[/b] ships them. Watch a couple of crates make the trip.", "", null],
+	["[font_size=28][b]Hoppertunity[/b][/font_size]\nYou are Pip Hopper, the new floor manager of the Hopper Works. Ship five contracts and the plant is saved. Look after the four people who run it, or it will not be.\n\nThis is your line. Steel comes in at the [b]green dock[/b], the [b]press[/b] stamps it into panels, and the [b]orange dock[/b] ships them. Watch a couple of crates make the trip.", "", null],
 	["Every panel sold is money. But the contract up top wants 20 by the end of day 2, and one press is slow. Let's build a second line.\n\nClick [b]Inbound dock[/b] below, then the glowing tile.", "inbound", Vector2i(4, 7)],
 	["The orange arrow on a building shows which way it sends things.\n\nNow a [b]Press[/b] on the next glowing tile, right where the dock's arrow points.", "press", Vector2i(5, 7)],
 	["A [b]Conveyor[/b] carries things one tile along its arrow. Put one after the press.", "belt", Vector2i(6, 7)],
@@ -99,6 +99,7 @@ var toast: Label
 var talk_panel: PanelContainer
 var talk_log: RichTextLabel
 var talk_title: Label
+var talk_face: TextureRect
 var talk_input: LineEdit
 var raise_row: HBoxContainer
 var modal_panel: PanelContainer
@@ -151,12 +152,9 @@ func _ready() -> void:
 		_time_remark()
 	if stress:
 		_stress()
-	else:
-		_ask("[font_size=30][b]Hoppertunity[/b][/font_size]\n\nThe Hopper Works makes gadgets, when it makes anything at all. "
-				+ "The order book is thin, the crew is tired, and the bank has stopped being polite.\n\n"
-				+ "You are Pip Hopper, the new floor manager. Ship five contracts and the plant is saved. "
-				+ "Look after the four people who run it, or it will not be.",
-				[["Open the gates", Callable()]] if saved.is_empty() else [["Back to work (day %d)" % sim.day, Callable()], ["New game", _new_game]])
+	elif not saved.is_empty():  # a new game needs no title card: its tutorial's first step is the introduction
+		_ask("[font_size=30][b]Hoppertunity[/b][/font_size]\n\nThe Hopper Works is as you left it, on day %d with %d coins." % [sim.day, sim.money],
+				[["Back to work", Callable()], ["New game", _new_game]])
 
 
 ## Developer aid (`?remark` in the browser): ask the gateway for a streamed day-end remark straight away and print to
@@ -376,6 +374,10 @@ func _world() -> void:
 	sun.light_color = Color("fff1dc")  # late-afternoon light through the factory's open sides
 	sun.light_energy = 1.05
 	sun.shadow_enabled = true
+	# one shadow map, not the default four: the camera is orthographic and sees one patch of floor, and four passes
+	# cost a third of the frame rate on integrated graphics
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	sun.directional_shadow_max_distance = 120.0
 	add_child(sun)
 	add_child(scenery)
 	tut_marker.mesh = PlaneMesh.new()
@@ -1126,9 +1128,16 @@ func _ui() -> void:
 	talk_panel = _panel(Control.PRESET_CENTER_RIGHT, root, Vector2(380, 420))
 	var tv := VBoxContainer.new()
 	talk_panel.add_child(tv)
+	var head := HBoxContainer.new()
+	tv.add_child(head)
+	talk_face = TextureRect.new()
+	talk_face.custom_minimum_size = Vector2(56, 56)
+	talk_face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	talk_face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	head.add_child(talk_face)
 	talk_title = Label.new()
 	talk_title.add_theme_color_override("font_color", ORANGE)
-	tv.add_child(talk_title)
+	head.add_child(talk_title)
 	talk_log = RichTextLabel.new()
 	talk_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	talk_log.scroll_following = true
@@ -1207,11 +1216,21 @@ func _build_buttons() -> void:
 	build_buttons = {}
 	for kind in Data.BUILD:
 		if kind in sim.unlocked:
-			var key := "%d  " % (build_buttons.size() + 1) if build_buttons.size() < 9 else ""  # number keys 1 to 9
-			var b := _button("%s%s %d" % [key, Data.BUILD[kind].name, Data.BUILD[kind].cost], build_bar, func(): tool = "" if tool == kind else kind)
+			# a card: the kit's own picture of the piece, its name, its price, and its number key (1 to 9)
+			var key := "%d " % (build_buttons.size() + 1) if build_buttons.size() < 9 else ""
+			var b := _button("%s%s\n%d coins" % [key, Data.BUILD[kind].name, Data.BUILD[kind].cost], build_bar, func(): tool = "" if tool == kind else kind)
+			b.icon = load("res://assets/icons/%s.png" % kind)
+			b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+			b.expand_icon = true
+			b.custom_minimum_size = Vector2(104, 96)
+			b.add_theme_font_size_override("font_size", 13)
+			b.add_theme_color_override("icon_normal_color", LOOK[kind][2])
+			b.add_theme_color_override("icon_hover_color", LOOK[kind][2])
+			b.add_theme_color_override("icon_pressed_color", LOOK[kind][2])
 			b.tooltip_text = _does(kind)
 			build_buttons[kind] = b
-	_button("Bigger floor %d" % sim.expand_cost(), build_bar, _expand).tooltip_text = "Two more rows and columns of floor."
+	_button("Expand %d" % sim.expand_cost(), build_bar, _expand).tooltip_text = "Two more rows and columns of floor."
 	_button("Upgrades", build_bar, _upgrades).tooltip_text = "One-off improvements to the whole plant."
 	_button("Crew", build_bar, _crew_sheet).tooltip_text = "Everyone's morale, pay, errands and story at a glance."
 	# everything the keyboard, wheel and right button do, for a touch screen or a one-button mouse
@@ -1464,6 +1483,7 @@ func _open_talk(id: String) -> void:
 	tool = ""
 	_send("pip", crew_nodes[id].position + Vector3(0.3, 0, 1.2))
 	talk_title.text = "%s, %s" % [Data.CREW[id].name, Data.CREW[id].role]
+	talk_face.texture = load("res://assets/icons/crew-%s.png" % id)
 	talk_log.clear()
 	raise_row.hide()
 	talk_panel.show()

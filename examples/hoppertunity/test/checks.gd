@@ -338,8 +338,8 @@ func run() -> int:
 	var g: Node = load("res://main.tscn").instantiate()
 	g.save_path = "user://hoppertunity_check.json"  # never the player's own save
 	add_child(g)
-	ok(g.modal and g.sim.day == 1 and g.sim.cells.size() == 6 and g.sim.money == Data.START_MONEY and g.tutorial == 0,
-			"the game opens on its title screen, with the starter line standing and paid for")
+	ok(not g.modal and g.sim.day == 1 and g.sim.cells.size() == 6 and g.sim.money == Data.START_MONEY and g.tutorial == 0,
+			"a new game opens straight onto the starter line, standing and paid for, with the tutorial's introduction")
 	g._next_modal()
 	var col := 2
 	for piece in ["inbound", "press", "belt", "outbound"]:

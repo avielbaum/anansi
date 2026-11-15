@@ -28,8 +28,10 @@ floor manager of the Hopper Works, a small gadget plant on its last chance.
   spare cash somewhere to go.
 - **Crew sheet:** the Crew button lists everyone's morale, what that does to their work, pay, errands done and how far
   their story has got.
-- **Tutorial:** eight steps walk a new manager from the first dock to the first errand, pulsing the button to press.
-  It can be skipped, and a saved game remembers where you were.
+- **A start that shows the game:** a new game opens inside the factory building on a small line that is already
+  running. Nine tutorial steps then walk the new manager through building a second line beside it, one piece at a
+  time, with the build button pulsing and the exact floor tile glowing, and on to talking to the crew and a first
+  errand. It can be skipped, and a saved game remembers where you were.
 - **Trouble shows:** a machine that is jammed, blocked or short of an input says so above it. Whoever or whatever the
   current errand step wants is marked in orange.
 - **The crew:** Dot (docks), Sprocket (machines), Tilly (packing and quality) and Penny (sales) walk between the
