@@ -172,7 +172,8 @@ def make_app(config=None, transport=None):
             del per_player[pk]
     app = FastAPI()
     if cfg.get("cors_origins"):  # browser games on another origin; empty by default, so no page may call the gateway
-        app.add_middleware(CORSMiddleware, allow_origins=cfg["cors_origins"], allow_methods=["POST", "GET"],
+        # allow_private_network: a page on the internet (GitHub Pages) calling a gateway on localhost
+        app.add_middleware(CORSMiddleware, allow_origins=cfg["cors_origins"], allow_methods=["POST", "GET"], allow_private_network=True,
                            allow_headers=["Content-Type", "X-Anansi-Title", "X-Anansi-Key", "X-Player-Token", "X-Steam-Ticket"])
     app.state.sched = sched
     app.state.hub = hub

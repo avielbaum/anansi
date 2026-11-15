@@ -105,6 +105,8 @@ volume, and **M** mutes or unmutes anywhere (the choice is saved in the browser)
 first key press or click, so the title music begins then.
 
 Controls: arrows or WASD to move; Enter, Space or Z to talk and confirm; Esc or X for the menu and to go back; M for sound.
+The hosted game (GitHub Pages) can use a gateway on your own computer: start one with `examples/waypoint/config.waypoint.json` (it lists `https://avielbaum.github.io` in `cors_origins`), open the game in Chrome or Edge and allow the "local network" prompt. Another port or machine: add `?gateway=URL` to the address (an `https://` page needs an `https://` gateway unless it is `localhost`, so a phone needs a tunnel or a hosted gateway). Without a gateway the written fallbacks are used.
+
 Touch: tap to walk there; tap a person or object to walk up and use it; tap a list row to choose it (rows with a description take a second tap), tap outside a list to go back, tap anywhere to advance text; the Menu button in the corner opens the menu. Add `?touch` to the address to show the button on a desktop.
 
 Code: `src/rules.js` (stats, damage, levelling, quests; no Phaser, tested by `check.mjs`), `src/data.js` (the written

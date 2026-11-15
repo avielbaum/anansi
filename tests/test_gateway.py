@@ -296,6 +296,8 @@ async def t_cors_only_for_listed_origins():
     _, _, _, c = setup({**copy.deepcopy(CFG), "cors_origins": ["https://game.example"]})
     r = await c.options("/v1/npc", headers=ask)
     assert r.status_code == 200 and r.headers["access-control-allow-origin"] == "https://game.example"
+    r = await c.options("/v1/npc", headers={**ask, "Access-Control-Request-Private-Network": "true"})  # an https page reaching a gateway on localhost
+    assert r.status_code == 200 and r.headers["access-control-allow-private-network"] == "true"
     r = await c.options("/v1/npc", headers={**ask, "Origin": "https://evil.example"})
     assert "access-control-allow-origin" not in r.headers
     r = await c.post("/v1/npc", json=BODY, headers={**H, "Origin": "https://game.example"})
