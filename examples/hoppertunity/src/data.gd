@@ -62,11 +62,11 @@ const CONTRACTS := [
 
 ## One-off improvements to buy: somewhere for late-game cash to go. Their effects are in sim.gd (search for the id).
 const UPGRADES := {
-	"breakroom": {"name": "Break room", "cost": 400, "does": "Everyone loses 1 less morale a day."},
-	"crane": {"name": "Dock crane", "cost": 500, "does": "Inbound docks unload a quarter faster."},
-	"tooling": {"name": "Better tooling", "cost": 600, "does": "Machines work a fifth faster."},
-	"scanner": {"name": "Quality scanner", "cost": 700, "does": "Half as many defective units."},
-	"showroom": {"name": "Showroom", "cost": 800, "does": "Everything sells for a tenth more."},
+	"breakroom": {"name": "Break room", "cost": 800, "does": "Everyone loses 1 less morale a day."},
+	"crane": {"name": "Dock crane", "cost": 1000, "does": "Inbound docks unload a quarter faster."},
+	"tooling": {"name": "Better tooling", "cost": 1200, "does": "Machines work a fifth faster."},
+	"scanner": {"name": "Quality scanner", "cost": 1400, "does": "Half as many defective units."},
+	"showroom": {"name": "Showroom", "cost": 1600, "does": "Everything sells for a tenth more."},
 }
 
 ## What can happen on a morning from day 3 on (45% of days). speed: today's multiplier for a coworker's station.

@@ -148,7 +148,8 @@ func run() -> int:
 
 	# --- upgrades and events ---
 	s = Sim.new()
-	ok(not s.buy_upgrade("showroom") and s.buy_upgrade("breakroom") and not s.buy_upgrade("breakroom") and s.money == Data.START_MONEY - 400,
+	s.money = 1000
+	ok(not s.buy_upgrade("showroom") and s.buy_upgrade("breakroom") and not s.buy_upgrade("breakroom") and s.money == 200,
 			"an upgrade is bought once, and only with the money for it")
 	run_ticks(s, Data.TICKS_PER_DAY)
 	ok(s.morale.tech == 50.0 - Data.MORALE_WEAR + 1.0, "the break room slows the daily wear")
@@ -241,6 +242,10 @@ func run() -> int:
 	var cold := play(false)
 	print("     caring manager: %s" % kind)
 	print("     neglectful one: %s" % cold)
+	var far := play(true, true)
+	print("     playing on:     %s" % far)
+	ok(far.contracts == 7 and far.day <= 20 and far.low >= 0 and far.upgrades >= 3 and far.money < 5000,
+			"playing on (biggest orders, upgrades, the third line) reaches the seventh contract in three weeks without a cash mountain")
 	ok(kind.won and kind.day <= 12 and kind.low >= 0 and kind.missed == 0, "a manager who looks after the crew saves the plant in under two weeks, never in debt")
 	ok(cold.walkouts > 0 and (not cold.won or cold.day > kind.day or cold.missed > 0), "ignoring the crew ends in a walkout and costs time")
 
@@ -419,21 +424,35 @@ func run() -> int:
 
 ## A whole game played by a fixed build order. Each stage: contracts needed, cash needed, cells to clear, then
 ## [kind, x, y, dir, times to switch the dock's material]. With care, the bot gives a raise to anyone whose morale sags.
-func play(care: bool) -> Dictionary:
+func play(care: bool, late := false) -> Dictionary:
 	var stages := [
 		[0, 0, [], [["inbound", 0, 2, 0, 0], ["press", 1, 2, 0, 0], ["belt", 2, 2, 0, 0], ["outbound", 3, 2, 0, 0]]],
 		[1, 400, [], [["inbound", 3, 5, 3, 1], ["molder", 3, 4, 3, 0], ["outbound", 3, 3, 0, 0]]],
 		[2, 420, [[3, 2], [3, 3]], [["assembler", 3, 2, 0, 0], ["belt", 3, 3, 3, 0], ["belt", 4, 2, 0, 0], ["outbound", 5, 2, 0, 0]]],
 		[3, 470, [[5, 2]], [["packer", 5, 2, 0, 0], ["belt", 6, 2, 0, 0], ["outbound", 7, 2, 0, 0], ["inbound", 5, 4, 3, 2], ["belt", 5, 3, 3, 0]]],
+		# after the win: a coil line of its own, then the packer gives way to a fitter fed by that line
+		[4, 700, [], [["inbound", 0, 8, 0, 3], ["winder", 1, 8, 0, 0], ["belt", 2, 8, 0, 0], ["outbound", 3, 8, 0, 0]]],
+		[6, 600, [[5, 2], [5, 3], [5, 4], [3, 8]], [["fitter", 5, 2, 0, 0], ["belt", 3, 8, 0, 0], ["belt", 4, 8, 0, 0], ["belt", 5, 8, 3, 0],
+			["belt", 5, 7, 3, 0], ["belt", 5, 6, 3, 0], ["belt", 5, 5, 3, 0], ["belt", 5, 4, 3, 0], ["belt", 5, 3, 3, 0]]],
 	]
+	var goal := 7 if late else Data.WIN_CONTRACTS
+	var last_day := 30 if late else 20
 	var s := Sim.new(7)
 	var stage := 0
-	var r := {"won": false, "day": 0, "money": 0, "low": s.money, "missed": 0, "raises": 0, "walkouts": 0}
+	var r := {"won": false, "day": 0, "money": 0, "low": s.money, "missed": 0, "raises": 0, "walkouts": 0, "upgrades": 0, "done_on": []}
 	s.day_ended.connect(func(sum):
 		r.missed += int(sum.missed)
 		r.walkouts += int(sum.walkout_next))
-	while not s.won() and not s.bankrupt() and s.day <= 20:
-		if stage < stages.size() and s.contracts_done >= stages[stage][0] and s.money >= stages[stage][1]:
+	while s.contracts_done < goal and not s.bankrupt() and s.day <= last_day:
+		if r.done_on.size() < s.contracts_done:
+			r.done_on.append(s.day)
+		if late and s.offers.size() > 1:  # the late-game manager takes the biggest order going
+			s.choose(s.offers.size() - 1)
+		if late and s.tick == 0:
+			for id in Data.UPGRADES:  # and spends spare cash on the plant
+				if s.money > Data.UPGRADES[id].cost + 600 and s.buy_upgrade(id):
+					r.upgrades += 1
+		if stage < (stages.size() if late else 4) and s.contracts_done >= stages[stage][0] and s.money >= stages[stage][1]:
 			for c in stages[stage][2]:
 				s.demolish(Vector2i(c[0], c[1]))
 			for bld in stages[stage][3]:
@@ -449,7 +468,7 @@ func play(care: bool) -> Dictionary:
 					r.raises += 1
 		s.step()
 		r.low = mini(r.low, s.money)
-	r.merge({"won": s.won(), "day": s.day, "money": s.money}, true)
+	r.merge({"won": s.won(), "day": s.day, "money": s.money, "contracts": s.contracts_done}, true)
 	return r
 
 

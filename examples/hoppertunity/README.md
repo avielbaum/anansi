@@ -127,7 +127,9 @@ playable on a touch screen; it was tried with a mouse only, never on a real phon
 CI (`.github/workflows/ci.yml`, job `godot`) runs the self-checks against a gateway serving this title on mock nodes,
 and exports the web build. The checks include two scripted playthroughs of one production line: a manager who gives a
 raise whenever someone's morale sags wins on day 9 without going into debt; one who ignores the crew gets four walkouts,
-misses three deadlines and has not won by day 20. A full 28x24 floor of moving belts ticks in under 5 ms on a laptop.
+misses three deadlines and has not won by day 20. A third keeps playing after the win, always taking the
+biggest order on offer, buying upgrades with spare cash and building the coil and smart-gadget line: it ships the
+seventh contract on day 15 with four upgrades and about 2,000 coins left, having missed two deadlines through greed. A full 28x24 floor of moving belts ticks in under 5 ms on a laptop.
 The last check starts the real game scene and drives it through its screens (title, building, two days, day-end reports,
 talking with no gateway, an errand, a raise, upgrades, the crew sheet, a bigger floor), so a script error in the interface
 fails CI too; headless nothing is drawn, so it does not check what any of it looks like.

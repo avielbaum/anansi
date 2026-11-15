@@ -180,7 +180,7 @@ func _offers(n: int) -> Array:
 	var out := [std]
 	if morale.sales >= 35.0:
 		var rush := std.duplicate()
-		rush.merge({"label": "Rush", "qty": int(ceil(std.qty * 0.6)), "due": maxi(day, std.due - 1), "reward": int(std.reward * 0.7)}, true)
+		rush.merge({"label": "Rush", "qty": int(ceil(std.qty * 0.75)), "due": maxi(day, std.due - 1), "reward": int(std.reward * 0.7)}, true)
 		out.append(rush)
 	if morale.sales >= 60.0:
 		var bulk := std.duplicate()
