@@ -364,6 +364,7 @@ func run() -> int:
 			"two days pass: day-end reports queue up, the first contract ships, the game is saved")
 	while g.modal:
 		g._next_modal()
+	g.speed = 0.0  # paused: a real gateway takes half a minute to answer, and no day may end under the checks below
 	g._click(Vector2i(3, 3))
 	g._open_talk("tech")
 	await g._say("Good work today.")
