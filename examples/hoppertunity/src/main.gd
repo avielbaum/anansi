@@ -100,6 +100,7 @@ var chart := Control.new()  # the day-end screen's picture of the last two weeks
 var sound_box := VBoxContainer.new()  # the ? screen's volume sliders
 var net_label: Label
 var tut_panel: PanelContainer
+var sideways: Label  # shown over everything on a screen taller than it is wide
 var tag_canvas := Control.new()  # building tags are painted here, under the panels
 var tags_seen := []
 var saved_at := 0  # sim.ticks at the last save
@@ -1017,6 +1018,16 @@ func _ui() -> void:
 	_button("Skip the tutorial", uv, func(): tutorial = TUTORIAL.size())
 
 	modal_panel = _panel(Control.PRESET_CENTER, root, Vector2(480, 0))
+	sideways = Label.new()
+	sideways.text = "Hoppertunity needs a wide screen.\nPlease turn your device sideways."
+	sideways.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sideways.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	sideways.add_theme_font_size_override("font_size", 44)
+	sideways.add_theme_stylebox_override("normal", _box(INK))
+	sideways.mouse_filter = Control.MOUSE_FILTER_STOP
+	ui.add_child(sideways)  # after everything else, so it covers the game
+	sideways.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	sideways.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var dv := VBoxContainer.new()
 	dv.add_theme_constant_override("separation", 10)
 	modal_panel.add_child(dv)
@@ -1149,6 +1160,8 @@ func _hud() -> void:
 		quest_label.text = "Quest for %s: %s%s" % [Data.CREW[sim.quest.giver].name, s.get("description", ""),
 				" (%d/%d)" % [sim.quest.have, sim.quest.need] if sim.quest.need > 1 else ""]
 	net_label.text = "Anansi live" if crew.online else "Anansi offline"
+	var screen := get_viewport().get_visible_rect().size
+	sideways.visible = screen.y > screen.x * 1.1
 	for sp in speed_buttons:
 		speed_buttons[sp].modulate = Color(1.6, 1.3, 0.8) if is_equal_approx(sp, speed) else Color.WHITE
 	if modal:  # keep it as small as its content and in the middle; the container presets drift when the content changes
