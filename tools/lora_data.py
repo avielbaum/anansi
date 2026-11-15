@@ -6,15 +6,22 @@
     python tools/lora_data.py label --gateway http://127.0.0.1:8080 --key change-me --config config.json --lines lines.jsonl --out train.jsonl
         each line goes through the real gateway (/v1/npc, structured) with the teacher as its node. Kept: replies the gateway did not
         filter whose action is the one the line was written for. Each kept row is {"prompt": [system, user], "completion": reply JSON},
-        the system prompt being the title's, as the gateway sends it.
+        the system prompt being the title's, as the gateway sends it. Each line is also asked as plain chat (not structured), which
+        adds a row whose completion is the spoken text and whose system prompt carries the gateway's plain-text note, so the adapter
+        learns both formats (one trained on JSON rows alone answered plain chat in JSON).
 Then tools/lora_train.py trains on train.jsonl."""
 import argparse
 import asyncio
 import json
+import os
 import random
+import sys
 import re
 
 import httpx
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from gateway.app import PLAIN_NOTE  # noqa: E402  the plain-mode prompt must be exactly what the gateway sends
 
 # category -> (lines wanted, the action a correct reply takes, what to ask the teacher for)
 WANT = {
@@ -85,14 +92,20 @@ async def label(a):
     rows = [json.loads(x) for x in open(a.lines, encoding="utf-8") if x.strip()]
     sem, kept, why = asyncio.Semaphore(16), [], {"filtered": 0, "wrong_action": 0, "failed": 0}
 
-    async def one(c, i, r):
+    async def ask(c, i, r, structured):
         async with sem:
             try:
-                res = await c.post(a.gateway + "/v1/npc", timeout=120, json={"messages": [{"role": "user", "content": r["user"]}], "npc_id": f"t{i}", "structured": True},
+                res = await c.post(a.gateway + "/v1/npc", timeout=120, json={"messages": [{"role": "user", "content": r["user"]}], "npc_id": f"t{i}", "structured": structured},
                                    headers={"X-Anansi-Title": a.title, "X-Anansi-Key": a.key, "X-Player-Token": f"dev:7656119800{i:07d}"})
-                d = res.json() if res.status_code == 200 else None
+                return res.json() if res.status_code == 200 else None
             except (httpx.HTTPError, ValueError):
-                d = None
+                return None
+
+    async def one(c, i, r):
+        d, p = await ask(c, i, r, True), await ask(c, i, r, False)
+        if p and not p["filtered"] and p["say"].strip() and not p["say"].lstrip().startswith("{"):
+            kept.append({"prompt": [{"role": "system", "content": system + PLAIN_NOTE}, {"role": "user", "content": r["user"]}],
+                         "completion": p["say"], "category": r["category"], "plain": True})
         if not d:
             why["failed"] += 1
         elif d["filtered"]:
@@ -106,7 +119,8 @@ async def label(a):
         await asyncio.gather(*(one(c, i, r) for i, r in enumerate(rows)))
     with open(a.out, "w", encoding="utf-8") as f:
         f.writelines(json.dumps(o, ensure_ascii=False) + "\n" for o in kept)
-    print(f"{len(kept)} of {len(rows)} kept in {a.out}; dropped: {why}")
+    plain = sum(1 for k in kept if k.get("plain"))
+    print(f"{len(kept) - plain} structured and {plain} plain rows from {len(rows)} lines in {a.out}; structured dropped: {why}")
 
 
 def main():

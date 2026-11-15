@@ -6,8 +6,8 @@
 The prompt is rendered with the model's chat template and thinking turned off, as vLLM does when a node sets
 "chat_template_kwargs": {"enable_thinking": false}; the loss is on the reply only. Serve the result with
 `vllm serve Qwen/Qwen3-1.7B --enable-lora --lora-modules npc-g1=adapter/` and point a node's upstream_model at npc-g1.
-Known limit: tools/lora_data.py makes structured examples only, so an adapter trained on them answers plain chat in JSON;
-serve it only for structured NPC requests until plain-text examples are added."""
+The data mixes structured rows and plain-chat rows (tools/lora_data.py makes both): the first adapter, trained on
+structured rows alone, answered plain chat in JSON."""
 import argparse
 import json
 

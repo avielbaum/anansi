@@ -120,7 +120,7 @@ instead of answering until its verdict was constrained by JSON schema.
 ## Next
 
 Buildable now:
-- **Retrain the adapter with plain-text examples** (the same lines through the gateway without `structured`), check it no longer answers in JSON, then convert it to GGUF (llama.cpp) so Ollama and llama-server volunteers can run it; about $1 of GPU.
+- **Retrain the adapter with plain-text examples** (`tools/lora_data.py label` now records a plain-chat row for every line; checked against mock nodes), check it no longer answers in JSON, then convert it to GGUF (llama.cpp) so Ollama and llama-server volunteers can run it; about $1 of GPU.
 - **Off-script detector for escalation**: wait for the blind-rating results, since the small models already scored 26 of 26 on
   off-script lines, so it is not yet clear where escalation would help.
 
