@@ -11,3 +11,4 @@ free to use, change and share, also commercially, with no credit required.
 | `characters/colormap-blonde.png` | CC0 | The Mini Characters palette with the hair swatch (x 32 to 63, y 256 to 511) recoloured blonde, for Pip |
 | `audio/music.mp3` | CC0 | "Bossa Nova" (file "8bit Bossa") by Joth, unchanged. Downloaded from https://opengameart.org/content/bossa-nova |
 | `audio/*.ogg` | CC0 | "Interface Sounds" 1.0 by Kenney, eleven of the sounds, renamed for what they are used for. Downloaded from https://opengameart.org/content/interface-sounds |
+| `vehicles/*` | CC0 | "Car Kit" 3.1 by Kenney, the delivery van, unchanged. Downloaded from https://opengameart.org/content/car-kit |

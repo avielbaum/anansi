@@ -39,6 +39,7 @@ const TUTORIAL := [
 	["Type anything and press Enter: kindness lifts morale, rudeness sinks it. Or click [b]Any work?[/b] for an errand that pays.", ""],
 	["Do the errand: the orange line up top says how. Everyone loses a little morale each day, so keep talking, helping and paying fairly. That is the job. Good luck!", ""],
 ]
+const TRUCK_LOAD := 12  # crates a truck brings or takes before it drives off and the next one backs in
 const PERSONAL := 0.55  # how close two people may stand, in tiles
 const INK := Color("2b2a3a")
 const ORANGE := Color("f2a13c")
@@ -73,6 +74,7 @@ var zoom := 16.0
 var views := {}  # Vector2i -> the building's Node3D (conveyors have none: they are drawn in batches, see _draw_belts)
 var belt_mm := {}  # "belt", "corner", "splitter", "arrow" -> MultiMesh
 var belts_dirty := true
+var trucks := {}  # Vector2i of a dock -> {"node", "home", "front", "count", "last_t", "away"}: the van parked at it
 var item_mm := {}  # item id -> MultiMesh
 var floor_mm := MultiMesh.new()
 var ghost := Node3D.new()
@@ -216,6 +218,7 @@ func _start(saved: Dictionary) -> void:
 	for v in views.values():
 		v.queue_free()
 	views = {}
+	trucks = {}
 	belts_dirty = true  # or the last game's conveyors stay on screen
 	for pos in sim.cells:
 		_refresh(pos)
@@ -518,6 +521,7 @@ func _corner(pos: Vector2i) -> int:
 ## Redraw the building at pos after it was built, turned or removed.
 func _refresh(pos: Vector2i) -> void:
 	belts_dirty = true
+	trucks.erase(pos)
 	if views.has(pos):
 		views[pos].queue_free()
 		views.erase(pos)
@@ -528,6 +532,15 @@ func _refresh(pos: Vector2i) -> void:
 	n.position = _center(pos)
 	add_child(n)
 	views[pos] = n
+	if c.kind in ["inbound", "outbound"]:  # a van backed up to the dock, outside the line: behind an inbound dock, beyond an outbound one
+		var ahead := Vector3(Data.DIRS[c.dir].x, 0, Data.DIRS[c.dir].y)
+		var front := ahead if c.kind == "outbound" else -ahead
+		var van: Node3D = load("res://assets/vehicles/delivery.glb").instantiate()
+		van.scale = Vector3.ONE * 0.5
+		van.rotation.y = atan2(front.x, front.z)  # the kit's vehicles face +Z
+		van.position = front * 1.45
+		n.add_child(van)
+		trucks[pos] = {"node": van, "home": van.position, "front": front, "count": 0, "last_t": 0.0, "away": false}
 
 
 func _floor() -> void:
@@ -575,6 +588,12 @@ func _process(delta: float) -> void:
 	_camera(delta)
 	if belts_dirty:
 		_draw_belts()
+	for pos in trucks:  # an inbound dock's counter drops back to zero each time it unloads a crate
+		var c: Dictionary = sim.cells[pos]
+		if c.kind == "inbound":
+			if c.t < trucks[pos].last_t:
+				_truck_load(pos)
+			trucks[pos].last_t = c.t
 	_draw_items(acc / TICK)
 	_draw_tags()
 	_draw_ghost()
@@ -1264,7 +1283,27 @@ func _toast(text: String) -> void:
 		toast.hide()
 
 
+## The vans are for show: the sim knows nothing of them. One drives off when TRUCK_LOAD crates have gone through its
+## dock, and the next backs in.
+func _truck_load(pos: Vector2i) -> void:
+	var t = trucks.get(pos)
+	if t == null or t.away:
+		return
+	t.count += 1
+	if t.count < TRUCK_LOAD:
+		return
+	t.count = 0
+	t.away = true
+	var far: Vector3 = t.home + t.front * 9.0
+	var tw := create_tween()
+	tw.tween_property(t.node, "position", far, 1.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_interval(0.8)
+	tw.tween_property(t.node, "position", t.home, 1.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(func(): t.away = false)
+
+
 func _on_sold(pos: Vector2i, _item: String, amount: int) -> void:
+	_truck_load(pos)
 	if Time.get_ticks_msec() - last_sell > 180:
 		last_sell = Time.get_ticks_msec()
 		_sfx("sell" if amount > 0 else "error", -12.0)

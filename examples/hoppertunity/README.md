@@ -142,7 +142,8 @@ flat colour: the failure that hit the browser build twice while the desktop buil
 
 ## Not done yet
 
-- Forklifts. People walk around buildings (Godot's `AStarGrid2D`) and ease apart when they get close, but where they
+- Forklifts (Kenney's kits have none). A delivery van is parked at every dock and drives off for the next one after
+  twelve crates, but the vans are for show: the sim knows nothing of them. People walk around buildings (Godot's `AStarGrid2D`) and ease apart when they get close, but where they
   stand changes nothing in the sim.
 - The sound effects (Kenney, CC0) and the music loop ("Bossa Nova" by Joth, CC0) were chosen by name and wired up on
   a machine with no audio device: nobody has listened to them in the game yet.
