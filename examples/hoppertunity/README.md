@@ -28,6 +28,8 @@ floor manager of the Hopper Works, a small gadget plant on its last chance.
   spare cash somewhere to go.
 - **Crew sheet:** the Crew button lists everyone's morale, what that does to their work, pay, errands done and how far
   their story has got.
+- **A place:** the factory is a building (walls on the two far sides, a striped walkway, a yard) in a town block,
+  with a road round it and streets of buildings behind. All of it is scenery.
 - **A start that shows the game:** a new game opens inside the factory building on a small line that is already
   running. Nine tutorial steps then walk the new manager through building a second line beside it, one piece at a
   time, with the build button pulsing and the exact floor tile glowing, and on to talking to the crew and a first
