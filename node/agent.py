@@ -57,6 +57,7 @@ def _cpu_ticks():
     try:
         import ctypes
         if sys.platform == "darwin":  # host_statistics(HOST_CPU_LOAD_INFO): user, system, idle, nice ticks; no root needed
+            # shortcut: 32-bit counters wrap about every 41 days on 12 cores; the one reading across a wrap comes out as None
             lib = ctypes.CDLL("/usr/lib/libSystem.dylib")
             lib.mach_host_self.restype = ctypes.c_uint32
             ticks, n = (ctypes.c_uint32 * 4)(), ctypes.c_uint32(4)
