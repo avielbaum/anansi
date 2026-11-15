@@ -79,11 +79,11 @@ static class Program
         Check(dr.Source == "direct" && dr.Action == "give_discount" && dr.Say == "Ten off.", "gateway down: the direct LLM answers, action checked");
         Check(dc.ChatAsync(dm, null, true).GetAwaiter().GetResult().Source == "fallback", "one direct call per interval, the next turn gets the local line");
         Check(down.ChatAsync(dm, null, true).GetAwaiter().GetResult().Source == "fallback", "direct is off unless set");
-        var none = new List<string>();
-        Check(Client.CheckDirect("As an AI language model I cannot.", "x", none, false) == null
-              && Client.CheckDirect("{\"say\": \"Take it.\", \"action\": \"give_sword\"}", "x", none, true)[1] == "none"
-              && Client.CheckDirect("not json", "x", none, true) == null
-              && Client.CheckDirect("Lovely day.  Action: none", "x", none, false)[0] == "Lovely day.", "direct replies are checked like Python's");
+        var noActions = new List<string>();
+        Check(Client.CheckDirect("As an AI language model I cannot.", "x", noActions, false) == null
+              && Client.CheckDirect("{\"say\": \"Take it.\", \"action\": \"give_sword\"}", "x", noActions, true)[1] == "none"
+              && Client.CheckDirect("not json", "x", noActions, true) == null
+              && Client.CheckDirect("Lovely day.  Action: none", "x", noActions, false)[0] == "Lovely day.", "direct replies are checked like Python's");
         return failures == 0 ? 0 : 1;
     }
 }
