@@ -108,6 +108,10 @@ inspect it, an inbound dock to change what it orders. **WASD** or the arrows mov
 wheel zooms, **Space** pauses, **M** mutes everything, **N** just the music. The **?** button has the controls and two volume sliders, which are
 remembered.
 
+Everything the keyboard, wheel and right button do also has a button in the bottom bar (Turn, Remove, +, -, View),
+clicking a build button again puts the tool away, and dragging the floor moves the view. That is meant to make the game
+playable on a touch screen; it was tried with a mouse only, never on a real phone or tablet.
+
 ## Code
 
 | File | What it holds |

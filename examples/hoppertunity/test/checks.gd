@@ -395,6 +395,15 @@ func run() -> int:
 	ok(s2.build("belt", Vector2i(9, 9), 0), "a save from before building spend was tracked still loads and plays")
 	g.tool = "belt"
 	g._click(Vector2i(10, 10))
+	g.tool = ""
+	g._click(Vector2i(10, 10))
+	g._turn()
+	var turned: int = g.sim.cells[Vector2i(10, 10)].dir
+	g.tool = "remove"
+	g._click(Vector2i(10, 10))
+	ok(turned == 1 and not g.sim.cells.has(Vector2i(10, 10)), "the Turn and Remove buttons do what R and the right button do")
+	g.tool = "belt"
+	g._click(Vector2i(10, 10))
 	g._confirm_new_game()
 	g._answer(g._new_game)
 	for i in 3:

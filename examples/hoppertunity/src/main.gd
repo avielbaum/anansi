@@ -26,7 +26,7 @@ const ITEM_LOOK := {
 	"smart": ["button-floor-round", 1.0, Color(0.6, 1.0, 0.7)],
 }
 const CREW_LOOK := {"dock": "character-worker", "tech": "character-male-c", "qa": "character-female-e", "sales": "character-female-b"}
-const HELP := "Click a build button (or press its number), then the floor. R turns the piece, right-click cancels or removes. Click a coworker to talk, a building to inspect it, an inbound dock to change what it orders. WASD or arrows move, Q and E turn the view, the wheel zooms, Space pauses, M mutes everything, N just the music, F3 shows the frame rate."
+const HELP := "Every key has a button in the bottom bar, so a touch screen works too. Click a build button (or press its number), then the floor; click it again to put the tool away. Drag the floor to move the view. R turns the piece, right-click cancels or removes. Click a coworker to talk, a building to inspect it, an inbound dock to change what it orders. WASD or arrows move, Q and E turn the view, the wheel zooms, Space pauses, M mutes everything, N just the music, F3 shows the frame rate."
 ## The tutorial: what Pip is told, and the build button that pulses while she is told it. _tutorial_done() says when
 ## each step is finished.
 const TUTORIAL := [
@@ -47,8 +47,10 @@ var crew: Crew
 var player_id := ""
 var speed := 1.0
 var acc := 0.0
-var tool := ""  # the building being placed, "" for none
+var tool := ""  # the building being placed, "remove" for the remove tool, "" for none
 var tool_dir := 0
+var last_clicked := Vector2i(-1, -1)  # the tile last clicked with no tool, for the Turn button
+var remove_button: Button
 var talking := ""  # the coworker in the talk panel
 var modal := false  # a question or report is up (see _ask): time stands still
 var modal_queue := []  # the ones waiting their turn
@@ -766,13 +768,13 @@ func _draw_ghost() -> void:
 		for ch in ghost.get_children():
 			ch.queue_free()
 		ghost_key = want
-		if tool != "":
+		if LOOK.has(tool):
 			ghost.add_child(_model(tool, tool_dir))
 			var arrow := MeshInstance3D.new()
 			arrow.mesh = belt_mm.arrow.mesh
 			arrow.transform = _arrow_at(_arrow_spot(tool, Vector3.ZERO, tool_dir), tool_dir)
 			ghost.add_child(arrow)
-	ghost.visible = tool != "" and Rect2i(Vector2i.ZERO, sim.floor_size).has_point(pos)
+	ghost.visible = LOOK.has(tool) and Rect2i(Vector2i.ZERO, sim.floor_size).has_point(pos)
 	ghost.position = _center(pos) + Vector3(0, 0.05, 0)
 
 
@@ -800,19 +802,16 @@ func _unhandled_input(e: InputEvent) -> void:
 				if tool != "":
 					tool = ""
 				else:
-					var pos := _mouse_cell()
-					if sim.cells.has(pos):
-						_sfx("remove")
-					sim.demolish(pos)
-					_refresh(pos)
-	elif e is InputEventMouseMotion and e.button_mask & MOUSE_BUTTON_MASK_LEFT and tool == "belt":
-		_click(_mouse_cell())  # drag to lay a run of conveyor
-	elif e is InputEventMouseMotion and e.button_mask & MOUSE_BUTTON_MASK_MIDDLE:
+					_remove(_mouse_cell())
+	elif e is InputEventMouseMotion and e.button_mask & MOUSE_BUTTON_MASK_LEFT and tool in ["belt", "remove"]:
+		_click(_mouse_cell())  # drag to lay a run of conveyor, or to clear one
+	elif e is InputEventMouseMotion and (e.button_mask & MOUSE_BUTTON_MASK_MIDDLE or (e.button_mask & MOUSE_BUTTON_MASK_LEFT and tool == "")):
+		# drag the floor to move the view (a finger does the same: touches arrive as the left button)
 		pivot -= Basis(Vector3.UP, yaw * PI / 2 + PI / 4) * Vector3(e.relative.x, 0, e.relative.y * 1.5) * zoom / 700.0
 	elif e is InputEventKey and e.pressed and not e.echo:
 		match e.physical_keycode if e.physical_keycode != 0 else e.keycode:  # some browsers and tools send no physical key
 			KEY_R:
-				if tool != "":
+				if LOOK.has(tool):
 					tool_dir = (tool_dir + 1) % 4
 				else:
 					sim.rotate(_mouse_cell())
@@ -833,7 +832,27 @@ func _unhandled_input(e: InputEvent) -> void:
 					_sfx("click", -6.0)
 
 
+func _remove(pos: Vector2i) -> void:
+	if sim.cells.has(pos):
+		_sfx("remove")
+		sim.demolish(pos)
+		_refresh(pos)
+
+
+## The on-screen stand-in for the R key: turn the piece in hand, or with no tool the last building clicked.
+func _turn() -> void:
+	if LOOK.has(tool):
+		tool_dir = (tool_dir + 1) % 4
+	elif sim.cells.has(last_clicked):
+		sim.rotate(last_clicked)
+		_refresh(last_clicked)
+
+
 func _click(pos: Vector2i) -> void:
+	if tool == "remove":
+		_remove(pos)
+		return
+	last_clicked = pos
 	if tool != "":
 		if sim.build(tool, pos, tool_dir):
 			_refresh(pos)
@@ -1035,12 +1054,19 @@ func _build_buttons() -> void:
 	for kind in Data.BUILD:
 		if kind in sim.unlocked:
 			var key := "%d  " % (build_buttons.size() + 1) if build_buttons.size() < 9 else ""  # number keys 1 to 9
-			var b := _button("%s%s %d" % [key, Data.BUILD[kind].name, Data.BUILD[kind].cost], build_bar, func(): tool = kind)
+			var b := _button("%s%s %d" % [key, Data.BUILD[kind].name, Data.BUILD[kind].cost], build_bar, func(): tool = "" if tool == kind else kind)
 			b.tooltip_text = _does(kind)
 			build_buttons[kind] = b
 	_button("Bigger floor %d" % sim.expand_cost(), build_bar, _expand).tooltip_text = "Two more rows and columns of floor."
 	_button("Upgrades", build_bar, _upgrades).tooltip_text = "One-off improvements to the whole plant."
 	_button("Crew", build_bar, _crew_sheet).tooltip_text = "Everyone's morale, pay, errands and story at a glance."
+	# everything the keyboard, wheel and right button do, for a touch screen or a one-button mouse
+	_button("Turn", build_bar, _turn).tooltip_text = "Turn the piece in hand, or the building you last clicked (R)."
+	remove_button = _button("Remove", build_bar, func(): tool = "" if tool == "remove" else "remove")
+	remove_button.tooltip_text = "Click buildings to remove them for half their price (or right-click one with no tool in hand)."
+	_button("+", build_bar, func(): zoom = maxf(6.0, zoom - 3.0)).tooltip_text = "Zoom in (mouse wheel)."
+	_button("-", build_bar, func(): zoom = minf(40.0, zoom + 3.0)).tooltip_text = "Zoom out (mouse wheel)."
+	_button("View", build_bar, func(): yaw = (yaw + 1) % 4).tooltip_text = "Turn the view a quarter (Q and E)."
 
 
 ## The four coworkers on one screen: what each is worth to the plant right now and how far their story has got.
@@ -1159,7 +1185,8 @@ func _tutorial() -> void:
 %s" % [tutorial + 1, TUTORIAL.size(), TUTORIAL[tutorial][0]]
 	var glow := 0.75 + 0.5 * absf(sin(Time.get_ticks_msec() / 300.0))
 	for kind in build_buttons:
-		build_buttons[kind].modulate = Color(glow, glow, glow * 0.6) if kind == want else Color.WHITE
+		build_buttons[kind].modulate = Color(glow, glow, glow * 0.6) if kind == want else (Color(1.6, 1.3, 0.8) if kind == tool else Color.WHITE)
+	remove_button.modulate = Color(1.7, 0.9, 0.8) if tool == "remove" else Color.WHITE
 
 
 func _toast(text: String) -> void:
