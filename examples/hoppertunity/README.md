@@ -126,6 +126,9 @@ misses three deadlines and has not won by day 20. A full 28x24 floor of moving b
 The last check starts the real game scene and drives it through its screens (title, building, two days, day-end reports,
 talking with no gateway, an errand, a raise, upgrades, the crew sheet, a bigger floor), so a script error in the interface
 fails CI too; headless nothing is drawn, so it does not check what any of it looks like.
+A last CI step opens the exported web build in headless Chrome with software WebGL (`test/web.mjs`, Node 22+) and
+checks that the page logs no script error, the main loop runs, and the middle of the full stress floor is not one
+flat colour: the failure that hit the browser build twice while the desktop build was fine.
 
 ## Not done yet
 
@@ -136,7 +139,7 @@ fails CI too; headless nothing is drawn, so it does not check what any of it loo
 - The browser build was run by hand in Chrome on a 2013 laptop GPU (Quadro K1100M), without a gateway and with one
   (Ollama, `qwen3:1.7b` on CPU). It held 55 frames a second for
   a new game and for the largest floor with every tile a moving conveyor (`?stress` in the address, or `-- stress` on
-  the desktop; **F3** shows the frame rate). CI checks that the web build exports, not that it runs.
+  the desktop; **F3** shows the frame rate). CI exports the web build and checks in headless Chrome that it runs and draws (see Code, below).
 - A few hundred `Label3D` nodes make the browser build draw no 3D at all (672 labelled buildings: blank; the same
   672 without labels: fine; the desktop build never minded). So building tags are painted on one 2D overlay, and
   conveyors and arrows are drawn in four batches. With that, 672 hoppers (`?stress&fill=hopper`) also hold 55 frames a

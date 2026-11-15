@@ -92,3 +92,7 @@ jobs:
           godot --headless --path examples/hoppertunity --export-release "Web" build/web/index.html > hopweb.log 2>&1 || true
           tail -5 hopweb.log
           test -s examples/hoppertunity/build/web/index.wasm && test -s examples/hoppertunity/build/web/index.pck
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}   # the browser check talks to Chrome with Node's built-in WebSocket
+      - name: Hoppertunity in headless Chrome (software WebGL), does the web build run and draw?
+        run: node examples/hoppertunity/test/web.mjs

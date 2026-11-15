@@ -174,6 +174,10 @@ func _stress() -> void:
 	pivot = Vector3(14, 0, 12)
 	zoom = 34.0
 	speed = 4.0
+	while true:  # test/web.mjs reads this from the browser console
+		await get_tree().create_timer(1.0).timeout
+		print("STRESS %d fps, %d buildings, %d crates moving" % [Engine.get_frames_per_second(), sim.cells.size(),
+				sim.cells.values().filter(func(c): return c.get("item", "") != "").size()])
 
 
 # ---------- a game begins ----------
