@@ -1708,6 +1708,20 @@ def t_join_plan():
     ev = lambda code, body: httpx.MockTransport(lambda req: httpx.Response(code, json=body))
     assert join.installed_models(transport=ev(200, {"models": [{"name": "qwen3:4b"}]})) == {"qwen3:4b"}
     assert join.installed_models(transport=ev(500, {})) is None
+    seen, logs = [], []
+
+    def ollama(req):  # Ollama's /api/pull streams one JSON object per line
+        seen.append((str(req.url), json.loads(req.content)))
+        lines = [{"status": "pulling manifest"}, {"status": "pulling x", "total": 100, "completed": 0}, {"status": "pulling x", "total": 100, "completed": 55},
+                 {"status": "pulling x", "total": 100, "completed": 100}, {"status": "success"}]
+        return httpx.Response(200, content="\n".join(json.dumps(x) for x in lines).encode())
+    assert join.pull("http://box:11435", "qwen3:1.7b", httpx.MockTransport(ollama), logs.append)
+    assert seen == [("http://box:11435/api/pull", {"model": "qwen3:1.7b", "stream": True})]  # into the --local Ollama, not the default one
+    assert logs == ["  downloading qwen3:1.7b: 0%", "  downloading qwen3:1.7b: 55%", "  downloading qwen3:1.7b: 100%"]
+    err = httpx.MockTransport(lambda req: httpx.Response(200, content=b'{"status":"pulling manifest"}\n{"error":"pull model manifest: file does not exist"}\n'))
+    assert not join.pull("http://box", "nope:1b", err, logs.append) and "file does not exist" in logs[-1]
+    assert not join.pull("http://box", "m", ev(500, {}), logs.append) and not join.pull("http://box", "m", httpx.MockTransport(
+        lambda req: httpx.Response(200, content=b'{"status":"pulling manifest"}\n')), logs.append)  # stream ended without success
     from node.agent import idle_limits  # audit: join started the agent without the busy-machine pause
     assert idle_limits(join.parser().parse_args(["--gateway", "g", "--token", "t"])) == (60, 60)
     assert idle_limits(join.parser().parse_args(["--gateway", "g", "--token", "t", "--gpu-limit", "30"])) == (60, 30)

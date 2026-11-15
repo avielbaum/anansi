@@ -10,6 +10,7 @@ The agent pauses while you use the machine (CPU or GPU above 60 percent; --cpu-l
 import argparse
 import asyncio
 import ctypes
+import json
 import os
 import platform
 import shutil
@@ -66,6 +67,32 @@ def installed_models(local=OLLAMA, transport=None):
         return None
 
 
+def pull(local, model, transport=None, log=print):
+    """Download a model into the Ollama at `local` through its HTTP API, printing progress now and then. True on success.
+    The API, not the ollama command: the command may not be on PATH, and it pulls into the default Ollama even when
+    --local points at another one."""
+    shown = -10
+    try:
+        with httpx.Client(transport=transport, timeout=httpx.Timeout(30, read=None)) as c:
+            with c.stream("POST", local + "/api/pull", json={"model": model, "stream": True}) as r:
+                if r.status_code != 200:
+                    log(f"Ollama refused the download (HTTP {r.status_code}).")
+                    return False
+                for line in r.iter_lines():
+                    d = json.loads(line) if line.strip() else {}
+                    if d.get("error"):
+                        log(f"Ollama: {d['error']}")
+                        return False
+                    if d.get("total") and d.get("completed") is not None and d["completed"] * 100 // d["total"] >= shown + 10:
+                        shown = d["completed"] * 100 // d["total"]
+                        log(f"  downloading {model}: {shown}%")
+                    if d.get("status") == "success":
+                        return True
+    except (httpx.HTTPError, ValueError) as e:
+        log(f"Download interrupted: {e}")
+    return False
+
+
 def install_hint():
     return {"win32": "Install Ollama from https://ollama.com/download/windows (or: winget install Ollama.Ollama).",
             "darwin": "Install Ollama from https://ollama.com/download/mac (or: brew install ollama)."}.get(
@@ -88,7 +115,7 @@ def plan(a, ram, have):
     elif model in have or any(h.startswith(model + ":") for h in have):
         steps.append((True, f"{model} is already installed."))
     else:
-        steps.append((True, f"Will download {model} with 'ollama pull'."))
+        steps.append((True, f"Will download {model} into Ollama."))
     steps.append((True, f"Will connect out to {a.gateway} with {a.slots} worker(s). No port is opened on this machine."))
     if getattr(a, "telemetry", False):
         urls = [u.strip() for u in a.gateway.split(",") if u.strip()]
@@ -129,8 +156,8 @@ def main():
         free = shutil.disk_usage(os.path.expanduser("~")).free / 2**30
         if free < size * 1.5:
             sys.exit(f"Not enough free disk: {free:.1f} GB free, about {size * 1.5:.1f} GB needed.")
-        if subprocess.call(["ollama", "pull", model]) != 0:
-            sys.exit("ollama pull failed. Check your connection and try again; it resumes where it stopped.")
+        if not pull(a.local, model):
+            sys.exit("The model download failed. Check your connection and run this again; it resumes where it stopped.")
     print(JOBS_NOTICE)
     if a.telemetry:
         print(telemetry_notice([u.strip() for u in a.gateway.split(",") if u.strip()]))
