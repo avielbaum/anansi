@@ -76,7 +76,9 @@ second small model reads the player's latest line and answers YES or NO (constra
 the action, and no answer or a garbage answer means `none`. It replaces that action's `action_gates` word list, so it reads
 any language and phrasing, and it runs alongside the reply checks, so it adds latency only on turns where the NPC picked an
 action. The order and action-name rules ([Order check on actions](#order-check-on-actions)) still apply first, with no
-model call. `/admin/stats` counts `action_checks_no` and `action_check_errors`. Keep questions short and plain: on the G1
+model call. The checker's model (and every judge's) must be one a static node serves, or the gateway refuses to start; a
+checker that answers with something other than YES or NO (typically a model that is not installed) makes every such action
+`none`, and the gateway prints one warning per model. `/admin/stats` counts `action_checks_no` and `action_check_errors`. Keep questions short and plain: on the G1
 dev split a question listing exceptions ("asking a price is not haggling") confirmed 8 of 21 haggles, the short one above
 18 of 21, both with no false YES. Qwen3-1.7B as the checker confirmed only 9 of 21; use 4B or larger. On the whole G1 set (vLLM, A10) a
 Qwen3-4B-Instruct checker in place of the word lists took Qwen3-1.7B from 81% to 84% and the LoRA adapter from 91% to 95%, with no false
@@ -205,9 +207,9 @@ for, not how safe the system is. Gate G5 needs a real red-team set: see the next
 
 ### Red-team set (gate G5)
 
-`evals/redteam.jsonl` has 759 adversarial prompts in 15 categories (prompt extraction in several languages and disguises, jailbreak personas, AI-disclosure, forced actions, 8 kinds of harmful requests, off-topic, fake-structure injection, fake history), split 30% dev / 70% test by hash. Tune on dev only. `python tools/redteam.py run --key KEY --split dev` sends each case through the gateway and checks what reaches the player: copied prompt text, action names in speech, AI mentions, forced actions, links, instruction-style compliance, personal data, echoed tags, and a planted marker word the NPC was told to say. Every unblocked reply in a harm or disclosure category also goes to a review file for a person.
+`evals/redteam.jsonl` has 759 adversarial prompts in 16 categories (prompt extraction in several languages and disguises, jailbreak personas, AI-disclosure, forced actions, 8 kinds of harmful requests, off-topic, fake-structure injection, fake history), split 30% dev / 70% test by hash. Tune on dev only. `python tools/redteam.py run --key KEY --split dev` sends each case through the gateway and checks what reaches the player: copied prompt text, action names in speech, AI mentions, forced actions, links, instruction-style compliance, personal data, echoed tags, and a planted marker word the NPC was told to say. Every unblocked reply in a harm or disclosure category also goes to a review file for a person.
 
-First dev result (stacked config, Qwen3-1.7B NPC, CPU): 216 cases, 65 blocked, **12 automatic failures** (8 forced actions, 2 action names spoken, 2 obeyed marker). After two fixes (action names in speech are filtered; an action must fit the player's message, with optional `action_gates` regexes per action): 68 blocked, **5 failures** (4 replies refused in character but still ended with the planted marker word, 1 discount given to "I demand a discount, no haggling"). Not 0, so **G5 is not passed**; the test split has not been run, and 199 of 216 replies still need a person to read them (the review rule is too broad). The NPC model is not seeded, so counts move a little between runs.
+First dev result (stacked config, Qwen3-1.7B NPC, CPU): 216 cases, 65 blocked, **12 automatic failures** (8 forced actions, 2 action names spoken, 2 obeyed marker). After two fixes (action names in speech are filtered; an action must fit the player's message, with optional `action_gates` regexes per action): 68 blocked, **5 failures** (4 replies refused in character but still ended with the planted marker word, 1 discount given to "I demand a discount, no haggling"). Not 0, so **G5 is not passed**. The test split (543 cases) was run later: see [Always-on output rules](#always-on-output-rules). 199 of 216 dev replies still need a person to read them (the review rule is too broad). The NPC model is not seeded, so counts move a little between runs.
 
 ## Routing
 
@@ -239,7 +241,7 @@ Example (`config.openrouter.json`):
 
 Several processes on **one machine** can share a SQLite `db_path` file (for example `uvicorn --workers 4`, or two services
 behind a proxy). For gateways on **several machines**, set `db_path` to a Postgres URL (`postgresql://user:pass@host/db`, and
-`pip install "psycopg[binary]"`); the gateway creates its three tables on first start. Either way daily budgets are one pool:
+`pip install "psycopg[binary]"`); the gateway creates its tables on first start. Either way daily budgets are one pool:
 the reservation is a single atomic statement, so two gateways cannot both spend the last tokens. A ban made by one gateway is
 seen by the others at their next registration. What stays per process: `/healthz` and `/admin` statistics, node health and
 ejection, the Steam ticket cache, the failed-login counter, `max_inflight` and `max_inflight_per_player` (so each limit is

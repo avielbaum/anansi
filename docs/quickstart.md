@@ -44,7 +44,8 @@ phrased unlike the G1 cases). To add the optional safety judge as well, use `con
 
 ## Linux
 
-The gateway is plain Python. CI runs the self-checks and the C# SDK against a live gateway on Ubuntu.
+The gateway is plain Python. CI runs the self-checks (on SQLite and Postgres), the C# and JavaScript SDKs and the Godot addon
+against a live gateway on Ubuntu.
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
@@ -58,8 +59,9 @@ container toolkit). The compose file uses `vllm/vllm-openai:latest`: pin the ver
 
 ## macOS (Apple Silicon)
 
-Nothing in the gateway or agent depends on the platform. Install Ollama (it uses Metal), pull a model and use the
-Ollama steps above. Untested on macOS: no Mac hardware is available. Memory guidance is in [DESIGN.md section 19.1](../DESIGN.md).
+The gateway is plain Python, and the agent reads Mac hardware with macOS's own tools (no root). Install Ollama (it uses Metal),
+pull a model and use the Ollama steps above. On a Mac mini (Apple M6, macOS 27) the self-checks and the hardware readers pass;
+Ollama and a real model have not been run there yet. Memory guidance is in [DESIGN.md section 19.1](../DESIGN.md).
 
 ## C# SDK test
 

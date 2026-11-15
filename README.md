@@ -80,15 +80,15 @@ spot-checked afterwards.
 
 ## What works today
 
-Measured on one Windows PC (Qwen3 through Ollama on the CPU), on a rented Linux VM with an NVIDIA A10 GPU, and live against
-Ollama Cloud and OpenRouter. See
+Measured on one Windows PC (Qwen3 through Ollama on the CPU), on a rented Linux VM with an NVIDIA A10 GPU, on a Mac mini
+(Apple M6), and live against Ollama Cloud and OpenRouter. See
 [docs/status.md](docs/status.md) for numbers and caveats.
 
 | | |
 |---|---|
 | Gateway: auth, budgets, constrained actions, filter, leak guard, failover, streaming | working, 79 self-checks |
-| Quest and storyline generation (`/v1/quest`, `/v1/storyline`) with Python and C# SDK methods | working: constrained to your game's own ids; 6 of 6 structurally valid with Qwen3-1.7B (33 s) and Qwen3-4B (65 s, more varied rewards and richer text) on CPU; writing quality unrated |
-| Real model end to end (Ollama on CPU; vLLM and llama-server on GPU) | working: replies in 0.07 to 0.2 s on the A10, 2 to 5 s on CPU; action accuracy 76% on 106 held-out self-written cases (G1 set; **G1 not passed**: needs blind rating against a large model) |
+| Quest and storyline generation (`/v1/quest`, `/v1/storyline`) with Python, C#, JavaScript and Godot SDK methods | working: constrained to your game's own ids; 6 of 6 structurally valid with Qwen3-1.7B (33 s) and Qwen3-4B (65 s, more varied rewards and richer text) on CPU; writing quality unrated |
+| Real model end to end (Ollama on CPU; vLLM and llama-server on GPU) | working: replies in 0.07 to 0.4 s on the A10, 2 to 5 s on CPU; action accuracy 76% on 106 held-out self-written cases (G1 set), 93% with a LoRA adapter and a 4B action check (**G1 not passed**: needs blind rating against a large model) |
 | Safety judge (second model call) | working with Qwen3-4B: blocked 3 of 8 leak attacks, no false positives; doubles latency |
 | Volunteer node agent, entry probe, spot checks, bans; one-step `join` setup | working on Windows and on the Linux GPU VM (`join.sh` with Ollama); pauses while the owner is busy, even under steady traffic (CPU and GPU; Linux Intel GPUs not measured) |
 | Layered output safety: overlap guard, Llama Guard classifier, judge model | working; on 23 self-written pairs the combination caught all violations with no false positives, about 7.5 s extra on CPU |
@@ -102,7 +102,7 @@ Ollama Cloud and OpenRouter. See
 | GPU nodes (vLLM, llama-server) | working on an NVIDIA A10 with Qwen3-1.7B: vLLM about 165 requests/s at 32 in flight (p99 0.3 s), llama-server 0.07 s per reply; AMD and Intel GPUs untested |
 | **Live platform identity check** (Steam is the only one written) | **not tested, needs a Steam publisher key** |
 | Persistence (budgets, bans) and a volunteer work ledger in SQLite, or Postgres for gateways on several machines | working, tested across a restart and on Postgres 16 |
-| Anonymous volunteer-network statistics (opt-in): hardware (graphics card, processor, system), tokens served and typical idle GPU load by group, a web page, JSON and SDK calls; no names, and nothing published until enough machines report | working on a real Windows PC with a real agent and gateway; Python, C#, JavaScript and Godot SDK calls; AMD and macOS hardware readers tested on sample output only |
+| Anonymous volunteer-network statistics (opt-in): hardware (graphics card, processor, system), tokens served and typical idle GPU load by group, a web page, JSON and SDK calls; no names, and nothing published until enough machines report | working on a real Windows PC with a real agent and gateway; Python, C#, JavaScript and Godot SDK calls; macOS readers run on a real Mac, the Linux NVIDIA reader on a real A10, the AMD reader on sample output only |
 | Volunteer credits: link a machine to a player, earn per token, 7-day hold, games spend them on their own items | working in tests (SQLite and Postgres); the Python, C#, JavaScript and Godot SDKs show the balance and link machines; Steam Inventory not connected |
 | Model signing, per-user node identity, answer quorum | not built |
 

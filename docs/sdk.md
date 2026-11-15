@@ -28,13 +28,13 @@ var reply = await client.ChatAsync(messages, "shopkeeper", structured: true);   
 await client.StreamAsync(messages, sentence => ui.Append(sentence), "shopkeeper");
 ```
 
-- Targets Unity 2019.1+ (needs `System.Net.Http`, so Unity 2021+ or the .NET Standard 2.1 API level) and plain .NET.
+- Needs `System.Net.Http` at the .NET Standard 2.1 API level (Unity 2021.2 or later) or plain .NET. Not yet run in Unity.
 - `StreamAsync` runs your callback on the caller's synchronization context, which is the main thread in Unity.
 - Uses `/v1/npc` for `ChatAsync` and `/v1/chat/completions` for `StreamAsync`.
 
 ## Quests and storylines
 
-Both clients can ask the gateway for a quest or story arc built only from the world your game supplies (see
+Every client (Python, C#, JavaScript and Godot; Unreal's `RequestQuest` for quests) can ask the gateway for a quest or story arc built only from the world your game supplies (see
 [gateway.md](gateway.md#quests-and-storylines)). Generation is slow (tens of seconds on a small CPU), so it has its own,
 longer timeout (60 s by default) and is meant for loading screens or pre-generation, not mid-conversation.
 

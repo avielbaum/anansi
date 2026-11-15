@@ -6,7 +6,8 @@ identity, distribution and rewards services"; Epic, GOG, itch.io, consoles, mobi
 need their own equivalent, and the gateway takes a pluggable player-identity check (`auth.mode`). Where a platform
 has no equivalent (for example no inventory), credits can be redeemed inside the game instead.
 
-Status: complete design draft v1.0, 2026-11-10. Nothing here has been built or measured.
+Status: complete design draft v1.0, 2026-11-10: the target design, not a description of the code. What has been built and
+measured since is in [docs/status.md](docs/status.md); notes marked *As built* say where the build differs from this design.
 Assumptions are marked **[verify]**. Repository licences, Windows support and model licences
 were checked on 2026-11-10 (sections 17-19). This is not legal advice.
 
@@ -657,8 +658,8 @@ the node agent is plain Python and the gateway never sees what runs behind it.
   dedicated GPU does, so the idle-only rule in section 21 matters more here.
 - **Verification:** probes and spot checks (section 22) treat a Mac node like any other. Do not assume bit-identical
   output between Metal and CUDA nodes; that is why verification uses known-answer checks, not output equality.
-- **Status:** untested; no Mac hardware is available. Not run: the self-checks, Ollama or llama.cpp on a Mac,
-  thermal behaviour, and game co-residency.
+- **Status:** on a Mac mini (Apple M6, 16 GB, macOS 27) the self-checks and the agent's hardware readers pass. Not run: Ollama
+  or llama.cpp serving jobs on a Mac, thermal behaviour, and game co-residency.
 
 ## 20. Partial residency on each node (Colibri-style) (supersedes the T2 priority in 18-19)
 

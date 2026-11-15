@@ -44,14 +44,15 @@ whole after the node finishes.
 By default the agent pauses while the machine is busy: CPU above 60 percent (measured over half a second from the system's CPU counters)
 or any GPU above 60 percent. GPU load comes from `nvidia-smi` for NVIDIA anywhere; on Windows, from the system's GPU engine
 counters (the ones Task Manager shows), which cover every vendor; on Linux, from the amdgpu driver for AMD; on Macs, from
-`ioreg`. The highest reading wins. While paused it does not register or poll, so no job reaches it; the gateway
-forgets it within about `pull_ttl_s` seconds and it registers again (and passes the entry check again) when the machine is
+`ioreg`. The highest reading wins. While paused it does not register or poll, so no job reaches it; it tells the
+gateway it is leaving (`/node/leave`) and registers again (and passes the entry check again) when the machine is
 idle. Change the limits with `--cpu-limit` and `--gpu-limit`, or serve regardless with `--ignore-load`. Load in the 5 seconds
 after the agent's own job is ignored, and a job queued just before a pause waits for the gateway's timeout and is retried on
 another node. Not measured: Intel GPUs on Linux (only the CPU counts there). Tested: the Windows counters on a PC with an Intel and an
 NVIDIA GPU (the Intel one rose under a WebGL load); the Mac readers on a Mac mini (Apple M6, 16 GB, macOS 27): `ioreg` gives the GPU's "Device Utilization %" without root (0 at idle), and the CPU check reads 1.0 with all 12 cores
 busy and 0.0 five seconds after the agent's own work ends. (It used to read the 1-minute load average on Linux and macOS, which still
-showed 0.87 five seconds after 90 s of CPU jobs, so a CPU-only node paused itself for its own work.) the Linux NVIDIA reader on a real A10; the AMD reader only against sample output.
+showed 0.87 five seconds after 90 s of CPU jobs, so a CPU-only node paused itself for its own work.) Also tested: the Linux NVIDIA reader on a real A10. The AMD reader only against
+sample output.
 
 ### One-step setup
 
@@ -162,7 +163,7 @@ for counsel).
   `hidden_hardware`; `privacy_url`.
 - **Tested.** The hardware readers have run on a real Windows PC (CPU, an Intel and an NVIDIA GPU, idle GPU load) and the whole flow
   (real agent, real gateway, real local model, the page in a browser, the opt-out, and a database left by an earlier design losing its
-  name tables) on that PC. The Linux NVIDIA reader uses `nvidia-smi`, the same command the busy check has run on a real A10; the AMD (sysfs)
+  name tables) on that PC. The Linux readers ran on a rented Ubuntu VM (Xeon CPU, NVIDIA A10 with 23,028 MB, via `nvidia-smi`); the AMD (sysfs)
   reader follows the documented format and is tested on sample output only; the macOS reader ran on a Mac mini (Apple M6, 16 GB, macOS 27) and reported
   "Apple M6" with no separate video memory (Apple GPUs share the system memory), so its statistics label has no GB. Each privacy control (the
   minimum group, the "Other" rule, hidden hardware, the report limits, the https refusal, the slow average, the 2-day retention, the
@@ -193,6 +194,6 @@ GB budget applies to RAM. An 8 GB Mac should run only the 1.7B model. See DESIGN
 
 ## Windows
 
-Ollama or `llama-server` with the official Windows builds; no WSL needed. All development and measurement so far was
-done on Windows with the CPU.
+Ollama or `llama-server` with the official Windows builds; no WSL needed. Development and the CPU measurements were done on
+Windows; the GPU numbers come from a rented Linux A10 VM.
  
