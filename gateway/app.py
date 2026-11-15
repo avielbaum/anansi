@@ -9,6 +9,7 @@ from collections import Counter, deque
 import json
 import os
 import re
+import sys
 import time
 
 import httpx
@@ -158,6 +159,7 @@ def make_app(config=None, transport=None):
                   cfg.get("canary_rate", 0.05), store, credits.get("per_1k_tokens"), lbc) if cfg.get("pull_tokens") else None
     client = httpx.AsyncClient(transport=hub or transport, timeout=cfg.get("upstream_timeout_s", 20))
     ticket_cache = {}  # shortcut: per process, so each gateway checks a ticket with Steam once itself; share it (Redis) if Steam call volume matters
+    warned = set()
     stats = {"requests": 0, "retries": 0, "status": Counter(), "filtered": 0, "stream_errors": 0, "judged_out": 0, "judge_errors": 0, "action_checks_no": 0, "action_check_errors": 0, "escalations": 0, "lat_ms": deque(maxlen=1000)}
     budget = {"req": 0.0, "retry": 0.0}
     auth_fails = {}  # client address -> [failures, window start]
@@ -240,6 +242,13 @@ def make_app(config=None, transport=None):
         for p in list(t.get("blocklist", [])) + list((t.get("action_gates") or {}).values()):
             if re.search(r"[\x00-\x1f]", p):
                 raise ValueError(f"title {n}: pattern {p!r} contains a control character; in JSON write \\\\b, not \\b")
+    served = {m for n in cfg.get("nodes", []) for m in n.get("models", [])}  # judges never run on volunteer pull nodes
+    for n, t in cfg["titles"].items():  # a checker no node serves would turn every action into none, silently
+        js = t.get("judge")
+        for j in (js if isinstance(js, list) else [js] if js else []) + ([t["action_check"]] if t.get("action_check") else []):
+            m = j.get("model") or cfg["default_model"]
+            if m not in served:
+                raise ValueError(f"title {n}: judge or action_check model {m!r} is not in any node's models")
     if os.environ.get("ANANSI_ENV") == "production":  # set by the Dockerfile and the systemd unit
         weak = [n for n, t in cfg["titles"].items() if t["key"] == "change-me"]
         if auth["mode"] == "dev" or weak:
@@ -336,6 +345,9 @@ def make_app(config=None, transport=None):
         v = await ask_verdict(req, key)
         if v != "YES":
             stats["action_checks_no" if v == "NO" else "action_check_errors"] += 1
+            if v != "NO" and req["model"] not in warned:  # e.g. the model is not installed: say so once, not per turn
+                warned.add(req["model"])
+                print(f"warning: action_check model {req['model']!r} gave no YES/NO answer; its actions become none", file=sys.stderr, flush=True)
         return act if v == "YES" else "none"
 
     def sanitize(t, text):

@@ -40,7 +40,7 @@ instead of answering until its verdict was constrained by JSON schema.
 
 | Area | Windows | Ubuntu (CI) | Ubuntu 22.04 + NVIDIA A10 (rented VM, once) | macOS |
 |---|---|---|---|---|
-| Gateway and agent self-checks (78) | yes | yes | n/a | yes (Mac mini, Apple M6, macOS 27, Python 3.12) |
+| Gateway and agent self-checks (79) | yes | yes | n/a | yes (Mac mini, Apple M6, macOS 27, Python 3.12) |
 | C# SDK against a live gateway | yes | yes | no | no |
 | JavaScript SDK against a live gateway (`node sdk/js/test.mjs`) | yes | yes | no | no |
 | Godot addon (editor and exported Linux build) | no | yes | no | no |

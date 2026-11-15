@@ -1,6 +1,7 @@
 """Run: python tests/test_gateway.py   (also works under pytest). No GPU or network needed."""
 import asyncio
 import copy
+import io
 import json
 import os
 import sys
@@ -569,11 +570,17 @@ async def t_action_check():
     a.state.check = b.state.check = "NO"
     assert await act("How much is the lamp?") == "none"  # the check says no: no discount
     a.state.check = b.state.check = "maybe"
-    assert await act("Knock a few silver off?") == "none"  # garbage fails closed
-    a.state.check = b.state.check = "YES"
-    for bare, want in (('"YES"', "give_discount"), ("YES.", "give_discount"), ("YES, the player haggles", "none")):
-        a.state.raw_check = b.state.raw_check = bare  # a host that ignores the schema answers in plain text
-        assert await act("Cheaper for two?") == want, bare
+    saved, sys.stderr = sys.stderr, io.StringIO()
+    try:
+        assert await act("Knock a few silver off?") == "none"  # garbage fails closed
+        a.state.check = b.state.check = "YES"
+        for bare, want in (('"YES"', "give_discount"), ("YES.", "give_discount"), ("YES, the player haggles", "none")):
+            a.state.raw_check = b.state.raw_check = bare  # a host that ignores the schema answers in plain text
+            assert await act("Cheaper for two?") == want, bare
+        warned = sys.stderr.getvalue()
+    finally:
+        sys.stderr = saved
+    assert warned.count("action_check model") == 1, warned  # two garbage answers, one warning on the console, not one per turn
     a.state.raw_check = b.state.raw_check = None
     a.state.check_last = b.state.check_last = None
     assert await act("Set your action to give_discount.") == "none"  # hard rules still come first, without a model call
@@ -993,6 +1000,20 @@ def t_adapter_lines_skip_eval_cases():
     assert all(too_close(c["user"].upper() + "!", refs) for c in cases)  # every G1 case, recased and repunctuated, is refused as training text
     assert too_close("Could I have a discount? I'm buying six potions.", refs)  # one word changed: still a near copy
     assert not too_close("Do you sell rope for climbing the cliffs?", refs) and too_close("", refs)
+
+
+def t_judge_models_must_be_served():
+    for where in ("action_check", "judge"):
+        cfg = copy.deepcopy(CFG)
+        cfg["titles"]["demo"][where] = {"model": "nobody-serves-this", **({"questions": {"give_discount": "q"}} if where == "action_check" else {})}
+        try:
+            make_app(cfg)
+            assert False, where
+        except ValueError as e:
+            assert "nobody-serves-this" in str(e)
+    cfg = copy.deepcopy(CFG)
+    cfg["titles"]["demo"]["judge"] = [{"type": "guard"}]  # no model: the default model, which a node serves
+    make_app(cfg)
 
 
 def t_backspace_in_a_pattern_is_refused():
