@@ -121,6 +121,7 @@ Run the gateway against a local model:
 
 ```bash
 ollama pull qwen3:1.7b
+ollama pull qwen3:4b-instruct    # confirms each action the NPC picks; without it no action is ever taken
 ANANSI_CONFIG=config.ollama.json python -m uvicorn gateway.app:make_app --factory --port 8080
 python tools/eval.py --key change-me --cases evals/g1_shopkeeper.jsonl --split test     # in a second terminal
 ```

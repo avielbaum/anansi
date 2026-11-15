@@ -61,6 +61,13 @@ With `"structured": true`, the node is asked for JSON `{"say", "action"}` under 
 the title's `actions` or `none`. The gateway re-validates: an unlisted action becomes `none`, malformed JSON becomes
 the fallback line.
 
+Each action should also be confirmed against the player's line, one of two ways. `action_check` (below) asks a second model
+and is what `config.ollama.json` uses. `action_gates` maps an action to a regular expression that the player's line must
+match; it needs no extra model, which is why the mock, vLLM, OpenRouter and volunteer example configs keep it, but a word
+list only knows the phrasings it was written for: the G1 one matched 149 of 400 new threat and crime-report lines and 12 of
+120 non-English haggles and threats. Write your own lists from real player lines, and prefer `action_check` where a 4B model
+fits.
+
 ### Action check (`action_check`)
 
 Optional per title: `{"model": "judge", "questions": {"give_discount": "The player is haggling: asking for a discount or a
