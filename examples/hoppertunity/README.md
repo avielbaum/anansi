@@ -30,7 +30,8 @@ floor manager of the Hopper Works, a small gadget plant on its last chance.
   their story has got.
 - **Tutorial:** eight steps walk a new manager from the first dock to the first errand, pulsing the button to press.
   It can be skipped, and a saved game remembers where you were.
-- **Trouble shows:** a machine that is jammed, blocked or short of an input says so above it.
+- **Trouble shows:** a machine that is jammed, blocked or short of an input says so above it. Whoever or whatever the
+  current errand step wants is marked in orange.
 - **The crew:** Dot (docks), Sprocket (machines), Tilly (packing and quality) and Penny (sales) walk between the
   buildings they look after, and each have a morale from 0 to 100. Morale scales their station from 0.8x to 1.2x: truck turnaround, machine speed and jams, defective units
   that come back unpaid, and selling prices. Everyone loses 3 morale on an ordinary day, so a crew left alone sours.

@@ -697,7 +697,7 @@ func _draw_items(frac: float) -> void:
 
 
 func _draw_tags() -> void:
-	var now := [cam.transform, zoom, sim.ticks, sim.cells.size(), crew_nodes.values().map(func(n): return n.position)]
+	var now := [cam.transform, zoom, sim.ticks, sim.cells.size(), crew_nodes.values().map(func(n): return n.position), sim.quest.get("step", -1)]
 	if now != tags_seen:  # repaint only when the view or the factory changed
 		tags_seen = now
 		tag_canvas.queue_redraw()
@@ -709,13 +709,25 @@ func _paint_tags() -> void:
 	var font := ThemeDB.fallback_font
 	var size := clampi(int(260.0 / zoom), 10, 20)
 	var taken: Array[Rect2] = []  # where tags already are: one that would land on another is nudged up a line
+	# what the errand's current step wants is marked in orange: the coworker to talk to, the kind of building to look
+	# at, or (for goods to ship) the outbound docks
+	var step: Dictionary = sim.quest.steps[sim.quest.step] if not sim.quest.is_empty() else {}
+	var wanted: String = step.get("target_id", "") if step.get("objective") != "deliver" else "outbound"
 	for id in crew_nodes:  # people first: their names and morale, coloured by mood, at any zoom
 		var label := "Pip (you)" if id == "pip" else "%s %d" % [Data.CREW[id].name, int(sim.morale[id])]
 		var ink: Color = Color.WHITE if id == "pip" else {"low": Color.TOMATO, "mid": Color("ffe9a8"), "high": Color("9be8a4")}[sim.mood(id)]
+		if step.get("objective") == "talk_to" and wanted == id:
+			label = "> %s <" % label
+			ink = ORANGE
 		var spot := cam.unproject_position(crew_nodes[id].position + Vector3(0, 1.45, 0))
 		var wide := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 		spot.x -= wide / 2
-		taken.append(Rect2(spot.x, spot.y - size, wide, size))
+		var room := Rect2(spot.x, spot.y - size, wide, size)
+		for tries in 4:  # people gather at the same dock: stack their names
+			if taken.any(func(t): return t.intersects(room)):
+				room.position.y -= size + 2
+		spot.y = room.position.y + size
+		taken.append(room)
 		tag_canvas.draw_string_outline(font, spot, label, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 5, Color.BLACK)
 		tag_canvas.draw_string(font, spot, label, HORIZONTAL_ALIGNMENT_LEFT, -1, size, ink)
 	if zoom > 26.0:  # too far out to read the buildings' tags: skip them, which also keeps a huge floor fast
@@ -727,6 +739,9 @@ func _paint_tags() -> void:
 		if not screen.has_point(at):
 			continue
 		var text := _tag_text(c)
+		var marked: bool = step.get("objective", "talk_to") != "talk_to" and c.kind == wanted
+		if marked:
+			text = "> %s <" % (text if text != "" else Data.BUILD[c.kind].name)
 		if text == "":
 			continue
 		var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
@@ -738,7 +753,7 @@ func _paint_tags() -> void:
 		at.y = box.position.y + size
 		taken.append(box)
 		tag_canvas.draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 5, Color.BLACK)
-		tag_canvas.draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color.WHITE)
+		tag_canvas.draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, ORANGE if marked else Color.WHITE)
 
 
 ## What floats over a building: what a dock handles, how full a hopper is, and for a machine only what is wrong.
