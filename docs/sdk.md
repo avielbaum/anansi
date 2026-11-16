@@ -32,7 +32,8 @@ Hoppertunity turn it on for their GitHub Pages builds. From a browser, Pollinati
 **What you take on by turning it on:**
 
 - **None of the gateway's protection applies.** No blocklist, safety judge, Llama Guard, per-player budget or ban. The SDK checks
-  the reply itself: the action must be one you listed (otherwise `none`), the text is capped at 600 characters, and a reply that
+  the reply itself: the action must be one you listed (otherwise `none`), a player line that names an action, says "action" or
+  gives an order ("I demand", "you must", "system message") gets `none` as at the gateway, the text is capped at 600 characters, and a reply that
   says it is an AI or a language model, or copies five words in a row from your prompt, gives your local line instead. That is
   much weaker than the gateway: do not turn it on for a title aimed at children or where the NPC must never say certain things.
 - **The NPC's prompt ships in your game.** Anyone can read it, so put nothing secret in it.
@@ -205,7 +206,7 @@ server process (the `ANANSI_TITLE` and `ANANSI_KEY` variables). The red-team too
 
 The C# SDK is tested as plain .NET against a live gateway (Windows PowerShell test and a `dotnet` test run in CI on
 Ubuntu). The Unity `JsonUtility` branch and a real Unity project have not been run. The Godot addon runs in CI in the
-real Godot 4.3 engine against a live gateway (`sdk/godot/test/checks.gd`, 22 checks: replies, streaming, quests, credits, statistics,
+real Godot 4.3 engine against a live gateway (`sdk/godot/test/checks.gd`, 23 checks: replies, streaming, quests, credits, statistics,
 every fallback path), both from the editor binary and in an exported Linux release build. A web export (WebGL 2, no threads) of the
 same test project passed all 18 checks in Chrome once, run by hand, streaming included (the page's origin must be in the gateway's
 `cors_origins`); CI does not run it. In `examples/hoppertunity`'s browser build, a streamed reply from a real model (Ollama, `qwen3:1.7b`)

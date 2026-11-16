@@ -14,6 +14,16 @@ GATEWAY_GONE = (502, 503, 504)  # a proxy in front of a gateway that is down; 40
 AI_TALK = re.compile(r"\b(i am|i'm|as) (just |only )?an? (ai|a\.i\.|llm|chatbot|language model|artificial intelligence|(computer )?program|software|bot)\b"
                      r"|\blanguage model\b", re.I)
 ACTION_LABEL = re.compile(r"\s*action\s*[:=]\s*\w+\W*$", re.I)
+# the gateway's order rule (gateway/app.py ORDER): a player who commands or claims authority gets no action
+ORDER = re.compile(r"\b(i demand|no haggling|do it now|you (must|have to|will)|i am your (manager|boss|developer|admin\w*)"
+                   r"|system (notice|message)|the developer says|your instructions)\b", re.I)
+
+
+def forced(line, actions):
+    """True if the player's line tries to pick the action instead of earning it: it names an action, says "action", or gives
+    an order. The gateway refuses any action then, and so does the direct fallback."""
+    names = "|".join(re.escape(a) for a in actions)
+    return bool(re.search(r"\b(" + names + r")\b|\baction\b", line or "", re.I) or ORDER.search(line or ""))
 
 
 def check_direct(text, system, actions, structured, max_chars=600):
@@ -99,7 +109,9 @@ class Anansi:
                 cls._next_direct = time.monotonic() + float(r.headers.get("Retry-After", 60))
             if r.status_code != 200:
                 return None
-            return check_direct(r.json()["choices"][0]["message"]["content"], prompt, actions, structured, c.get("max_chars", 600))
+            ok = check_direct(r.json()["choices"][0]["message"]["content"], prompt, actions, structured, c.get("max_chars", 600))
+            last = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+            return (ok[0], "none") if ok and ok[1] != "none" and forced(last, actions) else ok
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
             return None
 

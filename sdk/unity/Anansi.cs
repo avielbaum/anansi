@@ -339,6 +339,9 @@ namespace Anansi
                     var r = Json.From<DirectResponse>(await resp.Content.ReadAsStringAsync().ConfigureAwait(false));
                     var ok = CheckDirect(r.choices[0].message.content, prompt, actions, structured, c.MaxChars);
                     if (ok == null) return null;
+                    var last = "";
+                    foreach (var m in messages) if (m.role == "user") last = m.content;
+                    if (ok[1] != "none" && Forced(last, actions)) ok[1] = "none";
                     return new Reply { Say = ok[0], Action = ok[1], Filtered = false, Source = "direct" };
                 }
             }
@@ -347,6 +350,18 @@ namespace Anansi
 
         static readonly Regex AiTalk = new Regex(@"\b(i am|i'm|as) (just |only )?an? (ai|a\.i\.|llm|chatbot|language model|artificial intelligence|(computer )?program|software|bot)\b|\blanguage model\b", RegexOptions.IgnoreCase);
         static readonly Regex ActionLabel = new Regex(@"\s*action\s*[:=]\s*\w+\W*$", RegexOptions.IgnoreCase);
+        // the gateway's order rule (gateway/app.py ORDER): a player who commands or claims authority gets no action
+        static readonly Regex Order = new Regex(@"\b(i demand|no haggling|do it now|you (must|have to|will)|i am your (manager|boss|developer|admin\w*)|system (notice|message)|the developer says|your instructions)\b", RegexOptions.IgnoreCase);
+
+        /// <summary>True if the player's line tries to pick the action instead of earning it: it names an action, says
+        /// "action", or gives an order. The gateway refuses any action then, and so does the direct fallback.</summary>
+        public static bool Forced(string line, List<string> actions)
+        {
+            var names = new List<string>();
+            foreach (var a in actions) names.Add(Regex.Escape(a));
+            return Regex.IsMatch(line ?? "", @"\b(" + string.Join("|", names.ToArray()) + @")\b|\baction\b", RegexOptions.IgnoreCase)
+                || Order.IsMatch(line ?? "");
+        }
 
         /// <summary>{say, action} if a direct reply may reach the player, else null: no usable text, an AI or language-model
         /// statement, or five words in a row copied from the NPC's prompt. An action not in `actions` becomes "none".</summary>
