@@ -60,8 +60,8 @@ container toolkit). The compose file uses `vllm/vllm-openai:latest`: pin the ver
 ## macOS (Apple Silicon)
 
 The gateway is plain Python, and the agent reads Mac hardware with macOS's own tools (no root). Install Ollama (it uses Metal),
-pull a model and use the Ollama steps above. On a Mac mini (Apple M6, macOS 27) the self-checks and the hardware readers pass;
-Ollama and a real model have not been run there yet. Memory guidance is in [DESIGN.md section 19.1](../DESIGN.md).
+pull a model and use the Ollama steps above. On a Mac mini (Apple M6, macOS 27) the self-checks pass and
+the gateway, a volunteer agent and the Python and JavaScript SDKs ran with Ollama and `qwen3:8b` on Metal (about 1.3 s per reply). Memory guidance is in [DESIGN.md section 19.1](../DESIGN.md).
 
 ## C# SDK test
 

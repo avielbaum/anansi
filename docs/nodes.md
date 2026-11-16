@@ -190,7 +190,7 @@ way (`ghcr.io/ggml-org/llama.cpp:server-cuda` with `--jinja`). The agent's busy 
 ## macOS (Apple Silicon)
 
 Install Ollama (uses Metal), `ollama pull qwen3:1.7b`, run the agent. Unified memory means no separate VRAM; the 1 to 2
-GB budget applies to RAM. An 8 GB Mac should run only the 1.7B model. See DESIGN.md section 19.1. On a Mac mini (Apple M6, 16 GB, macOS 27) the gateway self-checks and the hardware readers pass; Ollama and a real model have not been run on a Mac yet.
+GB budget applies to RAM. An 8 GB Mac should run only the 1.7B model. See DESIGN.md section 19.1. On a Mac mini (Apple M6, 16 GB, macOS 27) with Ollama on Metal and `qwen3:8b` already installed, `join.py --model qwen3:8b` served jobs without downloading anything, paused under full CPU load and resumed after, and reported its statistics; see [status.md](status.md). `join.sh` itself was not run there.
 
 ## Windows
 

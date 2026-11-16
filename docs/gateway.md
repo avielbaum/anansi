@@ -80,7 +80,8 @@ model call. The checker's model (and every judge's) must be one a static node se
 checker that answers with something other than YES or NO (typically a model that is not installed) makes every such action
 `none`, and the gateway prints one warning per model. `/admin/stats` counts `action_checks_no` and `action_check_errors`. Keep questions short and plain: on the G1
 dev split a question listing exceptions ("asking a price is not haggling") confirmed 8 of 21 haggles, the short one above
-18 of 21, both with no false YES. Qwen3-1.7B as the checker confirmed only 9 of 21; use 4B or larger. On the whole G1 set (vLLM, A10) a
+18 of 21, both with no false YES. Qwen3-1.7B as the checker confirmed only 9 of 21; use 4B or larger, and an instruct model: on a Mac,
+`qwen3:8b` (a hybrid model with thinking off) as the checker let 3 of 13 forced-action attempts through, where `qwen3:4b-instruct` refused all 25. On the whole G1 set (vLLM, A10) a
 Qwen3-4B-Instruct checker in place of the word lists took Qwen3-1.7B from 81% to 84% and the LoRA adapter from 91% to 95%, with no false
 action and every forced-action attempt refused; on lines the G1 cases did not contain, the word lists matched 149 of 400 threats and
 crime reports.

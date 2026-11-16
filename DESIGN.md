@@ -658,8 +658,8 @@ the node agent is plain Python and the gateway never sees what runs behind it.
   dedicated GPU does, so the idle-only rule in section 21 matters more here.
 - **Verification:** probes and spot checks (section 22) treat a Mac node like any other. Do not assume bit-identical
   output between Metal and CUDA nodes; that is why verification uses known-answer checks, not output equality.
-- **Status:** on a Mac mini (Apple M6, 16 GB, macOS 27) the self-checks and the agent's hardware readers pass. Not run: Ollama
-  or llama.cpp serving jobs on a Mac, thermal behaviour, and game co-residency.
+- **Status:** on a Mac mini (Apple M6, 16 GB, macOS 27) the self-checks pass, and Ollama on Metal served `qwen3:8b` through the
+  gateway and through a volunteer agent (about 1.3 s per reply; the agent paused under load). Not run: thermal behaviour, game co-residency.
 
 ## 20. Partial residency on each node (Colibri-style) (supersedes the T2 priority in 18-19)
 
