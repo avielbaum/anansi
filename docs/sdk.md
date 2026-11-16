@@ -42,8 +42,8 @@ storylines keep the local fallback. Unreal does not have it.
 - **The words may not match the action.** As with any model, a reply can promise something the action does not do (one live
   test answered "Fine, here are the coins." with `call_guard`); the gateway does not check this either.
 
-Measured once, live, from a Windows PC with the gateway down: Python 8.9 s for a structured reply with the right action, JavaScript
-1.4 s; a call 31 s after the previous one was held by the service past the 20 s timeout, which is why the default interval is 60 s.
+Measured once each, live, from a Windows PC with the gateway down: Python 8.9 s for a structured reply with the right action, JavaScript
+1.4 s, C# (as .NET Framework, compiled the way the Windows test does) 10.9 s, also with the right action; Godot only against a mock in CI; a call 31 s after the previous one was held by the service past the 20 s timeout, which is why the default interval is 60 s.
 
 ## Python (`sdk/anansi_client.py`)
 
