@@ -94,7 +94,7 @@ Measured on one Windows PC (Qwen3 through Ollama on the CPU), on a rented Linux 
 | Layered output safety: overlap guard, Llama Guard classifier, judge model | working; on 23 self-written pairs the combination caught all violations with no false positives, about 7.5 s extra on CPU |
 | Python and C# SDKs with sentence streaming and local fallback | working (C# as plain .NET; Unity untested) |
 | Optional direct fallback in the Python, JavaScript, C# and Godot SDKs: a public keyless LLM (Pollinations) when the gateway is unreachable, with client-side checks only | working in tests and live (Python, JavaScript, C#); off by default; see [the trade-offs](docs/sdk.md#direct-fallback-to-a-public-llm) |
-| JavaScript / TypeScript SDK (browsers, Node, Electron, Deno, Bun) | working: 26 checks against a live gateway in CI; for browsers on another origin list them in `cors_origins` |
+| JavaScript / TypeScript SDK (browsers, Node, Electron, Deno, Bun) | working: 27 checks against a live gateway in CI; for browsers on another origin list them in `cors_origins` |
 | Red-team set for gate G5 (759 prompts, dev/test split, runner) | built; untuned holdout run (420 fresh cases): 32 automatic failures; a second untuned set: 6 (5 arguable); **G5 not passed** |
 | Godot 4 addon (GDScript) | working: 22 checks in the real Godot 4.3 engine against a live gateway in CI, in the editor and in an exported Linux release build (not tried on other export targets or consoles) |
 | Unreal Engine 5 plugin (C++, Blueprint-callable) | **written, never compiled or run: no Unreal install was available** |

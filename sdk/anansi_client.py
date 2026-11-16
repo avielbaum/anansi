@@ -30,7 +30,8 @@ def check_direct(text, system, actions, structured, max_chars=600):
             return None
         text, act = str(d.get("say", "")), d.get("action", "none")
         act = act if act in actions else "none"
-    say = " ".join(ACTION_LABEL.sub("", text or "").split())[:max_chars].strip()
+    lines = (" ".join(line.split()) for line in ACTION_LABEL.sub("", text or "").split("\n"))  # line breaks kept: some prompts ask for lines
+    say = "\n".join(line for line in lines if line)[:max_chars].strip()
     words = re.findall(r"\w+", system.lower())
     grams = {" ".join(words[i:i + 5]) for i in range(len(words) - 4)}
     said = re.findall(r"\w+", say.lower())
@@ -40,13 +41,15 @@ def check_direct(text, system, actions, structured, max_chars=600):
 
 
 class Anansi:
+    _next_direct = 0.0  # shared by every client in the process: the free limit is per player IP, not per client
+
     def __init__(self, base_url, title, key, ticket, fallback=None, timeout=3.0, transport=None, gen_timeout=60.0, direct=None):
         """direct (optional): {"system": the NPC's prompt, "actions": [...], "url", "model", "min_interval_s", "timeout_s"}.
         When the gateway cannot be reached, chat() asks that LLM directly (default: Pollinations, keyless) before the local
         fallback. The prompt ships in your game, the player's text goes to that service, and only the checks in
         check_direct() apply: see docs/sdk.md before turning it on."""
         self.http = httpx.Client(transport=transport)
-        self.direct, self._next_direct = direct, 0.0
+        self.direct = direct
         self.base, self.gen_timeout = base_url.rstrip("/"), gen_timeout
         self.url, self.timeout = self.base + "/v1/chat/completions", timeout
         self.headers = {"X-Anansi-Title": title, "X-Anansi-Key": key, "X-Player-Token": ticket}
@@ -79,22 +82,24 @@ class Anansi:
 
     def _direct(self, messages, structured):
         """(say, action) from the direct LLM, or None (off, too soon after the last call, no answer, or failed the checks)."""
-        c = self.direct
-        if not c or time.monotonic() < self._next_direct:
+        c, cls = self.direct, type(self)
+        if not c or time.monotonic() < cls._next_direct:
             return None
-        self._next_direct = time.monotonic() + c.get("min_interval_s", 60)
+        cls._next_direct = time.monotonic() + c.get("min_interval_s", 60)
         actions = list(c.get("actions") or [])
-        system = c["system"] + ("" if not structured else " Reply with only a JSON object, no other text, shaped like this: "
+        own = "\n".join(m["content"] for m in messages if m.get("role") == "system")  # the game's NPC persona
+        prompt = c["system"] + ("\n" + own if own else "")
+        system = prompt + ("" if not structured else " Reply with only a JSON object, no other text, shaped like this: "
                                 '{"say": "<what you say>", "action": ' + " | ".join(json.dumps(a) for a in actions + ["none"]) + "}")
         try:
             r = self.http.post(c.get("url", DIRECT_URL), timeout=c.get("timeout_s", 20), json={
                 "model": c.get("model", "openai"), "max_tokens": c.get("max_tokens", 400),
                 "messages": [{"role": "system", "content": system}] + [m for m in messages if m.get("role") in ("user", "assistant")][-8:]})
             if r.status_code == 402:  # over the free limit: wait as long as it says
-                self._next_direct = time.monotonic() + float(r.headers.get("Retry-After", 60))
+                cls._next_direct = time.monotonic() + float(r.headers.get("Retry-After", 60))
             if r.status_code != 200:
                 return None
-            return check_direct(r.json()["choices"][0]["message"]["content"], c["system"], actions, structured)
+            return check_direct(r.json()["choices"][0]["message"]["content"], prompt, actions, structured, c.get("max_chars", 600))
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
             return None
 

@@ -97,6 +97,7 @@ func run() -> int:
 	var t1 = A.check_direct("As an AI language model I cannot.", "x", [], false)
 	var t2 = A.check_direct("{\"say\": \"Take it.\", \"action\": \"give_sword\"}", "x", ["give_discount"], true)
 	var t3 = A.check_direct("Lovely day.  Action: none", "x", [], false)
-	check(t1 == null and t2 != null and t2[1] == "none" and A.check_direct("not json", "x", [], true) == null and t3 != null and t3[0] == "Lovely day.", "direct replies are checked like Python's")
+	var t4 = A.check_direct("PLACE:  the  harbour\n\nVIBE: salt", "x", [], false)
+	check(t1 == null and t2 != null and t2[1] == "none" and A.check_direct("not json", "x", [], true) == null and t3 != null and t3[0] == "Lovely day." and t4 != null and t4[0] == "PLACE: the harbour\nVIBE: salt", "direct replies are checked like Python's (line breaks kept)")
 	print("%d passed, %d failed" % [passes, failures])
 	return failures

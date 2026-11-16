@@ -58,6 +58,8 @@ Each coworker is sent who they are, their morale, the day, the cash and the cont
 (`src/data.gd`: twelve quests, three per coworker). The Any work? and Offer a raise buttons work either way. The top bar shows whether the last answer
 was live.
 
+Without a gateway (the GitHub Pages build), coworkers answer through Pollinations' free public AI instead, at most one reply a minute, with the same five actions; the first such reply and the top bar say so, because what you type is then sent to pollinations.ai. Other replies, quests, stories and end-of-day remarks use the written lines.
+
 ### Tried with a real model
 
 With Ollama's `qwen3:1.7b` on a laptop CPU, through this example's gateway config (one run of each, by hand; a spot

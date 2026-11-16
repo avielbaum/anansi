@@ -20,6 +20,12 @@ in C#, and `npc.direct = {"system": ..., "actions": [...]}` in Godot (`url`, `mo
 Python and JavaScript also use it for a stream that cannot start (the reply arrives whole); C# and Godot streams, quests and
 storylines keep the local fallback. Unreal does not have it.
 
+The game's own system messages (an NPC's persona, for example) are added to the prompt after `system`. The interval is shared by
+every client in the game, because the limit is per player, not per client. Replies keep their line breaks and are cut at
+600 characters (`max_chars` / `maxChars` / `MaxChars` to change it, for a prompt that asks for an answer in lines). Waypoint and
+Hoppertunity turn it on for their GitHub Pages builds. From a browser, Pollinations answered pages served from a public site
+(avielbaum.github.io) but refused a page on `localhost` with `403 Missing Turnstile token`, so test it from a real site.
+
 **When it is used:** only when the gateway gives no answer (refused connection, DNS, timeout) or a proxy in front of it answers
 502, 503 or 504. Never on 401, 403 or 429, so it cannot be used to get round a budget or a ban.
 

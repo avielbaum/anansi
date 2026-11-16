@@ -85,6 +85,7 @@ namespace Anansi
         public double MinIntervalSeconds = 60;
         public double TimeoutSeconds = 20;
         public int MaxTokens = 400;
+        public int MaxChars = 600;                             // longest reply passed to the player
     }
     [Serializable] public class DirectRequest { public string model; public int max_tokens; public List<Message> messages; }
     [Serializable] public class DirectMessage { [System.Runtime.Serialization.OptionalField] public string content; }
@@ -301,7 +302,7 @@ namespace Anansi
 
         /// <summary>Off unless set: the public LLM ChatAsync asks when the gateway cannot be reached (see DirectOptions).</summary>
         public DirectOptions Direct;
-        DateTime nextDirect = DateTime.MinValue;
+        static DateTime nextDirect = DateTime.MinValue; // shared by every client: the free limit is per player IP, not per client
 
         async Task<Reply> DirectAsync(List<Message> messages, bool structured)
         {
@@ -309,7 +310,10 @@ namespace Anansi
             if (c == null || c.System == null || DateTime.UtcNow < nextDirect) return null;
             nextDirect = DateTime.UtcNow.AddSeconds(c.MinIntervalSeconds);
             var actions = c.Actions ?? new List<string>();
-            var system = c.System;
+            var own = new List<string>(); // the game's NPC persona, after the base prompt
+            foreach (var m in messages) if (m.role == "system") own.Add(m.content);
+            var prompt = c.System + (own.Count > 0 ? "\n" + string.Join("\n", own.ToArray()) : "");
+            var system = prompt;
             if (structured)
             {
                 var opts = new List<string>();
@@ -333,7 +337,7 @@ namespace Anansi
                     }
                     if (!resp.IsSuccessStatusCode) return null;
                     var r = Json.From<DirectResponse>(await resp.Content.ReadAsStringAsync().ConfigureAwait(false));
-                    var ok = CheckDirect(r.choices[0].message.content, c.System, actions, structured);
+                    var ok = CheckDirect(r.choices[0].message.content, prompt, actions, structured, c.MaxChars);
                     if (ok == null) return null;
                     return new Reply { Say = ok[0], Action = ok[1], Filtered = false, Source = "direct" };
                 }
@@ -359,7 +363,13 @@ namespace Anansi
                 text = d.say ?? "";
                 act = d.action != null && actions.Contains(d.action) ? d.action : "none";
             }
-            var say = string.Join(" ", ActionLabel.Replace(text ?? "", "").Split((char[])null, StringSplitOptions.RemoveEmptyEntries));
+            var lines = new List<string>(); // line breaks kept: some prompts ask for an answer in lines
+            foreach (var line in ActionLabel.Replace(text ?? "", "").Split('\n'))
+            {
+                var l = string.Join(" ", line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries));
+                if (l.Length > 0) lines.Add(l);
+            }
+            var say = string.Join("\n", lines.ToArray());
             if (say.Length > maxChars) say = say.Substring(0, maxChars);
             say = say.Trim();
             if (say.Length == 0 || AiTalk.IsMatch(say) || CopiesPrompt(say, system)) return null;

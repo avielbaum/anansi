@@ -71,7 +71,9 @@ check((await down.leaderboard()) === null, "gateway down: no statistics");
   r = await d.chat([{ role: "system", content: "hidden" }, ...msgs], { structured: true });
   check(r.source === "direct" && r.action === "give_discount" && r.say === "Fine, ten percent off.", "gateway down: the direct LLM answers, action checked");
   const sent = llm.calls.at(-1).messages;
-  check(sent[0].content.startsWith(system) && sent.map((m) => m.role).join() === "system,user", "direct request: the NPC prompt, not the game's own system lines");
+  check(sent[0].content.startsWith(system + "\nhidden") && sent.map((m) => m.role).join() === "system,user", "direct request: one system message, the base prompt then the game's persona");
+  const other = mk({ baseUrl: "http://gw", fetch: fake, direct: { url: "http://llm/v1", system } });
+  check((await other.chat(msgs)).source === "fallback" && llm.calls.length === 1, "a second client on the same page shares the interval (the limit is per IP)");
   r = await d.chat(msgs, { structured: true });
   check(r.source === "fallback" && llm.calls.length === 1, "one direct call per interval, the next turn gets the local line");
   let ok = true;
@@ -92,7 +94,8 @@ check((await down.leaderboard()) === null, "gateway down: no statistics");
     && checkDirect("I sell swords and never gives credit to strangers here.", system, [], false) === null
     && checkDirect("not json", system, [], true) === null
     && JSON.stringify(checkDirect('{"say": "Take it.", "action": "give_sword"}', system, ["give_discount"], true)) === '["Take it.","none"]'
-    && JSON.stringify(checkDirect("Lovely day.  Action: none", system, [], false)) === '["Lovely day.","none"]', "direct replies are checked like Python's");
+    && JSON.stringify(checkDirect("Lovely day.  Action: none", system, [], false)) === '["Lovely day.","none"]'
+    && checkDirect("PLACE:  the  harbour\n\nVIBE: salt", system, [], false)[0] === "PLACE: the harbour\nVIBE: salt", "direct replies are checked like Python's (line breaks kept)");
 }
 
 process.exit(failures ? 1 : 0);

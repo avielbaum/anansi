@@ -244,19 +244,21 @@ def t_sdk_direct_fallback():
     assert r == {"source": "direct", "say": "Fine, ten percent off.", "action": "give_discount", "filtered": False}
     sent = state["calls"][-1]
     assert sent["messages"][0]["role"] == "system" and sent["messages"][0]["content"].startswith(system) and '"give_discount" | "none"' in sent["messages"][0]["content"]
-    assert [m["role"] for m in sent["messages"]] == ["system", "user"]  # the game's own system lines are not forwarded
+    assert [m["role"] for m in sent["messages"]] == ["system", "user"] and sent["messages"][0]["content"].startswith(system + "\nhidden")  # the persona follows the base prompt
     assert ask()["source"] == "fallback" and len(state["calls"]) == 1  # one call per 30 s: the second turn gets the local line, no request
+    other = Anansi("http://gw", "demo", "k", "dev:1", transport=httpx.MockTransport(handler), direct={"url": "http://llm/v1", "system": system})
+    assert other.chat([{"role": "user", "content": "x"}])["source"] == "fallback" and len(state["calls"]) == 1  # the limit is per IP: clients share it
     for status, direct in ((503, True), (502, True), (429, False), (401, False), (403, False)):  # only an absent gateway, never a refusal
-        npc._next_direct = 0
+        Anansi._next_direct = 0
         state["gw"] = status
         assert (ask()["source"] == "direct") == direct, status
     state["gw"] = "down"
-    npc._next_direct, state["llm_status"] = 0, 402  # over the free limit: wait as long as the service says
+    Anansi._next_direct, state["llm_status"] = 0, 402  # over the free limit: wait as long as the service says
     assert ask()["source"] == "fallback" and npc._next_direct - time.monotonic() > 100
     state["llm_status"] = 200
-    npc._next_direct, state["llm"] = 0, json.dumps({"say": "Take it.", "action": "give_sword"})
+    Anansi._next_direct, state["llm"] = 0, json.dumps({"say": "Take it.", "action": "give_sword"})
     assert ask() ["action"] == "none"  # not on the list
-    npc._next_direct, state["llm"] = 0, "Hello there, traveller."
+    Anansi._next_direct, state["llm"] = 0, "Hello there, traveller."
     assert ask(structured=False)["say"] == "Hello there, traveller."
     assert Anansi("http://gw", "demo", "k", "dev:1", transport=httpx.MockTransport(handler)).chat([{"role": "user", "content": "x"}])["source"] == "fallback"  # off unless set
     # what must not reach a player
@@ -266,11 +268,13 @@ def t_sdk_direct_fallback():
     assert check_direct('Sure! {"say": "Ten off.", "action": "give_discount"} ok', system, ["give_discount"], True) == ("Ten off.", "give_discount")
     assert check_direct("Lovely day.  Action: none", system, [], False) == ("Lovely day.", "none")
     assert len(check_direct("word " * 500, system, [], False)[0]) <= 600
+    assert check_direct("PLACE:  the  harbour\n\nVIBE: salt", system, [], False)[0] == "PLACE: the harbour\nVIBE: salt"  # lines kept
+    Anansi._next_direct = 0
     stream = list(Anansi("http://gw", "demo", "k", "dev:1", transport=httpx.MockTransport(handler),
                          direct={"url": "http://llm/v1", "system": system}).chat_stream([{"role": "user", "content": "Hi"}]))
     assert stream == ["Hello there, traveller."]  # a stream that cannot start gets the direct reply whole
     for status, want in ((429, "Hm."), (401, "Hm."), (503, "Hello there, traveller.")):  # a refused stream never goes direct
-        state["gw"] = status
+        state["gw"], Anansi._next_direct = status, 0
         s = Anansi("http://gw", "demo", "k", "dev:1", fallback=lambda m: "Hm.", transport=httpx.MockTransport(handler),
                    direct={"url": "http://llm/v1", "system": system})
         assert list(s.chat_stream([{"role": "user", "content": "Hi"}])) == [want], status

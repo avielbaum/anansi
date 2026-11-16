@@ -304,4 +304,9 @@ assert.equal(save.gold, 60 + pay.gold); assert.equal(save.items.potion, 4); asse
   const t = MAPS.town, tz = t.zones.find(z => z.world), tw = walkable(t).seen;
   assert(tz && tw.has(`${tz.x + 1},${tz.y}`), "Old Town has a road out");
 }
+{ // the direct fallback (no gateway) must use the same prompts and actions as the gateway titles
+  const src = readFileSync(here("./src/anansi.js"), "utf8"), cfg = JSON.parse(readFileSync(here("./config.waypoint.json"), "utf8"));
+  for (const t of ["waypoint", "waypoint-atlas"]) assert(src.includes(JSON.stringify(cfg.titles[t].system_prefix)), `${t}: direct prompt differs from config.waypoint.json`);
+  assert(cfg.titles.waypoint.actions.every(a => src.includes(`"${a}"`)), "direct actions differ from config.waypoint.json");
+}
 console.log("ok");
