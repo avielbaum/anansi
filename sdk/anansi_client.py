@@ -101,10 +101,16 @@ class Anansi:
         prompt = c["system"] + ("\n" + own if own else "")
         system = prompt + ("" if not structured else " Reply with only a JSON object, no other text, shaped like this: "
                                 '{"say": "<what you say>", "action": ' + " | ".join(json.dumps(a) for a in actions + ["none"]) + "}")
+        started, limit = time.monotonic(), c.get("timeout_s", 20)
+        send = lambda: self.http.post(c.get("url", DIRECT_URL), timeout=max(1.0, limit - (time.monotonic() - started)), json={
+            "model": c.get("model", "openai"), "max_tokens": c.get("max_tokens", 400),
+            "messages": [{"role": "system", "content": system}] + [m for m in messages if m.get("role") in ("user", "assistant")][-8:]})
         try:
-            r = self.http.post(c.get("url", DIRECT_URL), timeout=c.get("timeout_s", 20), json={
-                "model": c.get("model", "openai"), "max_tokens": c.get("max_tokens", 400),
-                "messages": [{"role": "system", "content": system}] + [m for m in messages if m.get("role") in ("user", "assistant")][-8:]})
+            r = send()
+            wait = float(r.headers.get("Retry-After", 60)) if r.status_code == 402 else 0
+            if wait and wait <= c.get("retry_within_s", 15) and time.monotonic() - started + wait < limit:
+                time.sleep(wait + 0.25)  # another app on this address had the slot: wait as told, once
+                r = send()
             if r.status_code == 402:  # over the free limit: wait as long as it says
                 cls._next_direct = time.monotonic() + float(r.headers.get("Retry-After", 60))
             if r.status_code != 200:

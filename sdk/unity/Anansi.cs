@@ -86,6 +86,7 @@ namespace Anansi
         public double TimeoutSeconds = 20;
         public int MaxTokens = 400;
         public int MaxChars = 600;                             // longest reply passed to the player
+        public double RetryWithinSeconds = 15;                 // a 402 asking to wait at most this long is waited out once
     }
     [Serializable] public class DirectRequest { public string model; public int max_tokens; public List<Message> messages; }
     [Serializable] public class DirectMessage { [System.Runtime.Serialization.OptionalField] public string content; }
@@ -326,15 +327,22 @@ namespace Anansi
             msgs.AddRange(keep.GetRange(Math.Max(0, keep.Count - 8), Math.Min(8, keep.Count)));
             try
             {
-                var body = new DirectRequest { model = c.Model, max_tokens = c.MaxTokens, messages = msgs };
+                var json = Json.To(new DirectRequest { model = c.Model, max_tokens = c.MaxTokens, messages = msgs });
+                var started = DateTime.UtcNow;
                 using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(c.TimeoutSeconds)))
-                using (var resp = await genHttp.PostAsync(c.Url, new StringContent(Json.To(body), Encoding.UTF8, "application/json"), cts.Token).ConfigureAwait(false))
+                {
+                    var resp = await genHttp.PostAsync(c.Url, new StringContent(json, Encoding.UTF8, "application/json"), cts.Token).ConfigureAwait(false);
+                    var wait = (int)resp.StatusCode == 402 ? RetryAfterSeconds(resp) : 0;
+                    if (wait > 0 && wait <= c.RetryWithinSeconds && (DateTime.UtcNow - started).TotalSeconds + wait < c.TimeoutSeconds)
+                    {
+                        resp.Dispose(); // another app on this address had the slot: wait as told, once
+                        await Task.Delay(TimeSpan.FromSeconds(wait + 0.25), cts.Token).ConfigureAwait(false);
+                        resp = await genHttp.PostAsync(c.Url, new StringContent(json, Encoding.UTF8, "application/json"), cts.Token).ConfigureAwait(false);
+                    }
+                using (resp)
                 {
                     if ((int)resp.StatusCode == 402) // over the free limit: wait as long as the service says
-                    {
-                        var ra = resp.Headers.RetryAfter;
-                        nextDirect = DateTime.UtcNow.AddSeconds(ra != null && ra.Delta.HasValue ? ra.Delta.Value.TotalSeconds : 60);
-                    }
+                        nextDirect = DateTime.UtcNow.AddSeconds(RetryAfterSeconds(resp));
                     if (!resp.IsSuccessStatusCode) return null;
                     var r = Json.From<DirectResponse>(await resp.Content.ReadAsStringAsync().ConfigureAwait(false));
                     var ok = CheckDirect(r.choices[0].message.content, prompt, actions, structured, c.MaxChars);
@@ -344,8 +352,15 @@ namespace Anansi
                     if (ok[1] != "none" && Forced(last, actions)) ok[1] = "none";
                     return new Reply { Say = ok[0], Action = ok[1], Filtered = false, Source = "direct" };
                 }
+                }
             }
             catch (Exception) { return null; }
+        }
+
+        static double RetryAfterSeconds(HttpResponseMessage resp)
+        {
+            var ra = resp.Headers.RetryAfter;
+            return ra != null && ra.Delta.HasValue ? ra.Delta.Value.TotalSeconds : 60;
         }
 
         static readonly Regex AiTalk = new Regex(@"\b(i am|i'm|as) (just |only )?an? (ai|a\.i\.|llm|chatbot|language model|artificial intelligence|(computer )?program|software|bot)\b|\blanguage model\b", RegexOptions.IgnoreCase);

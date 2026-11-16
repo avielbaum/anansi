@@ -48,7 +48,8 @@ Hoppertunity turn it on for their GitHub Pages builds. From a browser, Pollinati
   carrier NAT) share one reply every 45 seconds, and so does any other app there using Pollinations: expect more local lines there.
   While another request from the same address holds the slot, the service sometimes holds a new one until the slot frees (up to
   about 45 s) instead of refusing it, so give the direct call a timeout that matches how long the screen can wait (`timeout_s`,
-  default 20 s). Measured from a home connection where something else was using Pollinations: requests got `402` with
+  default 20 s). A `402` whose `Retry-After` is short (15 s or less, `retry_within_s` / `retryWithinS` / `RetryWithinSeconds`) and
+  fits in that timeout is waited out once and the request sent again, never sooner than the service asks. Measured from a home connection where something else was using Pollinations: requests got `402` with
   `Retry-After` 14 to 45 s, or were held past 20 s; one sent right after its `Retry-After` answered in 1.4 s.
 - **No promise of service.** Pollinations offers no uptime guarantee and can change models, limits or the endpoint at any time
   (its newer endpoint already requires a key). Your local fallback must stand on its own.
@@ -206,7 +207,7 @@ server process (the `ANANSI_TITLE` and `ANANSI_KEY` variables). The red-team too
 
 The C# SDK is tested as plain .NET against a live gateway (Windows PowerShell test and a `dotnet` test run in CI on
 Ubuntu). The Unity `JsonUtility` branch and a real Unity project have not been run. The Godot addon runs in CI in the
-real Godot 4.3 engine against a live gateway (`sdk/godot/test/checks.gd`, 23 checks: replies, streaming, quests, credits, statistics,
+real Godot 4.3 engine against a live gateway (`sdk/godot/test/checks.gd`, 24 checks: replies, streaming, quests, credits, statistics,
 every fallback path), both from the editor binary and in an exported Linux release build. A web export (WebGL 2, no threads) of the
 same test project passed all 18 checks (the count then) in Chrome once, run by hand, streaming included (the page's origin must be in the gateway's
 `cors_origins`); CI does not run it. In `examples/hoppertunity`'s browser build, a streamed reply from a real model (Ollama, `qwen3:1.7b`)

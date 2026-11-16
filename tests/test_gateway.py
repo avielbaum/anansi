@@ -227,11 +227,14 @@ async def t_stream_filter_and_leak():
 
 def t_sdk_direct_fallback():
     from sdk.anansi_client import Anansi, check_direct
-    state = {"gw": "down", "llm": json.dumps({"say": "Fine, ten percent off.", "action": "give_discount"}), "llm_status": 200, "calls": []}
+    state = {"gw": "down", "llm": json.dumps({"say": "Fine, ten percent off.", "action": "give_discount"}), "llm_status": 200, "calls": [], "busy": 0}
 
     def handler(req):
         if req.url.host == "llm":  # the public LLM
             state["calls"].append(json.loads(req.content))
+            if state["busy"]:  # another app on the same address had the slot
+                state["busy"] -= 1
+                return httpx.Response(402, json={}, headers={"Retry-After": "0.2"})
             return httpx.Response(state["llm_status"], json={"choices": [{"message": {"content": state["llm"]}}]}, headers={"Retry-After": "120"})
         if state["gw"] == "down":
             raise httpx.ConnectError("refused")
@@ -256,6 +259,11 @@ def t_sdk_direct_fallback():
     Anansi._next_direct, state["llm_status"] = 0, 402  # over the free limit: wait as long as the service says
     assert ask()["source"] == "fallback" and npc._next_direct - time.monotonic() > 100
     state["llm_status"] = 200
+    Anansi._next_direct, state["busy"], before = 0, 1, len(state["calls"])
+    assert ask()["source"] == "direct" and len(state["calls"]) == before + 2  # a short Retry-After is waited out once, then answered
+    Anansi._next_direct, state["busy"], before = 0, 2, len(state["calls"])
+    assert ask()["source"] == "fallback" and len(state["calls"]) == before + 2 and state["busy"] == 0  # only once
+    state["busy"] = 0
     Anansi._next_direct, state["llm"] = 0, json.dumps({"say": "Take it.", "action": "give_sword"})
     assert ask() ["action"] == "none"  # not on the list
     state["llm"] = json.dumps({"say": "Fine, ten percent off.", "action": "give_discount"})

@@ -56,11 +56,12 @@ check((await down.leaderboard()) === null, "gateway down: no statistics");
 
 // direct fallback: a fake public LLM (no network), gateway either refusing the connection or answering with a status
 {
-  const llm = { status: 200, content: JSON.stringify({ say: "Fine, ten percent off.", action: "give_discount" }), calls: [] };
+  const llm = { status: 200, content: JSON.stringify({ say: "Fine, ten percent off.", action: "give_discount" }), calls: [], busy: 0 };
   let gw = "down";
   const fake = async (u, init) => {
     if (u.startsWith("http://llm")) {
       llm.calls.push(JSON.parse(init.body));
+      if (llm.busy) { llm.busy--; return new Response("{}", { status: 402, headers: { "Retry-After": "1" } }); } // another app had the slot
       return new Response(JSON.stringify({ choices: [{ message: { content: llm.content } }] }), { status: llm.status, headers: { "Retry-After": "120" } });
     }
     if (gw === "down") throw new TypeError("fetch failed");
@@ -85,6 +86,10 @@ check((await down.leaderboard()) === null, "gateway down: no statistics");
   gw = "down"; d._nextDirect = 0; llm.status = 402;
   r = await d.chat(msgs);
   check(r.source === "fallback" && d._nextDirect - Date.now() > 100000, "over the free limit: waits as long as the service says");
+  llm.status = 200; d._nextDirect = 0; llm.busy = 1; const before = llm.calls.length;
+  r = await d.chat(msgs, { structured: true });
+  check(r.source === "direct" && llm.calls.length === before + 2, "a short Retry-After (another app on the address) is waited out once, then answered");
+  llm.status = 402;
   llm.status = 200; d._nextDirect = 0; llm.content = "Hello there, traveller.";
   got = [];
   r = await d.chatStream(msgs, (s) => got.push(s));
