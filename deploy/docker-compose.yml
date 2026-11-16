@@ -17,7 +17,7 @@ services:
     environment:
       ANANSI_ENV: ${ANANSI_ENV:-production}   # production refuses dev auth and the key 'change-me'; set ANANSI_ENV=dev for a local try-out
       ANANSI_ADMIN_TOKEN: ${ANANSI_ADMIN_TOKEN:-}
-      STEAM_PUBLISHER_KEY: ${STEAM_PUBLISHER_KEY:-}
+      ANANSI_VERIFY_SECRET: ${ANANSI_VERIFY_SECRET:-}   # name it in auth.secret_env if your player-token verifier needs a secret
     depends_on: [vllm]
 volumes:
   hf-cache:

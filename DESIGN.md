@@ -1,9 +1,8 @@
 # Anansi: LLM@home for games, on any platform
 
-**Platforms.** Anansi is platform agnostic. Steam is the reference first platform, so many sections below describe
-Steam's identity, distribution (depots), rewards (Inventory) and policy. Read each of those as "the platform's
-identity, distribution and rewards services"; Epic, GOG, itch.io, consoles, mobile or a studio's own launcher
-need their own equivalent, and the gateway takes a pluggable player-identity check (`auth.mode`). Where a platform
+**Platforms.** Anansi is platform agnostic. Sections below speak of "the platform": the store or launcher
+that distributes a game and identifies its players, with its own identity, distribution and rewards services and policies. Any PC store, console, mobile platform or a studio's own
+launcher can fill that role: the gateway asks a player-token verifier the operator runs (`auth.mode` `url`). Where a platform
 has no equivalent (for example no inventory), credits can be redeemed inside the game instead.
 
 Status: complete design draft v1.0, 2026-11-10: the target design, not a description of the code. What has been built and
@@ -16,7 +15,7 @@ were checked on 2026-11-10 (sections 17-19). This is not legal advice.
 The document grew in layers. Later sections override earlier ones. This summary and the
 status table below are the current position.
 
-**What Anansi is.** A platform-agnostic "LLM@home" service (Steam first). Players' idle PCs run a small
+**What Anansi is.** A platform-agnostic "LLM@home" service. Players' idle PCs run a small
 language model for a game's generative content, backed by a paid cloud pool, behind one
 OpenAI-compatible endpoint that game engines call through an SDK.
 
@@ -37,7 +36,7 @@ OpenAI-compatible endpoint that game engines call through an SDK.
    power-of-two choices, bounded-load hashing, outlier ejection, retry budgets and
    priority failover (sections 11, 16, 20).
 6. **Security:** the goal is integrity and availability, not confidentiality. 24-hour mTLS
-   certificates tied to Steam accounts, signed jobs and models, sandboxed workers, canaries,
+   certificates tied to platform accounts, signed jobs and models, sandboxed workers, canaries,
    quorum, default-deny node firewall, grammar-constrained NPC actions and a gateway output
    filter (sections 12, 15, 16.4).
 7. **Sharding across volunteers (Petals-style):** deferred as research. No candidate runs
@@ -76,10 +75,10 @@ Game + Anansi SDK ──(platform token, TLS)───────► Gateway �
 ```
 
 - **Gateway**: OpenAI-compatible API. It authenticates each request with the platform's player
-  token plus the studio's key (on Steam, the session ticket and publisher key), enforces quotas, applies the prompt template and runs the
+  token plus the studio's key, enforces quotas, applies the prompt template and runs the
   output safety filter.
 - **Scheduler**: matches jobs to nodes by model, RTT, queue depth and reputation.
-- **Node**: a free desktop app, on Steam or elsewhere (or an opt-in "Contribute idle GPU" toggle inside a partner game).
+- **Node**: a free desktop app, on a platform's store or elsewhere (or an opt-in "Contribute idle GPU" toggle inside a partner game).
   It pulls jobs, runs them with llama.cpp (MIT; CUDA/Vulkan/Metal, works on Windows) and
   returns results. vLLM stays on the Linux dedicated floor only.
 - **Dedicated floor**: a small cloud GPU pool in each region that runs the same worker image.
@@ -102,13 +101,13 @@ served to every player, which cuts interactive load. The interactive path is the
   free is at least the profile's cap plus a margin (section 21). Stop within 1 second of a
   game launching by killing the worker process (section 19).
 - **Model**: pinned, hash-verified model files for the chosen profile (Lite, Standard or Plus;
-  section 21), shipped through the shared Anansi Runtime Steam app as **depots** so Steam handles
-  download, update and CDN **[verify depot size and content rules]**. (Earlier drafts said one
+  section 21), shipped through a shared Anansi Runtime app on the platform's distribution channel, which handles
+  download, update and CDN **[verify the channel's size and content rules]**. (Earlier drafts said one
   7-8B model of about 5 GB. That exceeds the VRAM cap.)
 - **Sandbox**: the node only executes inference on signed model files. It never runs
   downloaded code. Jobs are data (prompt and params). Run the worker as a low-privilege process
   with no filesystem access beyond the model and a scratch directory.
-- **Skip**: Steam Deck as a host. It is weak and battery-bound, so it remains a client.
+- **Skip**: handheld gaming PCs as hosts. It is weak and battery-bound, so it remains a client.
   Integrated GPUs are not hosts for the Lite and Standard profiles. Colibri's Plus profile
   reported its best speeds on an integrated GPU, so that is worth a test, not a default.
 
@@ -121,18 +120,18 @@ served to every player, which cuts interactive load. The interactive path is the
   repeated failures ban the node.
 - **Output filter**: every response passes a small classifier at the gateway before reaching a
   player. Peers are untrusted and games ship to minors.
-- **Privacy**: hosts can read prompts. Send only game context, with no SteamID, no player
+- **Privacy**: hosts can read prompts. Send only game context, with no platform account id, no player
   chat and no PII. State this in the node's opt-in text. Use TLS to the gateway and rotate
   per-job pseudonymous IDs. *As built:* a job is the player's message and the studio's NPC prompt, with no account id, name or address, and
   volunteers serve a title only if it opts in; "no player chat" cannot hold for dialogue. See docs/privacy.md and docs/volunteer-terms.md.
-- **Abuse**: rate-limit per Steam account and per title. Reject jobs above a token cap.
+- **Abuse**: rate-limit per platform account and per title. Reject jobs above a token cap.
 
 ## 5. Credit and incentives
 
 - Credit is earned per verified token, with higher weight for batch units that passed quorum.
-- Redeem through the **Steam Inventory Service** as cosmetics or in-game items that the
-  publisher grants **[verify Valve's rules on item grants and any trading or marketplace effects]**.
-- Avoid cash payouts and crypto. They add money-transmission, tax and Steam-policy risk.
+- Redeem through the platform's inventory service, or the game's own item system, as cosmetics or in-game items that the
+  publisher grants **[verify the platform's rules on item grants and any trading or marketplace effects]**.
+- Avoid cash payouts and crypto. They add money-transmission, tax and platform-policy risk.
 
 ## 6. SDK (publisher side)
 
@@ -143,10 +142,10 @@ served to every player, which cuts interactive load. The interactive path is the
 
 ## 7. Risks, in order of severity
 
-1. **Platform policy [verify first, per platform; Steam shown].** Valve has restricted apps that use players' hardware for
-   third-party compute (crypto mining was banned). Get written confirmation from Valve
+1. **Platform policy [verify first, per platform].** Platforms have restricted apps that use players' hardware for
+   third-party compute (crypto mining, for one). Get written confirmation from each platform's
    partner support that an opt-in, disclosed, idle-only inference node is allowed. If it is
-   not, the fallback is distributing the node outside Steam and using Steam only for
+   not, the fallback is distributing the node outside that platform and using it only for
    auth and inventory.
 2. **Supply/demand phase mismatch.** GPUs are idle when players are offline, but demand peaks
    when players are online. Size the dedicated floor for peak interactive load, and use
@@ -161,11 +160,11 @@ served to every player, which cuts interactive load. The interactive path is the
 
 ## 8. Build order
 
-1. Gateway, scheduler and 3 studio-run floor nodes. OpenAI-compatible API, Steam ticket auth.
+1. Gateway, scheduler and 3 studio-run floor nodes. OpenAI-compatible API, platform player-token auth.
    One Unity sample with local fallback. Measure latency and quality.
 2. Node app: idle detection, depot-delivered model, pull protocol. Batch jobs only.
 3. Quorum verification and reputation. Add interactive jobs for nearby idle nodes.
-4. Credits through Steam Inventory, then a second title.
+4. Credits through the platform's or the game's inventory, then a second title.
 
 ---
 
@@ -270,28 +269,28 @@ nodes.
 
 | Threat | Control |
 |---|---|
-| Host reads prompts | **Accepted risk.** Payloads are AI-generated game content, so confidentiality is not a goal. Still keep SteamIDs and player chat out of prompts, use TLS, and never put secrets (API keys, unreleased story spoilers a publisher cares about) in prompts. |
+| Host reads prompts | **Accepted risk.** Payloads are AI-generated game content, so confidentiality is not a goal. Still keep platform account ids and player chat out of prompts, use TLS, and never put secrets (API keys, unreleased story spoilers a publisher cares about) in prompts. |
 | Host returns wrong or poisoned output (T1) | Canary prompts (2-5%), duplicate-and-compare sampling, reputation. |
 | Host corrupts activations (T2) | **Audit sampling:** for about 2% of chains, a trusted floor node recomputes a random layer range from the logged input and compares outputs within a numeric tolerance. A failure bans the node and voids pending credits. |
-| Malicious or buggy model file (parser exploits) | Signed, hash-pinned model files delivered via the Steam depot. Nodes never load unsigned files. Keep llama.cpp pinned and updated. |
+| Malicious or buggy model file (parser exploits) | Signed, hash-pinned model files delivered via the platform's distribution channel. Nodes never load unsigned files. Keep llama.cpp pinned and updated. |
 | Remote code execution through jobs | Jobs are data only (prompt, params, grammar). The worker runs as a low-privilege process in an OS sandbox (AppContainer/Job Object on Windows, bubblewrap/seccomp on Linux) with no network except to the gateway and cell peers. |
-| Sybil nodes and reputation farming | Node identity bound to a Steam account (one account, up to 2 nodes) with a minimum account age and a verified game library **[verify what Steam exposes]**. New nodes start with canary-only traffic and no credits for 24 h. Credits pay out after a 7-day audit window. |
+| Sybil nodes and reputation farming | Node identity bound to a platform account (one account, up to 2 nodes) with a minimum account age and a verified game library **[verify what the platform exposes]**. New nodes start with canary-only traffic and no credits for 24 h. Credits pay out after a 7-day audit window. |
 | Peer IP exposure in sharded chains (doxxing, DDoS) | Default: activations go through regional **relay nodes** run by the floor. This adds about 5-15 ms per hop **[verify]**. Direct peer-to-peer is opt-in for volunteers who accept IP exposure. |
 | Gateway DoS | CDN/WAF in front, per-title and per-account rate limits, token caps per request, request signing. |
-| Cost abuse by clients | Per-title quotas, per-Steam-account daily token budgets, anomaly alerts. |
+| Cost abuse by clients | Per-title quotas, per-player daily token budgets, anomaly alerts. |
 | Prompt injection and jailbreaks | The game treats LLM output as **untrusted input**. NPC actions use grammar-constrained decoding (llama.cpp GBNF / JSON schema) so the model can only emit a whitelisted action set. Gateway output classifier before delivery. |
 | Compromised node software or updates | Signed releases, reproducible builds, SBOM, public source, staged rollouts with a kill switch. |
 | Rogue or compromised gateway | Gateway keys in an HSM or KMS, short-lived node certificates (24 h), audit logs, separate signing keys for models and for releases. |
 
 ### Identity and transport
 
-1. A user installs the node from Steam. On first run the node proves Steam identity (auth
-   ticket verified by Steam's Web API) and receives a **24-hour mTLS certificate** from the
+1. A user installs the node from the platform. On first run the node proves its platform identity (a login token
+   verified by the platform) and receives a **24-hour mTLS certificate** from the
    enrollment service. It renews while it is in good standing.
 2. Every job is signed by the gateway with a short-lived key and carries a job token. A node
    rejects unsigned or expired jobs.
 3. Node-to-node links inside a cell use mTLS with the same certificates.
-4. Game clients authenticate to the gateway with the Steam session ticket plus the
+4. Game clients authenticate to the gateway with a player token from the platform plus the
    publisher's title key. The gateway never accepts a title key from the client without the
    ticket.
 
@@ -306,7 +305,7 @@ later needs a private tier, serve it from floor nodes only.
 
 ```
  Game (Unity/Unreal) + Anansi SDK  (T0 local model, cache, grammar-constrained output)
-        │  Steam ticket + title key, TLS
+        │  player token + title key, TLS
  ┌──────▼───────────────────────────────────────────────────────────┐
  │ Regional gateway cluster                                         │
  │  auth · quotas · prompt templates · output filter · embeddings/LM head (T2)
@@ -324,7 +323,7 @@ later needs a private tier, serve it from floor nodes only.
 
 ## 14. Revised build order
 
-1. (Unchanged) Gateway, 3 floor nodes, Steam auth, Unity sample, T0 fallback. Measure.
+1. (Unchanged) Gateway, 3 floor nodes, player-token auth, Unity sample, T0 fallback. Measure.
 2. Load balancer for T1: P2C, affinity, hedging, shedding. Load-test with synthetic traffic and
    injected node failures.
 3. Security baseline: enrollment, 24 h mTLS, signed jobs and models, sandboxed worker,
@@ -349,7 +348,7 @@ kept:
    history), `Floor`, `Relay`. The scheduler uses flags to place traffic: interactive jobs
    prefer `Fast`+`Stable`, T2 first stages require `Stable`, audits run only on `Floor`.
 3. **Path diversity for sharded chains.** No two hops in a chain may share an operator, a
-   Steam account, an ASN or a /16. The reason is now integrity: colluding hops could return
+   platform account, an ASN or a /16. The reason is now integrity: colluding hops could return
    consistent but corrupted activations that a single honest audit would miss. Selection is
    weighted by measured speed with a random component.
 4. **Stable entry set.** Each title (and each NPC where possible) is pinned to a small set of
@@ -471,7 +470,7 @@ candidates, then confirm with real probes on the top few.
   the same block-to-node map without coordination. Copy the idea only (the licence is
   weaker-copyleft).
 - **P2P model distribution** (Dragonfly, Apache-2.0 **[verify]**): not needed while the
-  model ships as a Steam depot. Revisit if depot size limits or update speed become a
+  model ships through the platform's distribution channel. Revisit if its size limits or update speed become a
   problem.
 
 ### 16.8 What to adopt first
@@ -580,7 +579,7 @@ need: untrusted peers, failure recovery and security. Revised T2 plan:
 ## 19. Windows-native requirement (supersedes the T2 plan in section 18)
 
 **Requirement:** volunteers must run the node on native Windows, without WSL or Linux.
-The Steam Hardware Survey for October 2026 shows Windows at 93.7%, Linux 3.95%, Mac 2.35%.
+Public PC-gamer hardware surveys (October 2026) show Windows above 90%, with Linux and Mac a few percent each.
 
 ### What runs on native Windows (checked 2026-11-10)
 
@@ -613,7 +612,7 @@ mass market. That is a judgment, not a measured result. WSL stays an option for 
    or GPU-heavy process (NVML and the process list), kills `llama-server` and restarts it
    when the machine has been idle for 2 minutes.
 4. **Windows operational work:** code-sign the binaries (SmartScreen and antivirus
-   reputation), ship through Steam, run as a tray app with a visible indicator, respect power
+   reputation), ship through the platform's store, run as a tray app with a visible indicator, respect power
    plan and battery state, and test alongside anti-cheat software (the node stops when a
    game starts, but the interaction is unverified).
 5. **T2 sharding has no off-the-shelf native Windows option.** None of Petals, Parallax or
@@ -634,7 +633,7 @@ mass market. That is a judgment, not a measured result. WSL stays an option for 
 
 ### Revised build order (replaces section 14 steps 4-6 ordering)
 
-1. Gateway, three floor nodes, Steam auth, Unity sample, T0 fallback. (unchanged)
+1. Gateway, three floor nodes, player-token auth, Unity sample, T0 fallback. (unchanged)
 2. Load balancer for T1 with section 15-16 features. (unchanged)
 3. Security baseline. (unchanged)
 4. **Windows node v1:** llama.cpp wrapper, idle handoff, sandbox, signing, depot-delivered
@@ -646,7 +645,7 @@ mass market. That is a judgment, not a measured result. WSL stays an option for 
 
 ### 19.1 macOS on Apple Silicon (M1/M2 and later)
 
-Mac gamers are a small slice of Steam, but the hardware suits this workload and the support is cheap, because
+Mac gamers are a small slice of PC gamers, but the hardware suits this workload and the support is cheap, because
 the node agent is plain Python and the gateway never sees what runs behind it.
 
 - **Runtime:** Ollama and llama.cpp both run on Apple Silicon through Metal. Nothing in the gateway or `node/agent.py`
@@ -741,7 +740,7 @@ prompt using a mismatched heat file had 44.5-64.6% hits at about 21-24 ms. One s
    differ (Colibri turns off one speculative feature under CUDA for that reason), so keep
    similarity-based checks from section 4, not exact matching.
 9. **Disk and RAM.** Every Colibri node stores the 23 GB expert store, so the node needs free
-   NVMe space and the Steam depot or a CDN must deliver it **[verify depot limits]**. Reads
+   NVMe space and the platform's distribution channel or a CDN must deliver it **[verify its size limits]**. Reads
    dominate, which wears SSDs far less than writes. 16 GB machines are below the 20 GB
    recommendation and will stream more from disk.
 10. **Security.** Run Colibri's server bound to 127.0.0.1 and reachable only by the node
@@ -843,7 +842,7 @@ general knowledge. Test with 200 real prompts per title, including off-script on
 
 ### Disk footprint
 
-- One shared **Anansi Runtime** Steam app holds the engine and base models. Games add only their
+- One shared **Anansi Runtime** app holds the engine and base models. Games add only their
   adapter and heat file, so the base is stored once per PC however many games use it.
 - Model files are already quantised, so compressing them again gains little.
 - The user sees a storage meter and can choose a profile or uninstall to reclaim the space.
@@ -873,11 +872,11 @@ starting values, to be agreed with the pilot studio. They are not measured requi
 
 | Phase | Work | Exit criteria |
 |---|---|---|
-| **0. Gates** | Written confirmation from Valve on the node (G0). Legal review of terms and licences. Pick a pilot title and publisher. | G0 passed, pilot signed |
-| **1. Floor MVP** | Gateway with Steam-ticket auth, scheduler (power of two choices plus affinity), three vLLM floor nodes, output filter, grammar-constrained NPC actions, Unity SDK with local fallback. | Pilot NPC dialogue works end to end. Measured p95 first-token time and all-in floor cost per million tokens. |
+| **0. Gates** | Written confirmation from each target platform on the node (G0). Legal review of terms and licences. Pick a pilot title and publisher. | G0 passed, pilot signed |
+| **1. Floor MVP** | Gateway with player-token auth, scheduler (power of two choices plus affinity), three vLLM floor nodes, output filter, grammar-constrained NPC actions, Unity SDK with local fallback. | Pilot NPC dialogue works end to end. Measured p95 first-token time and all-in floor cost per million tokens. |
 | **2. Quality** | Per-title corpus from the floor's large model. LoRA pipeline for Lite and Standard. 200-prompt evaluation including off-script input. SDK escalation path. | G1 passed |
 | **3. Windows node, closed beta** | Native node agent: llama.cpp wrapper, idle handoff by process kill, sandbox, code signing, depot delivery, profile choice, VRAM cap, pull protocol, batch jobs, canaries. Signed directory, flags, probe-measured speed, new-node ramp-up. 50-100 real PCs across NVIDIA, AMD and Intel. | G2 and G3 measured |
-| **4. Verification and credits** | Quorum, reputation, outlier ejection, retry budgets, priority failover, autoscaler, default-deny firewall, Steam Inventory credits. Public opt-in. | G4 and G5 passed |
+| **4. Verification and credits** | Quorum, reputation, outlier ejection, retry budgets, priority failover, autoscaler, default-deny firewall, credits redeemed as in-game items. Public opt-in. | G4 and G5 passed |
 | **5. Scale and options** | Plus profile with title heat files and cache-aware routing, Vivaldi cells, relays, second title. Research track: volunteer sharding bake-off (sections 10, 18). | Per-feature gates |
 
 ### 22.1a Phase 1 findings (measured on this PC, 2026-11-10)
@@ -925,7 +924,7 @@ Setup: the gateway in front of Ollama 0.40.4 serving `qwen3:1.7b` on this PC's C
 
 | Gate | Question | Proposed threshold |
 |---|---|---|
-| G0 | Per platform (Steam first): does the platform allow an opt-in, disclosed, idle-only inference node? | Written yes. If no, distribute the node outside Steam and use Steam only for auth and inventory. |
+| G0 | Per platform: does the platform allow an opt-in, disclosed, idle-only inference node? | Written yes. If no, distribute the node outside that platform and use it only for auth and inventory. |
 | G1 | Is a small model with an adapter good enough? | Blind-rated acceptable replies close to the floor's large model on the 200-prompt set, and escalations under 15%. |
 | G2 | Is interactive latency acceptable? | p95 first token under 800 ms and at least 8 tok/s on the beta's median PC. |
 | G3 | Is there enough idle supply? | Measured idle hours per node per day, and how much overlaps with player-online hours. Decides how much work volunteers can carry. |
@@ -945,16 +944,16 @@ Setup: the gateway in front of Ollama 0.40.4 serving `qwen3:1.7b` on this PC's C
 1. Which title and publisher pilot it.
 2. Who trains the per-title adapters: the publisher, or Anansi as a service.
 3. Floor budget, regions and cloud provider.
-4. The credit design with Valve (what items, what limits).
+4. The credit design with each platform (what items, what limits).
 5. The legal entity, the node's end-user terms and opt-in text, and the logging and retention
    policy.
-6. Whether to offer a cash or other non-Steam reward at all (currently excluded).
+6. Whether to offer a cash or other non-item reward at all (currently excluded).
 
 ### 22.5 Risk register
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| Steam policy refuses the node | Critical | Gate G0 first. Fallback distribution outside Steam. |
+| A platform's policy refuses the node | Critical | Gate G0 first. Fallback distribution outside that platform. |
 | Small models are not good enough | High | Adapters, escalation to the floor, gate G1. Plus profile as a quality tier. |
 | Savings are small or negative | High | Gate G4. Limit to batch pre-generation. |
 | Supply is out of phase with demand | High | Mandatory floor, volunteers on batch and overflow. |
@@ -962,7 +961,7 @@ Setup: the gateway in front of Ollama 0.40.4 serving `qwen3:1.7b` on this PC's C
 | Colibri is young, single-maintainer | Medium | Optional (Plus) only, pinned versions, llama.cpp as the main engine. |
 | Model licence problems | Medium | Apache-2.0 models first. Legal review before any Llama or Gemma use. |
 | Unsafe output reaches minors | High | Output filter, grammar-constrained actions, gate G5. |
-| Abuse of the endpoint (cost, scraping) | Medium | Quotas, Steam-ticket auth, token caps, anomaly alerts. |
+| Abuse of the endpoint (cost, scraping) | Medium | Quotas, player-token auth, token caps, anomaly alerts. |
 
 ### 22.6 Not covered in this document
 

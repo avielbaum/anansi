@@ -165,7 +165,7 @@ versions cannot play it (the game then runs without music, and the effects still
 ## Licences
 
 The code (`src/`, `tools/`, `check.mjs`, `index.html`, `prototype/`) is MIT or Apache-2.0 ([LICENSE-MIT](LICENSE-MIT),
-[LICENSE-APACHE](LICENSE-APACHE)). The prototype talks to an Anansi gateway, which is under PolyForm Noncommercial
+[LICENSE-APACHE](LICENSE-APACHE)). The prototype talks to an Anansi gateway, which is also MIT or Apache-2.0
 (see [LICENSING.md](../../LICENSING.md)). The art in `assets/` keeps its own licences: CC-BY-SA 3.0 for the LPC characters, enemies and tiles, and
 CC0 for the street tiles and battle backgrounds. See [assets/LICENSE.md](assets/LICENSE.md). The two CREDITS files must
 ship with the game.

@@ -22,7 +22,6 @@ from .pull import PullHub, add_routes
 from .scheduler import Scheduler
 from .store import Store
 
-STEAM_URL = "https://partner.steam-api.com/ISteamUserAuth/AuthenticateUserTicket/v1/"
 FORWARD = ("model", "messages", "temperature", "top_p")  # everything else is dropped on purpose
 MAX_BODY = 64_000
 RETRY_RATIO, RETRY_MIN, DECAY = 0.1, 3, 0.99  # decay 0.99 per request is a window of roughly 100 requests
@@ -158,7 +157,7 @@ def make_app(config=None, transport=None):
                   cfg.get("pull_ttl_s"), cfg.get("upstream_timeout_s", 20), reply_text, cfg.get("canaries"),
                   cfg.get("canary_rate", 0.05), store, credits.get("per_1k_tokens"), lbc) if cfg.get("pull_tokens") else None
     client = httpx.AsyncClient(transport=hub or transport, timeout=cfg.get("upstream_timeout_s", 20))
-    ticket_cache = {}  # shortcut: per process, so each gateway checks a ticket with Steam once itself; share it (Redis) if Steam call volume matters
+    ticket_cache = {}  # shortcut: per process, so each gateway checks a token with the verifier once itself; share it (Redis) if call volume matters
     warned = set()
     stats = {"requests": 0, "retries": 0, "status": Counter(), "filtered": 0, "stream_errors": 0, "judged_out": 0, "judge_errors": 0, "action_checks_no": 0, "action_check_errors": 0, "escalations": 0, "lat_ms": deque(maxlen=1000)}
     budget = {"req": 0.0, "retry": 0.0}
@@ -174,7 +173,7 @@ def make_app(config=None, transport=None):
     if cfg.get("cors_origins"):  # browser games on another origin; empty by default, so no page may call the gateway
         # allow_private_network: a page on the internet (GitHub Pages) calling a gateway on localhost
         app.add_middleware(CORSMiddleware, allow_origins=cfg["cors_origins"], allow_methods=["POST", "GET"], allow_private_network=True,
-                           allow_headers=["Content-Type", "X-Anansi-Title", "X-Anansi-Key", "X-Player-Token", "X-Steam-Ticket"])
+                           allow_headers=["Content-Type", "X-Anansi-Title", "X-Anansi-Key", "X-Player-Token"])
     app.state.sched = sched
     app.state.hub = hub
     app.state.store = store
@@ -204,7 +203,7 @@ def make_app(config=None, transport=None):
             stats["status"][429] += 1
             return JSONResponse({"error": "too many failed logins, wait a minute"}, 429, {"Retry-After": "60"})
         resp = await call_next(req)
-        if api and resp.status_code == 401:  # guessing title keys, or sending junk tickets that cost a Steam call each
+        if api and resp.status_code == 401:  # guessing title keys, or sending junk tokens that cost a verifier call each
             if len(auth_fails) > 10_000:
                 auth_fails.clear()
             if not f or t0 - f[1] >= 60:
@@ -228,17 +227,18 @@ def make_app(config=None, transport=None):
             raise HTTPException(401, "bad title credentials")
         return t
 
-    auth = cfg.get("auth") or cfg.get("steam")  # "steam" is the old key name
+    auth = cfg.get("auth")
     if not auth:  # no silent default: dev mode accepts any "dev:<id>" token, so it must be chosen on purpose
-        raise ValueError('config needs "auth": {"mode": "dev" | "steam"}')
-    if auth["mode"] not in ("dev", "steam"):  # shortcut: "steam" is the only real platform check so far; add one per platform
-        raise ValueError(f"unknown auth mode {auth['mode']!r}: use dev or steam")
-    if auth["mode"] == "steam":  # a missing key or appid must stop startup, not turn every request into a 500
-        if not os.environ.get("STEAM_PUBLISHER_KEY"):
-            raise ValueError("auth mode steam needs the STEAM_PUBLISHER_KEY environment variable")
-        missing = [n for n, t in cfg["titles"].items() if not t.get("appid")]
-        if missing:
-            raise ValueError(f"auth mode steam needs an appid on every title: {', '.join(missing)}")
+        raise ValueError('config needs "auth": {"mode": "dev" | "url"}')
+    if auth["mode"] not in ("dev", "url"):
+        raise ValueError(f"unknown auth mode {auth['mode']!r}: use dev or url")
+    if auth["mode"] == "url":  # a missing address or secret must stop startup, not turn every request into a 500
+        if not re.match(r"https?://[^\s/]+", str(auth.get("url", ""))):
+            raise ValueError('auth mode url needs "url": the http(s) address of your player-token verifier')
+        if auth.get("secret_env") and not os.environ.get(auth["secret_env"]):
+            raise ValueError(f"auth mode url: the environment variable {auth['secret_env']} (secret_env) is not set")
+    for n, t in cfg["titles"].items():
+        t["_id"] = n  # the title's own id, for the player-token verifier
     for n, t in cfg["titles"].items():  # "\b" in JSON is a backspace: the pattern would silently never match
         for p in list(t.get("blocklist", [])) + list((t.get("action_gates") or {}).values()):
             if re.search(r"[\x00-\x1f]", p):
@@ -261,24 +261,30 @@ def make_app(config=None, transport=None):
             if ticket and ticket.startswith("dev:") and len(ticket) > 4:
                 return ticket[4:]
             raise HTTPException(401, "bad ticket")
-        hit = ticket_cache.get((t["appid"], ticket))  # a ticket is checked against one game; another title must check it again
+        # url mode: the operator's verifier (their own backend, or any platform's check behind it) says who owns the token
+        tid = t["_id"]
+        hit = ticket_cache.get((tid, ticket))  # a token is checked for one title; another title must check it again
         if hit and hit[1] > time.time():
             return hit[0]
-        try:  # UNTESTED against the live Steam API: needs a publisher key. [verify]
-            r = await client.get(STEAM_URL, params={"key": os.environ["STEAM_PUBLISHER_KEY"],
-                                                    "appid": t["appid"], "ticket": ticket or ""})
-            r.raise_for_status()  # a Steam outage is 503, not a bad ticket
-            p = r.json().get("response", {}).get("params", {})
-        except (httpx.HTTPError, ValueError, KeyError, AttributeError):  # AttributeError: a reply that is JSON but not an object
-            raise HTTPException(503, "ticket check unavailable")
-        if p.get("result") != "OK" or p.get("vacbanned") or p.get("publisherbanned"):
+        secret = os.environ.get(auth["secret_env"]) if auth.get("secret_env") else None
+        try:
+            r = await client.post(auth["url"], json={"title": tid, "token": ticket or ""},
+                                  headers={"Authorization": f"Bearer {secret}"} if secret else {})
+        except httpx.HTTPError:
+            raise HTTPException(503, "player check unavailable")
+        if r.status_code in (401, 403, 404):
             raise HTTPException(401, "bad ticket")
+        try:
+            r.raise_for_status()  # a verifier outage is 503, not a bad token
+            pid = r.json().get("player")
+        except (httpx.HTTPError, ValueError, AttributeError):  # AttributeError: a reply that is JSON but not an object
+            raise HTTPException(503, "player check unavailable")
+        if not isinstance(pid, (str, int)) or isinstance(pid, bool) or not re.fullmatch(r"[\w.:@-]{1,128}", str(pid)):
+            raise HTTPException(401, "bad ticket")  # no usable player id: budgets and bans are keyed by it
         if len(ticket_cache) > 10_000:
             ticket_cache.clear()
-        if not p.get("steamid"):
-            raise HTTPException(401, "bad ticket")
-        ticket_cache[(t["appid"], ticket)] = (p["steamid"], time.time() + 300)
-        return p["steamid"]
+        ticket_cache[(tid, ticket)] = (str(pid), time.time() + 300)
+        return str(pid)
 
     def bad(t, text):  # shortcut: regex blocklist plus prompt-leak check. A classifier is required before launch (gate G5).
         names = t.get("actions") or []  # action identifiers are never dialogue: speaking one is a leak
@@ -716,9 +722,8 @@ def make_app(config=None, transport=None):
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
                 "usage": data.get("usage"), "anansi": {"node": node.url, "filtered": filtered, "escalated": bool(escalated)}}
 
-    def creds(x_anansi_title: str = Header(None), x_anansi_key: str = Header(None),
-              x_player_token: str = Header(None), x_steam_ticket: str = Header(None)):
-        return x_anansi_title, x_anansi_key, x_player_token or x_steam_ticket
+    def creds(x_anansi_title: str = Header(None), x_anansi_key: str = Header(None), x_player_token: str = Header(None)):
+        return x_anansi_title, x_anansi_key, x_player_token
 
     @app.post("/v1/chat/completions")
     async def chat(req: Request, c=Depends(creds)):

@@ -65,7 +65,7 @@ instead of answering until its verdict was constrained by JSON schema.
   through the gateway, test split): 4B NPC with the word gate 89 of 106 (was 84), 4B NPC with a 4B checker **96 of 106** (was
   91), 1.7B NPC with a 4B checker 90 (was 84). The configs now use `qwen3:4b-instruct`. Not run: anything at production
   scale, Postgres under load, AMD or Intel GPUs.
-- **Live platform identity checks are untested.** Only Steam is written (it needs a publisher key and follows the documented shape); other platforms need a check added.
+- **Player identity checks:** the gateway asks a verifier URL the operator runs (`auth.mode` `url`); tested against a stand-in verifier only. Anansi ships no verifier for any platform.
 - **Safety is partial.** Regex blocklist, word-overlap leak guard and an optional judge. No trained classifier; the red-team
   sets below are self-written; paraphrased leaks get through. On titles with a judge, streams are buffered so the judge covers them (unless `stream_unjudged`).
 - **Streaming:** plain replies only. A sentence that fails the checks is never sent: the stream ends before it and the last chunk says `filtered`, so the player sees a shorter reply, not the bad text.
@@ -73,8 +73,8 @@ instead of answering until its verdict was constrained by JSON schema.
 - **Volunteer nodes:** bans cover the agent id and its token (per-volunteer tokens; a shared token falls back to id-only bans), at most `max_workers` per token, probes can be recognised, no quorum, no model
   signing. Trust only your own machines.
 - **Credits:** linking, earning per token, the 7-day hold and spending work in the self-checks on SQLite and Postgres
-  (16 simultaneous spends never overdrew a wallet). No game has called them yet, item prices are each studio's choice, Steam Inventory is
-  not connected, the Python, C#, JavaScript and Godot SDKs read the balance and link a machine (spending stays server-side; Unreal has neither), and `credits.max_per_day` caps what one player earns per day however many machines they link (off unless set).
+  (16 simultaneous spends never overdrew a wallet). No game has called them yet, item prices are each studio's choice, no store or inventory is
+  connected, the Python, C#, JavaScript and Godot SDKs read the balance and link a machine (spending stays server-side; Unreal has neither), and `credits.max_per_day` caps what one player earns per day however many machines they link (off unless set).
 - **Red-team gate G5, honest state:** the main set (759 cases) was used to tune the rules, so it no longer measures anything fairly.
   A fresh holdout set (`tools/redteam_holdout.py`, 420 cases, never tuned on) was run once: 80 replies blocked, **32 automatic
   failures, 0 errors**. Two causes: 28 were a planted word in a shape the stray-token rule did not list (`Quokka22`; the
@@ -113,7 +113,7 @@ instead of answering until its verdict was constrained by JSON schema.
   (`tools/blind_pack.py` builds the sheet; the 211-line sheet of Qwen3-1.7B against gemma4:31b is built and waits for raters, and a second sheet of the LoRA adapter against gemma4:31b), and an adapter, which is built and scores 93% on the test split with an `action_check` (results above; its reply quality is not rated yet). An escalation path is built (`escalate`: a blocked or broken
   small-model reply is retried once on a larger model; it would fire on 0.5% of G1 turns with 1.7B and 19 to 29% of attack turns), but
   escalating replies that are wrong without being blocked needs an off-script detector, and the quality gain needs the blind rating. **G1 not passed.** Leak attacks: 8 plus 20 held-out cases in `evals/leak*.jsonl` and 518 extraction cases in the red-team sets; what is missing is a way to score paraphrased leaks in the unblocked replies without a person reading them (the G5 classifier).
-- **Gates not passed:** the external gates in DESIGN.md section 22.2 (Valve's position on AI-generated content, studio
+- **Gates not passed:** the external gates in DESIGN.md section 22.2 (the target platforms' rules on AI-generated content, studio
   interviews, legal review) are untouched.
 
 ## Next
@@ -132,5 +132,4 @@ Buildable now:
 Needs people, keys, engines or decisions: counsel review of `docs/privacy.md` and `docs/volunteer-terms.md` and the operator's identity,
 contact and governing law; the default `min_group` (5) against how many volunteers there will be; a retention period for the work ledger and credit records (never deleted today) and an erase-on-request path;
 whether volunteers may serve titles with free-text chat or children; blind rating of the two G1 sheets (`rate.csv` and `rate_adapter.csv`, kept on the development PC with their keys apart, not in the repository); a person reading the red-team review
-files, a fresh outside red-team set and a real safety classifier for gate G5; a live Steam token check with a publisher key and
-checks for other platforms; a Unity project test and an Unreal compile; AMD and Intel GPU runs.
+files, a fresh outside red-team set and a real safety classifier for gate G5; a player-token verifier for a real platform run against the `url` mode; a Unity project test and an Unreal compile; AMD and Intel GPU runs.

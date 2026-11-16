@@ -112,7 +112,7 @@ Volunteers earn credits that games can turn into in-game items. No cash and no c
    ledger. Amounts are stored as whole milli-credits, so sums are exact.
 3. **Hold.** Credit becomes spendable `hold_days` (default 7) UTC days after it was earned. A ban voids everything still in the
    hold; credit that already matured stays.
-4. **One wallet per player account** (the platform's player id, for example the Steam id), shared by every title on the
+4. **One wallet per player account** (the player id your verifier returns), shared by every title on the
    gateway. `GET /v1/credits` shows `balance`, `pending` and linked `nodes`.
 5. **Spending.** The game's **server** calls `POST /v1/credits/spend` with the title's `server_key` (never the client's key),
    the player's platform id, an amount and its own purchase id as `ref`, and grants the item only on `"result": "ok"`. A repeated
@@ -123,7 +123,7 @@ Volunteers earn credits that games can turn into in-game items. No cash and no c
    and recorded in the ledger, but earns nothing. The check and the credit are one transaction, so gateways crediting one
    wallet at once cannot pass it (tested with 16 simultaneous credits).
 
-Not built: what an item costs (each studio decides), Steam Inventory grants, an Unreal SDK method for credits (the other SDKs have
+Not built: what an item costs (each studio decides), granting items in a store or inventory, an Unreal SDK method for credits (the other SDKs have
 `credits` and `link_node`, see [sdk.md](sdk.md#volunteer-credits)) and the DESIGN.md rule that a brand-new node earns nothing for 24 hours (the 7-day hold covers the audit window).
 
 ### Anonymous network statistics (telemetry)
@@ -178,7 +178,7 @@ for counsel).
   and still cheat on real jobs.
 - **No answer quorum:** free text differs between machines, so two nodes cannot simply be compared.
 - **Shared token:** one secret per pool. Use only with machines you trust.
-- **Not built:** Steam Inventory grants, model signing and download, hardware checks. (Volunteers serve several gateway machines by listing them all in `--gateway`; see [gateway.md](gateway.md#running-more-than-one-gateway-process).)
+- **Not built:** store or inventory grants, model signing and download, hardware checks. (Volunteers serve several gateway machines by listing them all in `--gateway`; see [gateway.md](gateway.md#running-more-than-one-gateway-process).)
 
 ## Linux
 

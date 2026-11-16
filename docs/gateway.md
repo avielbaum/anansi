@@ -4,7 +4,7 @@
 
 ## Requests
 
-Headers on every request: `X-Anansi-Title`, `X-Anansi-Key` (the studio's key) and `X-Player-Token`: proof of who the player is, issued by your platform. The old name `X-Steam-Ticket` is still accepted.
+Headers on every request: `X-Anansi-Title`, `X-Anansi-Key` (the studio's key) and `X-Player-Token`: proof of who the player is, issued by your platform or your own login.
 
 | Route | Use |
 |---|---|
@@ -30,7 +30,7 @@ JSON file named by `ANANSI_CONFIG`.
 |---|---|
 | `default_model` | Logical model name when a request names none |
 | `upstream_timeout_s` | Per-attempt timeout to a node (default 20) |
-| `auth.mode` | How player tokens are checked. `"dev"` accepts `dev:<player id>` (never in production); `"steam"` checks the Steam Web API with `STEAM_PUBLISHER_KEY`. Other platforms (Epic, GOG, itch.io, consoles, mobile, your own launcher) need a check added in `player_id()` in `gateway/app.py`; an unknown mode, or no `auth` block at all, stops startup (there is no default). The old key `steam` still works |
+| `auth.mode` | How player tokens are checked. `"dev"` accepts `dev:<player id>` (never in production); `"url"` asks a verifier you run, at `auth.url`: the gateway POSTs `{"title", "token"}` and expects `200` with `{"player": "<id>"}` (letters, digits and `_.:@-`, at most 128) for a valid token, `401`, `403` or `404` for a bad one, and treats anything else as the verifier being down (`503`, not a rejected player). `auth.secret_env` (optional) names an environment variable whose value is sent as `Authorization: Bearer ...`. Answers are cached per title and token for 5 minutes. Your verifier can check any platform's login or your own; an unknown mode, or no `auth` block at all, stops startup (there is no default) |
 | `nodes[]` | Static nodes: `url`, `models` (logical names), `region`, `upstream_model` (the server's own name), `extra` (merged into every request, e.g. to switch thinking off), `schema` (`false` for a host that ignores JSON schemas, see below), `max_tokens_per_day` (a daily token cap for a paid node, see below) |
 | `titles.<id>` | One entry per game, see below |
 | `db_path` | SQLite file, or a `postgresql://` URL for gateways on several machines, holding daily budgets, agent bans and the volunteer work ledger. Unset means in memory (nothing survives a restart) |
@@ -45,7 +45,7 @@ JSON file named by `ANANSI_CONFIG`.
 | `max_inflight` | Requests the gateway serves at once (default 256; a stream counts until it ends). Past it, new requests get `429` with `Retry-After: 1` instead of queueing without limit. It is per gateway process |
 | `max_inflight_per_player` | Requests one player (per title) may have in flight at once (default 4), so one account cannot take every slot of `max_inflight`. Past it: `429` with `Retry-After: 1`, and the SDKs answer from their fallback. Per gateway process |
 
-Per title: `key`, `appid`, `system_prefix` (prepended to every request), `actions` (the allowed NPC actions),
+Per title: `key`, `system_prefix` (prepended to every request), `actions` (the allowed NPC actions),
 `blocklist` (regexes), `fallback_line`, `max_tokens`, `max_prompt_chars`, `max_reply_chars`, `daily_token_budget`
 (per player, per UTC day; exceeded gives `429` with `Retry-After`), `leak_ngram` (default 5), `judge`,
 `action_gates`, `action_check` (see [Constrained actions](#constrained-actions)), `allow_volunteers` (default `false`: volunteer pull nodes never serve this title, because they see every prompt, including the secret system prompt; safety-judge calls never use them either), `allow_overflow`,
@@ -245,7 +245,7 @@ behind a proxy). For gateways on **several machines**, set `db_path` to a Postgr
 `pip install "psycopg[binary]"`); the gateway creates its tables on first start. Either way daily budgets are one pool:
 the reservation is a single atomic statement, so two gateways cannot both spend the last tokens. A ban made by one gateway is
 seen by the others at their next registration. What stays per process: `/healthz` and `/admin` statistics, node health and
-ejection, the Steam ticket cache, the failed-login counter, `max_inflight` and `max_inflight_per_player` (so each limit is
+ejection, the player-token cache, the failed-login counter, `max_inflight` and `max_inflight_per_player` (so each limit is
 multiplied by the process count).
 
 Limits to plan around:
@@ -275,7 +275,7 @@ Limits to plan around:
 
 ## Production switches
 
-- Set `auth.mode` to your platform's check (`"steam"` needs `STEAM_PUBLISHER_KEY`); never leave it on `"dev"`. With `ANANSI_ENV=production` (set by the Dockerfile, the compose file and the systemd unit) the gateway refuses to start on dev auth or while a title key is still `change-me`; for a local try-out of the compose setup run it with `ANANSI_ENV=dev`. `steam` mode also needs `STEAM_PUBLISHER_KEY` and an `appid` on every title, checked at startup. The compose setup keeps budgets in `/data/anansi.db` on a volume.
+- Set `auth.mode` to `"url"` with your player-token verifier; never leave it on `"dev"`. With `ANANSI_ENV=production` (set by the Dockerfile, the compose file and the systemd unit) the gateway refuses to start on dev auth or while a title key is still `change-me`; for a local try-out of the compose setup run it with `ANANSI_ENV=dev`. `url` mode needs `auth.url`, and the variable `auth.secret_env` names if it names one, checked at startup. The compose setup keeps budgets in `/data/anansi.db` on a volume.
 - Change every `titles.*.key`; set `ANANSI_ADMIN_TOKEN`.
 - Put the gateway behind TLS (reverse proxy or load balancer).
 - Set `db_path` so budgets, bans and the ledger survive restarts. The token cache and node registry are still in memory. A SQLite file serves the processes of one machine; for several machines use a Postgres URL (see above).

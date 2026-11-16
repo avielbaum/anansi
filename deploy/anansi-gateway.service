@@ -1,6 +1,6 @@
 # Install: copy the repo to /opt/anansi, create /etc/anansi/{config.json,env}, then
 #   sudo cp deploy/anansi-gateway.service /etc/systemd/system/ && sudo systemctl enable --now anansi-gateway
-# /etc/anansi/env holds ANANSI_ADMIN_TOKEN=... and STEAM_PUBLISHER_KEY=... (chmod 600). Put TLS in front (Caddy/nginx)
+# /etc/anansi/env holds ANANSI_ADMIN_TOKEN=... and, if your player-token verifier needs one, its secret (auth.secret_env) (chmod 600). Put TLS in front (Caddy/nginx)
 # and list its address in trusted_proxies. The filesystem is read-only to the service except /var/lib/anansi, so set
 # "db_path": "/var/lib/anansi/anansi.db" in config.json.
 [Unit]

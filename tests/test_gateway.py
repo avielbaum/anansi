@@ -348,9 +348,8 @@ async def t_judge_input_is_boxed():
 
 async def t_player_token_header_and_auth_mode():
     _, _, _, c = setup(copy.deepcopy(CFG))
-    old = {"X-Anansi-Title": "demo", "X-Anansi-Key": "change-me", "X-Steam-Ticket": "dev:1"}  # the old header still works
-    assert (await c.post("/v1/chat/completions", json=BODY, headers=old)).status_code == 200
-    assert (await c.post("/v1/chat/completions", json=BODY, headers={**old, "X-Steam-Ticket": "nope"})).status_code == 401
+    assert (await c.post("/v1/chat/completions", json=BODY, headers=H)).status_code == 200
+    assert (await c.post("/v1/chat/completions", json=BODY, headers={**H, "X-Player-Token": "nope"})).status_code == 401
     try:
         make_app({**copy.deepcopy(CFG), "auth": {"mode": "epic"}})
         assert False, "an unknown auth mode must stop startup"
@@ -534,30 +533,33 @@ async def t_cancelled_stream_settles_its_reservation():
     assert gw.state.store.usage("demo", "gone", day) < 20, "a stream nobody read must not cost the worst case"
 
 
-def t_production_and_steam_startup_checks():
+def t_production_and_url_auth_startup_checks():
     cfg = copy.deepcopy(CFG)
-    old = {k: os.environ.pop(k, None) for k in ("ANANSI_ENV", "STEAM_PUBLISHER_KEY")}
+    old = {k: os.environ.pop(k, None) for k in ("ANANSI_ENV", "VERIFY_SECRET")}
     try:
         make_app(cfg)  # dev auth and the example key are fine outside production
         os.environ["ANANSI_ENV"] = "production"
-        for bad in (cfg, {**cfg, "auth": {"mode": "steam"}}):
+        url = {"mode": "url", "url": "https://verify.example/check"}
+        for bad in (cfg, {**cfg, "auth": url}):  # dev auth; then the example key change-me
             try:
                 make_app(bad)
                 assert False, "production must refuse dev auth and the key change-me"
             except ValueError:
                 pass
-        os.environ["STEAM_PUBLISHER_KEY"] = "k"
         ok = copy.deepcopy(cfg)
-        ok["auth"] = {"mode": "steam"}
+        ok["auth"] = url
         ok["titles"]["demo"]["key"] = "a-real-secret"
         make_app(ok)
-        del os.environ["ANANSI_ENV"], os.environ["STEAM_PUBLISHER_KEY"]
-        for bad in ({**ok, "auth": {"mode": "web"}}, ok):  # web has no check behind it; steam needs its publisher key
+        del os.environ["ANANSI_ENV"]
+        for bad_auth in ({"mode": "web"}, {"mode": "url"}, {"mode": "url", "url": "verify.example"},  # no check behind it; no or bad address
+                         {**url, "secret_env": "VERIFY_SECRET"}):  # a secret named but not set
             try:
-                make_app(bad)
-                assert False, "must stop at startup"
+                make_app({**ok, "auth": bad_auth})
+                assert False, bad_auth
             except ValueError:
                 pass
+        os.environ["VERIFY_SECRET"] = "s"
+        make_app({**ok, "auth": {**url, "secret_env": "VERIFY_SECRET"}})
     finally:
         for k, v in old.items():
             os.environ.pop(k, None)
@@ -1676,7 +1678,7 @@ def t_store():
         assert s.node_spend("https://paid.example") == 42 and s.node_spend("https://paid.example", "1999-01-01") == 0 and s.node_spend("https://other") == 0
         assert s.usage("demo", "76561", d) == 20 and other.reserve("demo", "new", d, 5, limit=1)  # a new day row always starts
         s.add_usage("demo", "old", "2020-01-01", 1)
-        s.purge(35)  # old usage rows hold Steam ids and go; the ledger stays
+        s.purge(35)  # old usage rows hold player ids and go; the ledger stays
         assert s.usage("demo", "old", "2020-01-01") == 0 and s.usage("demo", "76561", d) == 20
         assert s.report()["agents"][0]["jobs"] == 2 and s.report()["day"] == d
         if path == pg:  # the database drops the connection: that call fails, the next one reconnects
@@ -2127,54 +2129,47 @@ async def t_one_player_cannot_take_every_slot():
         assert (await c.post("/v1/quest", json={"world": WORLD}, headers=H)).status_code == 200
 
 
-async def t_steam_ticket_check():
+async def t_url_player_check():
     import datetime
-    from fastapi import FastAPI, HTTPException
-    steam = FastAPI()
-    steam.state.reply, steam.state.calls, steam.state.q = {"response": {"params": {"result": "OK", "steamid": "765"}}}, 0, None
+    from fastapi import FastAPI, Request
+    from fastapi.responses import JSONResponse as J
+    verify = FastAPI()  # the operator's verifier: says which player owns a token
+    verify.state.reply, verify.state.calls, verify.state.seen = (200, {"player": "765"}), 0, None
 
-    @steam.get("/ISteamUserAuth/AuthenticateUserTicket/v1/")
-    async def check(key: str, appid: str, ticket: str):
-        steam.state.calls += 1
-        steam.state.q = (key, appid, ticket)
-        r = steam.state.reply
-        if r is None:
-            raise HTTPException(500, "steam is down")
-        return r
+    @verify.post("/check")
+    async def check(req: Request):
+        verify.state.calls += 1
+        verify.state.seen = (await req.json(), req.headers.get("authorization"))
+        code, body = verify.state.reply
+        return J(body, code)
     cfg = copy.deepcopy(CFG)
-    cfg["auth"] = {"mode": "steam"}
-    cfg["titles"]["other"] = {**cfg["titles"]["demo"], "appid": "999", "key": "k2"}
-    old = os.environ.get("STEAM_PUBLISHER_KEY")
-    os.environ["STEAM_PUBLISHER_KEY"] = "pubkey"
+    cfg["auth"] = {"mode": "url", "url": "https://verify.example/check", "secret_env": "VERIFY_SECRET"}
+    cfg["titles"]["other"] = {**cfg["titles"]["demo"], "key": "k2"}
+    old = os.environ.get("VERIFY_SECRET")
+    os.environ["VERIFY_SECRET"] = "s3cret"
     try:
         a, b = make_node("a"), make_node("b")
-        gw = make_app(cfg, Router({"node-a": a, "node-b": b, "partner.steam-api.com": steam}))
-    finally:
-        os.environ.pop("STEAM_PUBLISHER_KEY")
-        if old is not None:
-            os.environ["STEAM_PUBLISHER_KEY"] = old
-    os.environ["STEAM_PUBLISHER_KEY"] = "pubkey"  # read again on every ticket check
-    try:
+        gw = make_app(cfg, Router({"node-a": a, "node-b": b, "verify.example": verify}))
         c = httpx.AsyncClient(transport=httpx.ASGITransport(app=gw), base_url="http://gw")
-        h = {**H, "X-Player-Token": "ticket1"}
+        h = {**H, "X-Player-Token": "token1"}
         assert (await c.post("/v1/chat/completions", json=BODY, headers=h)).status_code == 200
-        assert steam.state.q == ("pubkey", "480", "ticket1")  # our key and the title's appid went to Steam
-        assert gw.state.store.usage("demo", "765", datetime.datetime.now(datetime.timezone.utc).date().isoformat()) > 0  # billed to the steam id
-        assert (await c.post("/v1/chat/completions", json=BODY, headers=h)).status_code == 200 and steam.state.calls == 1  # cached for a while
-        other = {**h, "X-Anansi-Title": "other", "X-Anansi-Key": "k2"}  # the same ticket on another game is checked again, for that game
+        assert verify.state.seen == ({"title": "demo", "token": "token1"}, "Bearer s3cret")  # the title and token, with the operator's secret
+        assert gw.state.store.usage("demo", "765", datetime.datetime.now(datetime.timezone.utc).date().isoformat()) > 0  # billed to the verified player
+        assert (await c.post("/v1/chat/completions", json=BODY, headers=h)).status_code == 200 and verify.state.calls == 1  # cached for a while
+        other = {**h, "X-Anansi-Title": "other", "X-Anansi-Key": "k2"}  # the same token on another title is checked again, for that title
         assert (await c.post("/v1/chat/completions", json=BODY, headers=other)).status_code == 200
-        assert steam.state.calls == 2 and steam.state.q[1] == "999"
-        h2 = {**H, "X-Player-Token": "ticket2"}
-        for reply, code in (({"response": {"params": {"result": "Invalid Ticket"}}}, 401),
-                            ({"response": {"params": {"result": "OK", "steamid": "765", "vacbanned": True}}}, 401),
-                            ({"response": {"params": {"result": "OK"}}}, 401),  # OK but no steam id
-                            ({"response": {}}, 401), ({"unexpected": 1}, 401), ([1], 503), (None, 503)):
-            steam.state.reply = reply
+        assert verify.state.calls == 2 and verify.state.seen[0]["title"] == "other"
+        h2 = {**H, "X-Player-Token": "token2"}
+        for reply, code in (((401, {}), 401), ((403, {}), 401), ((404, {}), 401),  # the verifier says no
+                            ((200, {}), 401), ((200, {"player": ""}), 401), ((200, {"player": True}), 401),  # no usable player id
+                            ((200, {"player": "a b/c"}), 401), ((200, {"player": "x" * 200}), 401),
+                            ((200, [1]), 503), ((500, {}), 503), ((502, {}), 503)):  # broken or down: unavailable, not a bad token
+            verify.state.reply = reply
             assert (await c.post("/v1/chat/completions", json=BODY, headers=h2)).status_code == code, reply
     finally:
-        os.environ.pop("STEAM_PUBLISHER_KEY")
+        os.environ.pop("VERIFY_SECRET", None)
         if old is not None:
-            os.environ["STEAM_PUBLISHER_KEY"] = old
+            os.environ["VERIFY_SECRET"] = old
 
 
 async def t_repeated_auth_failures_are_slowed():

@@ -3,7 +3,6 @@ __pycache__/
 .venv/
 .env
 *.log
-BUSINESS_PLAN.md
 *.db
 *.db-wal
 *.db-shm

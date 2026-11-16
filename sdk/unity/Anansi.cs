@@ -105,7 +105,7 @@ namespace Anansi
         readonly TimeSpan streamTimeout;
         readonly Func<List<Message>, Task<string>> fallback;
 
-        // playerToken: return the player's proof of identity from your platform (on Steam, the hex web-API auth ticket).
+        // playerToken: return the player's proof of identity from your platform or your own login.
         // fallback: answer locally, for example from a bundled llama.cpp server. Default is a neutral line.
         public Client(string baseUrl, string titleId, string titleKey, Func<string> playerToken,
                       Func<List<Message>, Task<string>> fallback = null, double timeoutSeconds = 3,

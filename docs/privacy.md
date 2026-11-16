@@ -17,7 +17,7 @@
 
 | Data | About | Why | Kept |
 |---|---|---|---|
-| Platform account id (for example a Steam id), tokens used per day | Player | Daily token budget, so one account cannot use everything | `retention_days` (35), then deleted |
+| Player id (from the operator's verifier), tokens used per day | Player | Daily token budget, so one account cannot use everything | `retention_days` (35), then deleted |
 | The text of a player's message and the NPC's reply | Player | Not stored: processed in memory by the gateway and sent to whichever model answers (see below). The operator's own logging or proxy may differ | Not stored by the gateway |
 | A random agent id, tokens and jobs served per day, probe results, bans | Volunteer | Verification and the work ledger | No automatic deletion (see "Not handled yet") |
 | A link between an agent id and a player's account, earned and spent credits | Volunteer / player | Volunteer credits | While credits exist (no automatic deletion) |

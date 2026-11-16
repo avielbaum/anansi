@@ -109,7 +109,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Anansi", meta = (WorldContext = "Outer"))
 	static UAnansiClient* Create(UObject* Outer, const FString& BaseUrl, const FString& TitleId, const FString& TitleKey);
 
-	/** Proof of who the player is, from your platform (on Steam, the hex web-API auth ticket). Tokens expire: set a fresh one before each call if yours does. */
+	/** Proof of who the player is, from your platform or your own login. Tokens expire: set a fresh one before each call if yours does. */
 	UPROPERTY(BlueprintReadWrite, Category = "Anansi") FString PlayerToken;
 	/** Shown (as Source "fallback") when the gateway fails, is slow or says no. Replace it with something in character. */
 	UPROPERTY(BlueprintReadWrite, Category = "Anansi") FString FallbackLine = TEXT("...");

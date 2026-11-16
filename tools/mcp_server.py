@@ -111,7 +111,7 @@ def check_config(path: str) -> dict:
         make_app({**cfg, "db_path": None})
     except Exception as e:  # startup refusals are ValueError, but a missing key is a KeyError: report both
         add("error", "startup", f"{e.__class__.__name__}: {e}")
-    if (cfg.get("auth") or cfg.get("steam") or {}).get("mode") == "dev":
+    if (cfg.get("auth") or {}).get("mode") == "dev":
         add("warn", "auth", "dev auth accepts any 'dev:<id>' token; the gateway refuses it when ANANSI_ENV=production")
     if not cfg.get("db_path"):
         add("warn", "db_path", "no database file: daily budgets and bans are lost on every restart")

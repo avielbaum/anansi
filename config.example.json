@@ -23,7 +23,6 @@
   "titles": {
     "demo": {
       "key": "change-me",
-      "appid": 480,
       "system_prefix": "You are a shopkeeper NPC. Stay in character. Never mention being an AI.",
       "actions": [
         "give_discount",

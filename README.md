@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://github.com/avielbaum/anansi/actions/workflows/ci.yml"><img src="https://github.com/avielbaum/anansi/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/status-phase%201%20prototype-orange" alt="Status: Phase 1 prototype">
-  <img src="https://img.shields.io/badge/licence-PolyForm%20NC%20core%20%C2%B7%20MIT%2FApache%20SDKs-blue" alt="Licence: PolyForm Noncommercial for the core, MIT or Apache-2.0 for SDKs, tools and docs">
+  <img src="https://img.shields.io/badge/licence-MIT%20or%20Apache--2.0-blue" alt="Licence: MIT or Apache-2.0">
 </p>
 
 <p align="center">
@@ -101,10 +101,10 @@ Measured on one Windows PC (Qwen3 through Ollama on the CPU), on a rented Linux 
 | Linux | working: gateway and SDKs in CI on Ubuntu; Docker compose (vLLM + gateway), the systemd unit, llama-server and `join.sh` run on Ubuntu 22.04 with an NVIDIA A10 |
 | macOS Apple Silicon | working on a Mac mini (Apple M6, 16 GB, macOS 27) with Ollama on Metal: self-checks (80), `qwen3:8b` through the gateway (G1 test split 86%, 1.3 s per reply), a real volunteer joined with `join.py`, paused under load and reported its statistics, and all four SDKs: Python, JavaScript (29 checks), C# (22 checks, .NET 11) and Godot (24 checks, Godot 4.7.2), each also live against `qwen3:8b` |
 | GPU nodes (vLLM, llama-server) | working on an NVIDIA A10 with Qwen3-1.7B: vLLM about 165 requests/s at 32 in flight (p99 0.3 s), llama-server 0.07 s per reply; AMD and Intel GPUs untested |
-| **Live platform identity check** (Steam is the only one written) | **not tested, needs a Steam publisher key** |
+| Player identity check: the gateway asks a verifier URL you run (`auth.mode` `url`) which player owns a token | working in tests against a stand-in verifier; no real platform's verifier has been run |
 | Persistence (budgets, bans) and a volunteer work ledger in SQLite, or Postgres for gateways on several machines | working, tested across a restart and on Postgres 16 |
 | Anonymous volunteer-network statistics (opt-in): hardware (graphics card, processor, system), tokens served and typical idle GPU load by group, a web page, JSON and SDK calls; no names, and nothing published until enough machines report | working on a real Windows PC with a real agent and gateway; Python, C#, JavaScript and Godot SDK calls; macOS readers run on a real Mac, the Linux NVIDIA reader on a real A10, the AMD reader on sample output only |
-| Volunteer credits: link a machine to a player, earn per token, 7-day hold, games spend them on their own items | working in tests (SQLite and Postgres); the Python, C#, JavaScript and Godot SDKs show the balance and link machines; Steam Inventory not connected |
+| Volunteer credits: link a machine to a player, earn per token, 7-day hold, games spend them on their own items | working in tests (SQLite and Postgres); the Python, C#, JavaScript and Godot SDKs show the balance and link machines; no store or inventory connected |
 | Model signing, per-user node identity, answer quorum | not built |
 
 ## Quick start
@@ -157,12 +157,8 @@ No model installed? Use the mock nodes: [docs/quickstart.md](docs/quickstart.md)
 
 ## Licence
 
-Different parts of the repository use different licences; [LICENSING.md](LICENSING.md) has the full table.
+MIT OR Apache-2.0, at your option ([LICENSE-MIT](LICENSE-MIT), [LICENSE-APACHE](LICENSE-APACHE)), for the whole repository:
+the gateway, node agent, SDKs, tools, docs and example games. Use it in any project, free or paid, open or closed.
+[LICENSING.md](LICENSING.md) has the details.
 
-- **SDKs, tools, docs and examples:** MIT or Apache-2.0, your choice. Ship the SDKs in any game, free or paid,
-  open or closed.
-- **The core service** (`gateway/`, `node/` and the deployment files): [PolyForm Noncommercial 1.0.0](LICENSE). Free for
-  personal use, research, study, hobby projects and other noncommercial purposes. **Running it commercially, for
-  example as a paid service or as the backend of a monetised game, needs a separate commercial licence from the
-  licensor.** This part is source-available, not open source by the OSI definition.
 - **Art in `examples/`:** its own licence, given in each example's `assets/LICENSE.md` (Waypoint: CC-BY-SA 3.0 and CC0, see [its licence file](examples/waypoint/assets/LICENSE.md)).
