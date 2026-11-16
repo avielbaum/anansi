@@ -275,7 +275,7 @@ Limits to plan around:
 
 ## Production switches
 
-- Set `auth.mode` to `"url"` with your player-token verifier; never leave it on `"dev"`. With `ANANSI_ENV=production` (set by the Dockerfile, the compose file and the systemd unit) the gateway refuses to start on dev auth or while a title key is still `change-me`; for a local try-out of the compose setup run it with `ANANSI_ENV=dev`. `url` mode needs `auth.url`, and the variable `auth.secret_env` names if it names one, checked at startup. The compose setup keeps budgets in `/data/anansi.db` on a volume.
+- Set `auth.mode` to `"url"` with your player-token verifier; never leave it on `"dev"`. With `ANANSI_ENV=production` (set by the Dockerfile, the compose file and the systemd unit) the gateway refuses to start on dev auth or while a title key, server key or volunteer token still starts with `change-me` (the examples are public); for a local try-out of the compose setup run it with `ANANSI_ENV=dev`. `url` mode needs `auth.url`, and the variable `auth.secret_env` names if it names one, checked at startup. The compose setup keeps budgets in `/data/anansi.db` on a volume.
 - Change every `titles.*.key`; set `ANANSI_ADMIN_TOKEN`.
 - Put the gateway behind TLS (reverse proxy or load balancer).
 - Set `db_path` so budgets, bans and the ledger survive restarts. The token cache and node registry are still in memory. A SQLite file serves the processes of one machine; for several machines use a Postgres URL (see above).

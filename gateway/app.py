@@ -251,10 +251,13 @@ def make_app(config=None, transport=None):
             if m not in served:
                 raise ValueError(f"title {n}: judge or action_check model {m!r} is not in any node's models")
     if os.environ.get("ANANSI_ENV") == "production":  # set by the Dockerfile and the systemd unit
-        weak = [n for n, t in cfg["titles"].items() if t["key"] == "change-me"]
+        # the example secrets are public in the repository: a title key, server key or volunteer token that still starts
+        # with "change-me" would let anyone in (a volunteer token, to read player messages and the NPCs' prompts)
+        weak = [f"title {n}" for n, t in cfg["titles"].items() for k in ("key", "server_key") if str(t.get(k) or "").startswith("change-me")]
+        weak += [f"pull token {tok}" for tok in (cfg.get("pull_tokens") or {}) if tok.startswith("change-me")]
         if auth["mode"] == "dev" or weak:
-            raise ValueError("ANANSI_ENV=production: dev auth and the example title key 'change-me' are not allowed"
-                             + (f" (titles: {', '.join(weak)})" if weak else ""))
+            raise ValueError("ANANSI_ENV=production: dev auth and the example secrets 'change-me...' are not allowed"
+                             + (f" ({', '.join(weak)})" if weak else ""))
 
     async def player_id(t, ticket):
         if auth["mode"] == "dev":  # dev tokens look like "dev:<player id>"; never use in production

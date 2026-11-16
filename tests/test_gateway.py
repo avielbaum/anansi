@@ -550,6 +550,13 @@ def t_production_and_url_auth_startup_checks():
         ok["auth"] = url
         ok["titles"]["demo"]["key"] = "a-real-secret"
         make_app(ok)
+        for weak in ({"titles": {"demo": {**ok["titles"]["demo"], "server_key": "change-me-server"}}},  # the repo's example secrets are public
+                     {"pull_tokens": {"change-me-node-token": {"models": ["npc-small"]}}}):
+            try:
+                make_app({**ok, **weak})
+                assert False, weak
+            except ValueError as e:
+                assert "change-me" in str(e)
         del os.environ["ANANSI_ENV"]
         for bad_auth in ({"mode": "web"}, {"mode": "url"}, {"mode": "url", "url": "verify.example"},  # no check behind it; no or bad address
                          {**url, "secret_env": "VERIFY_SECRET"}):  # a secret named but not set
