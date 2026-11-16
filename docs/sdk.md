@@ -208,7 +208,8 @@ server process (the `ANANSI_TITLE` and `ANANSI_KEY` variables). The red-team too
 The C# SDK is tested as plain .NET against a live gateway (Windows PowerShell test and a `dotnet` test run in CI on
 Ubuntu). The Unity `JsonUtility` branch and a real Unity project have not been run. The Godot addon runs in CI in the
 real Godot 4.3 engine against a live gateway (`sdk/godot/test/checks.gd`, 24 checks: replies, streaming, quests, credits, statistics,
-every fallback path), both from the editor binary and in an exported Linux release build. A web export (WebGL 2, no threads) of the
+every fallback path), both from the editor binary and in an exported Linux release build. On a Mac mini (Apple M6), the C# test (22 checks, .NET 11) and the Godot test (24 checks, Godot
+4.7.2, editor binary) also pass, and both SDKs ran live against a real model there. A web export (WebGL 2, no threads) of the
 same test project passed all 18 checks (the count then) in Chrome once, run by hand, streaming included (the page's origin must be in the gateway's
 `cors_origins`); CI does not run it. In `examples/hoppertunity`'s browser build, a streamed reply from a real model (Ollama, `qwen3:1.7b`)
 arrived one sentence at a time in Chrome: the first after 4.2 s, the second 1.2 s later (one run). The Unreal plugin is an **untested draft**: it follows the same contract and JSON shapes but has
