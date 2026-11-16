@@ -93,31 +93,82 @@ def render(data, period, privacy_url=""):
     """The statistics as one small HTML page. Every value is escaped; nothing here runs script. privacy_url (https, set by the operator) is
     linked from the page."""
     e = html.escape
-    nav = " ".join(f'<a href="?period={p}"{" class=on" if p == period else ""}>{label}</a>' for p, label in
-                   (("day", "today"), ("week", "last 7 days"), ("all", "all time")))
+    labels = (("day", "Today"), ("week", "Last 7 days"), ("all", "All time"))
+    nav = "".join(f'<a href="?period={p}"' + (' aria-current="page"' if p == period else "") + f">{label}</a>" for p, label in labels)
+    when = dict(labels).get(period, "").lower()
     head = ("<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
             "<meta name=robots content='noindex,nofollow'><meta name=color-scheme content='light dark'><title>Volunteer network statistics</title>"
-            "<style>body{font:15px system-ui,sans-serif;margin:2rem auto;max-width:60rem;padding:0 1rem}table{border-collapse:collapse;width:100%;"
-            "margin:.5rem 0 2rem}td,th{padding:.4rem .6rem;border-bottom:1px solid #8884;text-align:left;vertical-align:top}"
-            ".n{text-align:right;font-variant-numeric:tabular-nums}.nav a{margin-right:1rem}.on{font-weight:700}</style>"
-            f"<h1>Volunteer network statistics</h1><p>Tokens served for players, by the hardware that served them. <span class=nav>{nav}</span></p>")
-    foot = (f"<p><small>These are statistics about groups of machines whose owners chose to send them. No names, accounts or machine ids are "
+            f"<style>{_CSS}</style><main><header><p class=eyebrow>Anansi volunteer network</p><h1>Volunteer network statistics</h1>"
+            "<p class=lead>Tokens served for players, by the hardware that served them.</p>"
+            f"<nav aria-label='Period'>{nav}</nav></header>")
+    foot = (f"<footer><p>These are statistics about groups of machines whose owners chose to send them. No names, accounts or machine ids are "
             + (f"published, and a group of fewer than {data['min_group']} machines is not shown on its own. " if data["min_group"] > 1 else
                "published, but this gateway has set its minimum group size to 1, so a single machine can be recognised. ") +
             "Hardware and idle GPU load are reported by "
             "the machines and are not verified; the idle figure is a slow average, not a live reading; token counts are measured by the gateway. "
             "Copies of this page kept by others (search engines, archives, screenshots) are outside our control."
-            + (f" <a href='{e(privacy_url, quote=True)}'>Privacy notice</a>." if privacy_url else "") + "</small></p>")
+            + (f" <a href='{e(privacy_url, quote=True)}'>Privacy notice</a>." if privacy_url else "") + "</p></footer></main>")
     if not data["published"]:
-        return head + f"<p>Statistics appear once at least {data['min_group']} machines report; fewer would describe individual computers.</p>" + foot
+        return (head + f"<section class=empty><h2>Nothing to show yet</h2><p>Statistics appear once at least {data['min_group']} machines report; "
+                "fewer would describe individual computers.</p></section>" + foot)
     r = data["reporting"]
+    pct = lambda v: "&ndash;" if v is None else f"{v} %"
     idle = "" if r["idle_gpu_pct"] is None else f", typically {r['idle_gpu_pct']} % idle GPU load"
-    table = lambda title, rows, col: (f"<h2>{title}</h2><table><tr><th>{col}<th class=n>Machines<th class=n>Tokens<th class=n>Typical idle GPU" + "".join(
-        f"<tr><td>{e(x['name'])}<td class=n>{x['machines']}<td class=n>{x['tokens']:,}<td class=n>"
-        f"{'' if x['idle_gpu_pct'] is None else str(x['idle_gpu_pct']) + ' %'}" for x in rows) + "</table>") if rows else ""
-    return (head + f"<p>{r['machines']} machine{'s are' if r['machines'] != 1 else ' is'} reporting{idle}. They served {r['tokens']:,} tokens; the whole volunteer network served "
-            f"{data['network_tokens']:,}.</p>" + table("Graphics cards", data["gpus"], "GPU") + table("Processors", data["cpus"], "CPU")
+    tiles = "".join(f"<div class=tile><span>{k}</span><strong>{v}</strong></div>" for k, v in (
+        ("Machines reporting", f"{r['machines']:,}"), (f"Tokens served, {when}", f"{r['tokens']:,}"),
+        ("Typical idle GPU", pct(r["idle_gpu_pct"])), (f"Whole network, {when}", f"{data['network_tokens']:,}")))
+    total = max(1, r["tokens"])
+
+    def bar(v, cls):  # decorative: the number is in the same cell as text
+        return f"<span class='bar {cls}' aria-hidden=true><i style='width:{max(0, min(100, v))}%'></i></span>"
+
+    def table(title, rows, col):
+        if not rows:
+            return ""
+        body = "".join(
+            f"<tr{' class=other' if x['name'] == 'Other' else ''}><th scope=row>{e(x['name'])}<td class=n>{x['machines']:,}"
+            f"<td class=n><span class=cell>{x['tokens']:,}{bar(round(100 * x['tokens'] / total), 'share')}</span>"
+            f"<td class=n><span class=cell>{pct(x['idle_gpu_pct'])}{bar(x['idle_gpu_pct'] or 0, 'idle')}</span>" for x in rows)
+        return (f"<section><h2>{title}</h2><div class=scroll><table><thead><tr><th scope=col>{col}<th scope=col class=n>Machines"
+                f"<th scope=col class=n>Tokens<th scope=col class=n>Typical idle GPU</thead><tbody>{body}</tbody></table></div></section>")
+    return (head + f"<section class=tiles aria-label=Summary>{tiles}</section>"
+            f"<p class=summary>{r['machines']} machine{'s are' if r['machines'] != 1 else ' is'} reporting{idle}. They served {r['tokens']:,} tokens; "
+            f"the whole volunteer network served {data['network_tokens']:,}.</p>"
+            + table("Graphics cards", data["gpus"], "GPU") + table("Processors", data["cpus"], "CPU")
             + table("Operating systems", data["systems"], "System") + foot)
+
+
+# The page's look. Inline because the page allows no other source (default-src 'none'); system fonts only.
+_CSS = (
+    ":root{--bg:#f6f7fb;--card:#fff;--ink:#1b1f2a;--muted:#5d6475;--line:#e3e6ee;--accent:#4b5bd6;--accent-soft:#e6e9fb;--idle:#1f9d74;--idle-soft:#dcf3ea;--on-accent:#fff}"
+    "@media (prefers-color-scheme:dark){:root{--bg:#0f1218;--card:#171b24;--ink:#e8eaf1;--muted:#9aa2b5;--line:#272d3a;--accent:#8f9bff;"
+    "--accent-soft:#252b46;--idle:#4fd1a1;--idle-soft:#173229;--on-accent:#0f1218}}"
+    "*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif}"
+    "main{max-width:62rem;margin:0 auto;padding:2rem 1rem 3rem}"
+    ".eyebrow{margin:0;color:var(--muted);font-size:.8rem;letter-spacing:.08em;text-transform:uppercase}"
+    "h1{margin:.2rem 0 .3rem;font-size:clamp(1.5rem,4vw,2.1rem);line-height:1.2}.lead{margin:0 0 1.2rem;color:var(--muted)}"
+    "nav{display:inline-flex;gap:.25rem;padding:.25rem;background:var(--card);border:1px solid var(--line);border-radius:.6rem;flex-wrap:wrap}"
+    "nav a{padding:.35rem .8rem;border-radius:.4rem;color:var(--muted);text-decoration:none;font-weight:500}"
+    "nav a:hover{color:var(--ink)}nav a[aria-current]{background:var(--accent);color:var(--on-accent)}"
+    "nav a:focus-visible,footer a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}"
+    ".tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.75rem;margin:1.5rem 0 .75rem}"
+    ".tile{background:var(--card);border:1px solid var(--line);border-radius:.75rem;padding:.9rem 1rem}"
+    ".tile span{display:block;color:var(--muted);font-size:.82rem}.tile strong{display:block;font-size:1.6rem;font-variant-numeric:tabular-nums}"
+    ".summary{color:var(--muted);margin:0 0 1.5rem}"
+    "section>h2{font-size:1.05rem;margin:1.8rem 0 .6rem}"
+    ".scroll{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:.75rem}"
+    "table{border-collapse:collapse;width:100%;min-width:34rem}"
+    "th,td{padding:.6rem .9rem;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}"
+    "thead th{color:var(--muted);font-size:.8rem;font-weight:600;white-space:nowrap}tbody tr:last-child>*{border-bottom:0}"
+    "tbody th{font-weight:500;overflow-wrap:break-word}.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}"
+    "tr.other th{color:var(--muted);font-style:italic}"
+    ".cell{display:inline-flex;align-items:center;gap:.6rem;justify-content:flex-end}"
+    ".bar{display:inline-block;width:4.5rem;height:.45rem;border-radius:1rem;background:var(--accent-soft);overflow:hidden}"
+    ".bar i{display:block;height:100%;border-radius:inherit;background:var(--accent)}.bar.idle{background:var(--idle-soft)}.bar.idle i{background:var(--idle)}"
+    ".empty{background:var(--card);border:1px dashed var(--line);border-radius:.75rem;padding:1.5rem;margin:1.5rem 0}.empty h2{margin:0 0 .3rem;font-size:1.1rem}"
+    ".empty p{margin:0;color:var(--muted)}"
+    "footer{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--muted);font-size:.82rem}footer a{color:var(--accent)}"
+    "@media (max-width:30rem){.tile strong{font-size:1.3rem}table{min-width:0}.bar{display:none}th,td{padding:.55rem .6rem}thead th,thead th.n{white-space:normal;vertical-align:bottom}}")
 
 
 def add_routes(app, store, cfg=None):
