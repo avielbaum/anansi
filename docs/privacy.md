@@ -89,7 +89,7 @@ The earlier design note that volunteers should get "no player chat" cannot hold 
 
 ## Direct fallback to a public LLM
 
-A studio can turn on the SDKs' `direct` option ([sdk.md](sdk.md#direct-fallback-to-a-public-llm)). Then, when the gateway cannot
+A studio can turn on the SDKs' `direct` option ([sdk.md](sdk.md#direct-fallback-to-a-public-llm-optional-off-by-default)). Then, when the gateway cannot
 be reached, **the player's recent lines and the NPC's prompt go from the player's device straight to Pollinations**
 (text.pollinations.ai, operated by Myceli.AI OÜ, Estonia) and the model provider behind it, with the player's IP address as part
 of the connection. The operator's gateway sees none of it, so none of the gateway's checks, budgets or retention rules apply.
