@@ -269,6 +269,11 @@ def t_sdk_direct_fallback():
     stream = list(Anansi("http://gw", "demo", "k", "dev:1", transport=httpx.MockTransport(handler),
                          direct={"url": "http://llm/v1", "system": system}).chat_stream([{"role": "user", "content": "Hi"}]))
     assert stream == ["Hello there, traveller."]  # a stream that cannot start gets the direct reply whole
+    for status, want in ((429, "Hm."), (401, "Hm."), (503, "Hello there, traveller.")):  # a refused stream never goes direct
+        state["gw"] = status
+        s = Anansi("http://gw", "demo", "k", "dev:1", fallback=lambda m: "Hm.", transport=httpx.MockTransport(handler),
+                   direct={"url": "http://llm/v1", "system": system})
+        assert list(s.chat_stream([{"role": "user", "content": "Hi"}])) == [want], status
 
 
 def t_sdk_stream():

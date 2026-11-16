@@ -103,9 +103,10 @@ class Anansi:
         fallback line instead; if it fails after, the sentences already shown stand (nothing is replayed).
         Plain replies only: structured actions use chat()."""
         body = {"messages": messages, "stream": True, "anansi": {"npc_id": npc_id}, **params}
-        got = False
+        got = gone = False
         try:
             with self.http.stream("POST", self.url, json=body, headers=self.headers, timeout=self.timeout) as r:
+                gone = r.status_code in GATEWAY_GONE
                 if r.status_code == 200:
                     for line in r.iter_lines():
                         if not line.startswith("data: {"):
@@ -117,10 +118,12 @@ class Anansi:
                         if text:
                             got = True
                             yield text
-        except (httpx.HTTPError, ValueError, KeyError):
+        except httpx.HTTPError:
+            gone = gone or not got  # no answer before the first sentence: the gateway is not there
+        except (ValueError, KeyError):
             pass
         if not got:  # shortcut: a stream that never started tries the direct LLM whole, not sentence by sentence
-            d = self._direct(messages, False) if self.direct else None
+            d = self._direct(messages, False) if gone else None  # never after a refusal (401, 403, 429)
             yield d[0] if d else self.fallback(messages)
 
     def quest(self, world, steps=3, theme="", difficulty="normal", story_so_far="", player="", fallback=None):
