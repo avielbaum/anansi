@@ -43,6 +43,12 @@ Hoppertunity turn it on for their GitHub Pages builds. From a browser, Pollinati
   30, and it changes). The SDK waits 60 seconds between direct calls by default and honours the service's `Retry-After`; a turn
   inside that window gets your local line at once. Their terms forbid evading the limits, so do not lower the interval or rotate
   addresses. With a free Pollinations key the limits are higher, but a key would ship in the game: keep keys server-side.
+- **The limit is per internet address, not per player.** Players sharing one address (a household, a school, an office, mobile
+  carrier NAT) share one reply every 45 seconds, and so does any other app there using Pollinations: expect more local lines there.
+  While another request from the same address holds the slot, the service sometimes holds a new one until the slot frees (up to
+  about 45 s) instead of refusing it, so give the direct call a timeout that matches how long the screen can wait (`timeout_s`,
+  default 20 s). Measured from a home connection where something else was using Pollinations: requests got `402` with
+  `Retry-After` 14 to 45 s, or were held past 20 s; one sent right after its `Retry-After` answered in 1.4 s.
 - **No promise of service.** Pollinations offers no uptime guarantee and can change models, limits or the endpoint at any time
   (its newer endpoint already requires a key). Your local fallback must stand on its own.
 - **The words may not match the action.** As with any model, a reply can promise something the action does not do (one live
