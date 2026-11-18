@@ -196,7 +196,7 @@ def make_app(config=None, transport=None):
     @app.middleware("http")
     async def measure(req, call_next):  # records every outcome, including auth failures and 4xx/5xx
         t0 = time.monotonic()
-        api = req.url.path in ("/v1/chat/completions", "/v1/npc", "/v1/quest", "/v1/storyline")
+        api = req.url.path in ("/v1/chat/completions", "/v1/npc", "/v1/quest", "/v1/storyline", "/v1/credits", "/v1/credits/link", "/v1/credits/spend")
         who = client_addr(req)
         f = auth_fails.get(who)
         if api and f and t0 - f[1] < 60 and f[0] >= cfg.get("auth_fail_limit", 30):
@@ -860,7 +860,7 @@ def make_app(config=None, transport=None):
         try:
             d = await req.json()
             player, ref, milli = str(d["player"]), str(d["ref"]), round(float(d["amount"]) * 1000)
-        except (ValueError, KeyError, TypeError):
+        except (ValueError, KeyError, TypeError, OverflowError):  # OverflowError: an amount of 1e999 is infinity
             raise HTTPException(400, 'body must be {"player": "<platform id>", "amount": 5, "ref": "<purchase id>"}')
         if not (0 < milli <= 10**12) or not player or not 0 < len(ref) <= 128:
             raise HTTPException(400, "amount must be above 0, and player and ref (at most 128 characters) set")

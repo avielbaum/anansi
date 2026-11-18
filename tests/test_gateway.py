@@ -1,6 +1,7 @@
 """Run: python tests/test_gateway.py   (also works under pytest). No GPU or network needed."""
 import asyncio
 import copy
+import inspect
 import io
 import json
 import os
@@ -1907,6 +1908,34 @@ async def t_credits_through_the_gateway():
     r = await spend("server-secret", ref="buy-2", amount=50)
     assert r.status_code == 402 and r.json()["balance"] == 35.0
     assert (await spend("server-secret", ref="buy-3", amount=-5)).status_code == 400
+    inf = await gw.post("/v1/credits/spend", content=b'{"player": "p", "ref": "buy-4", "amount": 1e999}',
+                        headers={"X-Anansi-Title": "demo", "X-Anansi-Server-Key": "server-secret", "Content-Type": "application/json"})
+    assert inf.status_code == 400  # 1e999 parses as infinity: a 400, not a crash
+
+
+async def t_pull_credit_is_capped_by_the_request():
+    from gateway.pull import PullHub
+    credited = []
+    store = type("S", (), {"credit": lambda self, agent, tokens, milli=0: credited.append(tokens)})()
+    hub = PullHub(Scheduler([]), {}, None, store=store, canary_rate=0)
+    hub.nodes["n1"] = {"agent": "vol"}
+    pad = json.dumps({"choices": [{"message": {"content": "x" * 400_000}}], "usage": {"total_tokens": 10**9}})
+
+    async def dispatch(nid, path, body):
+        return 200, pad, "application/json"
+    hub.dispatch = dispatch
+    sent = {"model": "npc-small", "max_tokens": 200, "messages": [{"role": "user", "content": "hi"}]}
+    await hub.handle_async_request(httpx.Request("POST", "http://pull-n1.node/v1/chat/completions", content=json.dumps(sent)))
+    assert credited == [len(json.dumps(sent)) // 4 + 200], credited  # a reply padded to 400 KB earns no more than was asked for
+
+
+async def t_credit_routes_count_failed_logins():
+    cfg = copy.deepcopy(CFG)
+    cfg["auth_fail_limit"] = 3
+    gw = httpx.AsyncClient(transport=httpx.ASGITransport(app=make_app(cfg)), base_url="http://gw")
+    bad = {**H, "X-Anansi-Key": "guess"}
+    assert [(await gw.get("/v1/credits", headers=bad)).status_code for _ in range(4)] == [401, 401, 401, 429]
+    assert (await gw.post("/v1/credits/link", json={"code": "ABCD-EFGH"}, headers=H)).status_code == 429  # the same address waits
 
 
 def t_g1_set_and_blind_rating():
@@ -2271,5 +2300,5 @@ async def t_mcp_tools():
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("t_"):
-            asyncio.run(fn()) if asyncio.iscoroutinefunction(fn) else fn()
+            asyncio.run(fn()) if inspect.iscoroutinefunction(fn) else fn()
             print("PASS", name)

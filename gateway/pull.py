@@ -225,8 +225,11 @@ class PullHub(httpx.AsyncBaseTransport):
                 tokens = len(body) // 4  # a streamed reply has no usage block: estimate from its size
             tokens = min(tokens, (len(sent) + len(body)) // 2)  # a volunteer cannot claim more than the text could hold
             try:
-                model = json.loads(sent).get("model")
-            except (ValueError, AttributeError):
+                asked = json.loads(sent)
+                model = asked.get("model")
+                # nor more than the gateway asked for: padding the reply up to MAX_RESULT must not pay
+                tokens = min(tokens, len(sent) // 4 + int(asked.get("max_tokens") or 0))
+            except (ValueError, AttributeError, TypeError):
                 model = None
             rate = self.rates.get(model, self.rates.get("default", 1.0))
             self.store.credit(e["agent"], tokens, milli=round(tokens * rate))  # rate per 1,000 tokens = milli-credits per token
