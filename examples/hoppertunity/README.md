@@ -132,6 +132,7 @@ phone or tablet.
 | `src/main.gd` | The 3D view, input, interface (title, day-end, contract choice, win and lose screens), tutorial and sound, all built in code |
 | `addons/anansi` | A copy of `sdk/godot/addons/anansi`; CI fails if the two differ |
 | `test/checks.gd` | Self-checks: `godot --headless --path examples/hoppertunity --script res://test/run.gd` |
+| `tools/publish_pages.mjs` | Copies this folder, as committed, into a clone of the public [avielbaum/hoppertunity](https://github.com/avielbaum/hoppertunity) repo, which runs it every day against `main` and publishes the result to GitHub Pages |
 
 CI (`.github/workflows/ci.yml`, job `godot`) runs the self-checks against a gateway serving this title on mock nodes,
 and exports the web build. The checks include two scripted playthroughs of one production line: a manager who gives a
