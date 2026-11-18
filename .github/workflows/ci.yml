@@ -57,6 +57,7 @@ jobs:
       - name: Hoppertunity (examples/hoppertunity) self-checks, against a gateway serving its title
         run: |
           diff -r sdk/godot/addons/anansi examples/hoppertunity/addons/anansi   # the game ships a copy of the SDK: keep it in step
+          git init -q /tmp/hop-pages && node examples/hoppertunity/tools/publish_pages.mjs /tmp/hop-pages   # the public repo's daily sync must still apply
           python -c "import json; c=json.load(open('examples/hoppertunity/config.hoppertunity.json')); c['nodes']=[{'url':'http://127.0.0.1:9001','models':['npc-small'],'region':'local'}]; json.dump(c,open('/tmp/hop.json','w'))"
           ANANSI_CONFIG=/tmp/hop.json python -m uvicorn gateway.app:make_app --factory --port 8081 --log-level warning &
           sleep 5
