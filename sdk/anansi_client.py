@@ -81,10 +81,10 @@ class Anansi:
                 else:
                     out["say"] = text
                 return out
-        except httpx.HTTPError:  # no answer at all: the gateway is not there
+        except (httpx.ConnectError, httpx.ConnectTimeout):  # no connection at all: the gateway is not there
             gone = True
-        except (ValueError, KeyError):
-            pass
+        except (httpx.HTTPError, ValueError, KeyError):  # slow (a read timeout) or a broken reply: the gateway is there and
+            pass                                          # may still answer and bill, so the local line, not a third party
         d = self._direct(messages, structured) if gone else None
         if d:
             return {"source": "direct", "say": d[0], "action": d[1], "filtered": False}
@@ -141,9 +141,9 @@ class Anansi:
                         if text:
                             got = True
                             yield text
-        except httpx.HTTPError:
-            gone = gone or not got  # no answer before the first sentence: the gateway is not there
-        except (ValueError, KeyError):
+        except (httpx.ConnectError, httpx.ConnectTimeout):  # no connection at all: the gateway is not there
+            gone = True
+        except (httpx.HTTPError, ValueError, KeyError):  # slow or broken, but there: no direct call
             pass
         if not got:  # shortcut: a stream that never started tries the direct LLM whole, not sentence by sentence
             d = self._direct(messages, False) if gone else None  # never after a refusal (401, 403, 429)

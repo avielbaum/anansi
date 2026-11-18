@@ -78,7 +78,7 @@ try {
   $procs[2] | Stop-Process -Force; Start-Sleep 1
   $r = $c.ChatAsync($msgs, "smith", $false).GetAwaiter().GetResult()
   Check ($r.Source -eq "fallback") "gateway down falls back"
-  $dc = New-Object Anansi.Client("http://127.0.0.1:8080", "demo", "change-me", $ticket, $null, 1)
+  $dc = New-Object Anansi.Client("http://127.0.0.1:8080", "demo", "change-me", $ticket, $null, 5)  # Windows takes ~2 s to report a refused connection; a timeout is "slow", not "gone"
   $opt = New-Object Anansi.DirectOptions; $opt.System = "You are Brom, a blacksmith."; $opt.Url = "http://127.0.0.1:9001/v1/chat/completions"; $opt.Actions.Add("give_discount"); $dc.Direct = $opt
   $dm = New-Object 'System.Collections.Generic.List[Anansi.Message]'; $mm = New-Object Anansi.Message; $mm.role = "user"; $mm.content = 'echo: {"say": "Ten off.", "action": "give_discount"}'; $dm.Add($mm)
   $r = $dc.ChatAsync($dm, $null, $true).GetAwaiter().GetResult()

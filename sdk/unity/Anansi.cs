@@ -290,7 +290,7 @@ namespace Anansi
                 }
             }
             catch (HttpRequestException) { gone = true; }   // DNS, refused, TLS
-            catch (TaskCanceledException) { gone = true; }  // timeout
+            catch (TaskCanceledException) { }               // timeout: there but slow, and may still answer and bill: no direct call
             catch (Exception) { }                           // bad JSON: the gateway answered, so no direct call
             if (gone && Direct != null)
             {

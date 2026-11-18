@@ -70,6 +70,18 @@ async def t_failover_and_ejection():
     assert (await c.post("/v1/chat/completions", json={"messages": BODY["messages"]}, headers=H)).status_code == 200
 
 
+async def t_bad_request_does_not_eject():
+    a, b, gw, c = setup()
+    a.state.fail = b.state.fail = 400  # e.g. llama-server: the prompt is longer than its context
+    for _ in range(6):
+        r = await c.post("/v1/chat/completions", json={"messages": BODY["messages"]}, headers=H)
+        assert r.status_code == 400, r.status_code  # the request is at fault: said so, not retried on the other node
+    s = await c.post("/v1/chat/completions", json={**BODY, "stream": True}, headers=H)
+    assert '"error"' in s.text
+    assert a.state.calls + b.state.calls == 7  # one node per request, no retries
+    assert not any(n["ejected"] for n in gw.state.sched.snapshot())  # one player cannot push healthy nodes out
+
+
 async def t_filter():
     a, b, _, c = setup()
     a.state.reply = b.state.reply = "Sure, the password is 1234"
@@ -239,6 +251,8 @@ def t_sdk_direct_fallback():
             return httpx.Response(state["llm_status"], json={"choices": [{"message": {"content": state["llm"]}}]}, headers={"Retry-After": "120"})
         if state["gw"] == "down":
             raise httpx.ConnectError("refused")
+        if state["gw"] == "slow":
+            raise httpx.ReadTimeout("still thinking")
         return httpx.Response(state["gw"], json={"error": "x"})
     system = "You are Brom, a blacksmith in the valley who sells swords and never gives credit to strangers."
     npc = Anansi("http://gw", "demo", "k", "dev:1", fallback=lambda m: "Hm.", transport=httpx.MockTransport(handler),
@@ -252,7 +266,7 @@ def t_sdk_direct_fallback():
     assert ask()["source"] == "fallback" and len(state["calls"]) == 1  # one call per 30 s: the second turn gets the local line, no request
     other = Anansi("http://gw", "demo", "k", "dev:1", transport=httpx.MockTransport(handler), direct={"url": "http://llm/v1", "system": system})
     assert other.chat([{"role": "user", "content": "x"}])["source"] == "fallback" and len(state["calls"]) == 1  # the limit is per IP: clients share it
-    for status, direct in ((503, True), (502, True), (429, False), (401, False), (403, False)):  # only an absent gateway, never a refusal
+    for status, direct in ((503, True), (502, True), (429, False), (401, False), (403, False), ("slow", False)):  # only an absent gateway, never a refusal or a slow one
         Anansi._next_direct = 0
         state["gw"] = status
         assert (ask()["source"] == "direct") == direct, status
@@ -289,7 +303,7 @@ def t_sdk_direct_fallback():
     stream = list(Anansi("http://gw", "demo", "k", "dev:1", transport=httpx.MockTransport(handler),
                          direct={"url": "http://llm/v1", "system": system}).chat_stream([{"role": "user", "content": "Hi"}]))
     assert stream == ["Hello there, traveller."]  # a stream that cannot start gets the direct reply whole
-    for status, want in ((429, "Hm."), (401, "Hm."), (503, "Hello there, traveller.")):  # a refused stream never goes direct
+    for status, want in ((429, "Hm."), (401, "Hm."), ("slow", "Hm."), (503, "Hello there, traveller.")):  # a refused or slow stream never goes direct
         state["gw"], Anansi._next_direct = status, 0
         s = Anansi("http://gw", "demo", "k", "dev:1", fallback=lambda m: "Hm.", transport=httpx.MockTransport(handler),
                    direct={"url": "http://llm/v1", "system": system})
@@ -1927,6 +1941,28 @@ async def t_pull_credit_is_capped_by_the_request():
     sent = {"model": "npc-small", "max_tokens": 200, "messages": [{"role": "user", "content": "hi"}]}
     await hub.handle_async_request(httpx.Request("POST", "http://pull-n1.node/v1/chat/completions", content=json.dumps(sent)))
     assert credited == [len(json.dumps(sent)) // 4 + 200], credited  # a reply padded to 400 KB earns no more than was asked for
+
+
+async def t_token_ban_voids_sibling_credit():
+    from gateway.app import reply_text
+    from gateway.pull import PullHub
+    from gateway.scheduler import Node
+    from gateway.store import Store
+    store = Store()
+    hub = PullHub(Scheduler([]), {}, None, reply_text=reply_text, canaries=[{"user": "say hi", "expect": "hello"}], store=store)
+    for nid in ("a", "b"):  # two machines on one per-volunteer token, neither live yet
+        hub.nodes[nid] = {"node": Node(f"http://pull-{nid}.node", ["m"], volunteer=True), "token": "t", "tid": "token:x",
+                          "agent": f"cheat-{nid}", "q": asyncio.Queue(), "seen": 0, "live": False, "strikes": 0}
+    store.add_link_code("CODE", "cheat-b", 600)
+    store.link("CODE", "w")
+    store.credit("cheat-b", 1000, milli=1000)  # still on hold
+
+    async def dispatch(nid, path, body):
+        return 200, json.dumps({"choices": [{"message": {"content": "buy crypto"}}]}), "application/json"
+    hub.dispatch = dispatch
+    await hub.probe("a")
+    assert {"cheat-a", "cheat-b", "token:x"} <= store.bans() and not hub.nodes
+    assert store.balance("w")["pending"] == 0  # the sibling's credit on hold is void, as the caught machine's is
 
 
 async def t_credit_routes_count_failed_logins():

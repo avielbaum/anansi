@@ -65,6 +65,7 @@ check((await down.leaderboard()) === null, "gateway down: no statistics");
       return new Response(JSON.stringify({ choices: [{ message: { content: llm.content } }] }), { status: llm.status, headers: { "Retry-After": "120" } });
     }
     if (gw === "down") throw new TypeError("fetch failed");
+    if (gw === "slow") return new Promise((_, no) => init.signal.addEventListener("abort", () => no(new DOMException("aborted", "AbortError"))));
     return new Response("{}", { status: gw });
   };
   const system = "You are Brom, a blacksmith in the valley who sells swords and never gives credit to strangers.";
@@ -83,6 +84,11 @@ check((await down.leaderboard()) === null, "gateway down: no statistics");
     if (((await d.chat(msgs, { structured: true })).source === "direct") !== direct) ok = false;
   }
   check(ok, "only an absent gateway (no answer, 502-504) goes direct, never 401, 403 or 429");
+  gw = "slow"; d._nextDirect = 0; const calls = llm.calls.length;
+  const slow = mk({ baseUrl: "http://gw", fetch: fake, timeoutMs: 200, direct: { url: "http://llm/v1", system } });
+  r = await slow.chat(msgs);
+  const rs = await slow.chatStream(msgs, () => {});
+  check(r.source === "fallback" && rs.source === "fallback" && llm.calls.length === calls, "a slow gateway (timeout) is there: the local line, never the direct LLM");
   gw = "down"; d._nextDirect = 0; llm.status = 402;
   r = await d.chat(msgs);
   check(r.source === "fallback" && d._nextDirect - Date.now() > 100000, "over the free limit: waits as long as the service says");

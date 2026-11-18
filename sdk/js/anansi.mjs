@@ -125,14 +125,14 @@ export class Anansi {
     }
   }
 
-  async _call(method, path, body) { // [status, json]; status 0 when the gateway could not be reached
+  async _call(method, path, body) { // [status, json]; status 0 when the gateway could not be reached, -1 when it was too slow
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), this.timeoutMs);
     try {
       const r = await this.fetch(this.base + path, { method, headers: await this._headers(), body: body && JSON.stringify(body), signal: ctl.signal });
       return [r.status, r.status === 200 ? await r.json() : await r.json().catch(() => null)];  // an error's body says why
     } catch (e) {
-      return [0, null];
+      return [ctl.signal.aborted ? -1 : 0, null]; // a timeout: the gateway may still answer and bill, so no direct call
     } finally {
       clearTimeout(timer);
     }
@@ -222,6 +222,7 @@ export class Anansi {
       }
     } catch (e) {
       // timeout, dropped connection, bad JSON: what was said stands
+      if (ctl.signal.aborted && !status) status = -1; // too slow is not absent: no direct call
     } finally {
       clearTimeout(timer);
     }

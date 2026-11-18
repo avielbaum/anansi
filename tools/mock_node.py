@@ -35,7 +35,7 @@ def make_node(name, latency=0.0):
         app.state.calls += 1
         app.state.last, app.state.auth = body, req.headers.get("authorization")
         if app.state.fail:
-            raise HTTPException(500, "mock failure")
+            raise HTTPException(500 if app.state.fail is True else app.state.fail, "mock failure")  # a test may set a status
         await asyncio.sleep(latency)
         if body.get("model") == "guard":  # a safety classifier such as Llama Guard: plain "safe" or "unsafe\nS1"
             app.state.guard_last = body

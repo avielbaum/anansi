@@ -20,6 +20,12 @@ in C#, and `npc.direct = {"system": ..., "actions": [...]}` in Godot (`url`, `mo
 Python and JavaScript also use it for a stream that cannot start (the reply arrives whole); C# and Godot streams, quests and
 storylines keep the local fallback. Unreal does not have it.
 
+Only an absent gateway goes direct: no connection (refused, DNS, TLS) or `502`-`504` from a proxy in front of it. A gateway
+that is there but slower than the client's timeout gets the local line instead, because it may still answer and charge the
+player's budget, and the player's text should not go to a third party for nothing. Set the timeout above the gateway's real reply
+time (judges and CPU models take 10 s or more). Godot is the exception: on Windows it reports a refused connection only as a
+timeout, so there a timeout still counts as absent.
+
 The game's own system messages (an NPC's persona, for example) are added to the prompt after `system`. The interval is shared by
 every client in the game, because the limit is per player, not per client. Replies keep their line breaks and are cut at
 600 characters (`max_chars` / `maxChars` / `MaxChars` to change it, for a prompt that asks for an answer in lines). Waypoint and

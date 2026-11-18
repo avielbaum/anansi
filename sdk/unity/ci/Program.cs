@@ -71,10 +71,17 @@ static class Program
         Check(!ln.Linked && ln.Reason == "unavailable" && down.CreditsAsync().GetAwaiter().GetResult() == null, "gateway down: unavailable, no credits");
 
         // direct fallback, against a mock node standing in for the public LLM ("echo: <reply>" scripts its answer)
-        var dc = new Client("http://127.0.0.1:9", "demo", "change-me", ticket, null, 1);
+        var dc = new Client("http://127.0.0.1:9", "demo", "change-me", ticket, null, 5);  // Windows takes ~2 s to report a refused connection; a timeout is "slow", not "gone"
         dc.Direct = new DirectOptions { System = "You are Brom, a blacksmith.", Url = "http://127.0.0.1:9001/v1/chat/completions" };
         dc.Direct.Actions.Add("give_discount");
         var dm = new List<Message> { new Message { role = "user", content = "echo: {\"say\": \"Ten off.\", \"action\": \"give_discount\"}" } };
+        // first, while no direct call has used the interval: a gateway that accepts the connection but is slow is there, not gone
+        var hang = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        hang.Start();  // the OS accepts connections into the backlog; nothing ever answers
+        var slow = new Client("http://127.0.0.1:" + ((System.Net.IPEndPoint)hang.LocalEndpoint).Port, "demo", "change-me", ticket, null, 0.5);
+        slow.Direct = dc.Direct;
+        Check(slow.ChatAsync(dm, null, true).GetAwaiter().GetResult().Source == "fallback", "a slow gateway (timeout) is there: the local line, never the direct LLM");
+        hang.Stop();
         var dr = dc.ChatAsync(dm, null, true).GetAwaiter().GetResult();
         Check(dr.Source == "direct" && dr.Action == "none" && dr.Say == "Ten off.", "gateway down: the direct LLM answers; a line naming the action gets none, as at the gateway");
         Check(dc.ChatAsync(dm, null, true).GetAwaiter().GetResult().Source == "fallback", "one direct call per interval, the next turn gets the local line");

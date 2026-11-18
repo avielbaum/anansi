@@ -204,8 +204,9 @@ class PullHub(httpx.AsyncBaseTransport):
             self.store.ban(e["agent"], "failed verification")
             if e["tid"]:
                 self.store.ban(e["tid"], f"failed verification (agent {e['agent']})")
-                for other, x in list(self.nodes.items()):  # the token's other workers go too
+                for other, x in list(self.nodes.items()):  # the token's other workers go too, and their credit on hold with them
                     if x["tid"] == e["tid"] and other != nid:
+                        self.store.ban(x["agent"], f"same token as {e['agent']}, which failed verification")
                         self.drop(other)
             self.stats["banned"] += 1
             self.drop(nid)

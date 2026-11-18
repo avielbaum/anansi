@@ -405,6 +405,11 @@ def make_app(config=None, transport=None):
         budget["retry"] += 1
         return True
 
+    def request_fault(node, status):
+        """True if the node blamed the request (a 4xx such as a prompt too long for its context), not itself: no ejection, no retry,
+        so one player's bad requests cannot push healthy nodes out. Not for volunteers: one could answer 400 to dodge work."""
+        return 400 <= status < 500 and status not in (408, 429) and not node.volunteer
+
     def payload_for(up, node):
         p = {**up, **node.extra}
         if node.upstream_model:
@@ -493,11 +498,12 @@ def make_app(config=None, transport=None):
                 break
             tried.append(node)
             sched.begin(node)
-            t0, ok, raw = time.monotonic(), False, ""
+            t0, ok, raw, refused = time.monotonic(), False, "", False
             try:
                 async with client.stream("POST", node.url + "/v1/chat/completions",
                                          json={**payload_for(up, node), "stream": True}, headers=node.headers) as r:
                     if r.status_code != 200:
+                        refused = request_fault(node, r.status_code)
                         raise httpx.HTTPError("bad status")
                     async for line in r.aiter_lines():
                         if not line.startswith("data:") or line[5:].strip() == "[DONE]":
@@ -518,9 +524,9 @@ def make_app(config=None, transport=None):
             except httpx.HTTPError:
                 pass
             finally:
-                sched.end(node, ok, (time.monotonic() - t0) * 1000)
+                sched.end(node, ok or refused, (time.monotonic() - t0) * 1000)
                 charge(node, None, up["messages"], raw)  # a stream reports no usage: estimated from the text
-            if ok or sent:
+            if ok or sent or refused:
                 break
         if sent or filtered:
             stats["lat_ms"].append(ttft * 1000)
@@ -641,7 +647,7 @@ def make_app(config=None, transport=None):
                                      media_type="text/event-stream")
             resp.owns_slot = True  # stream_reply releases it; a buffered (judged) stream below does not, so handle() does
             return resp
-        tried, data, node = [], None, None
+        tried, data, node, refused = [], None, None, False
         for attempt in range(3):
             if attempt and not may_retry():
                 break
@@ -655,7 +661,7 @@ def make_app(config=None, transport=None):
             ok = False
             try:
                 r = await client.post(node.url + "/v1/chat/completions", json=payload_for(up, node), headers=node.headers)
-                ok = r.status_code == 200
+                ok, refused = r.status_code == 200, request_fault(node, r.status_code)
                 data = r.json() if ok else None
             except (httpx.HTTPError, ValueError):
                 data = None
@@ -663,11 +669,13 @@ def make_app(config=None, transport=None):
                 charge(node, data, up["messages"], reply_text(data))
             if data is not None and not reply_text(data):  # empty reply (e.g. a thinking model out of tokens) is a node failure
                 data = None
-            sched.end(node, ok and data is not None, (time.monotonic() - t0) * 1000)
-            if data:
+            sched.end(node, (ok and data is not None) or refused, (time.monotonic() - t0) * 1000)
+            if data or refused:
                 break
         if not data:
             store.add_usage(*ukey, -held)
+            if refused:
+                raise HTTPException(400, "the model could not take this request (too long for it?)")
             raise HTTPException(503, "no node available")
 
         text = reply_text(data)
